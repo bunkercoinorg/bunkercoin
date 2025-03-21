@@ -47,7 +47,7 @@ export default function Home() {
                   on Solana.</h2>
               <div className={"flex justify-around gap-x-6 mb-8 mt-6"}>
                   <Link href={"https://x.com/bunkercoin_io"}><SiX className={"size-8"}></SiX></Link>
-                  <Link href={"https://links.bunkercoin.io/telegram"}><SiTelegram
+                  <Link href={"https://t.me/bunkercoin_io"}><SiTelegram
                       className={"size-8"}></SiTelegram></Link>
               </div>
               <h1 className={"text-7xl font-bold font-mona-extended primary-heading mb-8"}>$BUNKER</h1>
