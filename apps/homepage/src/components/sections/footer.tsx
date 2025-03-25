@@ -17,7 +17,7 @@ By purchasing BunkerCoin, you accept all associated risks and acknowledge its sp
             <span>Copyright © 2025 - BunkerCoin. All Rights Reserved.</span>
             <div
                 className={"flex justify-between pr-8 md:pr-0 *:underline md:*:no-underline md:justify-center gap-x-2"}>
-                <Link className={"hover:text-neutral-600"} href={"/legal/imprint"}>Imprint</Link>
+                <Link className={"hover:text-neutral-600"} href={"/legal/imprint"}>Imprint / Contact</Link>
                 <Link className={"hover:text-neutral-600"} href={"/legal/privacy-policy"}>Privacy Policy</Link>
             </div>
         </div>
