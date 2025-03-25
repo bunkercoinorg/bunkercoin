@@ -20,9 +20,18 @@ import BuyNowButton from "@/components/ui-wrapper/buy-now-button";
 import PDFButton from "@/components/ui-wrapper/pdf-button";
 import MediumFeed from "@/components/sections/medium-feed";
 import Header from "@/components/sections/header";
+import {useEffect} from "react";
+import {initX, trackXConversionOnce} from "@/components/util/x";
 
 export default function Home() {
   const tokenCA = "8NCievmJCg2d9Vc2TWgz2HkE6ANeSX7kwvdq5AL7pump"
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            initX();
+            trackXConversionOnce('tw-on6qi-pd16h');
+        }
+    }, []);
 
   return (
       <>
