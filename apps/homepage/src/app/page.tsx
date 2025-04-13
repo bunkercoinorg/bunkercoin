@@ -189,7 +189,7 @@ export default function Home() {
                   </h5>
               </div>
               <LandingGallerySlideshow/>
-              <p className={"mt-2 text-neutral-700"}><span><b>Transparency Note:</b></span> The pictures show the bunker
+              <p className={"mt-2 text-neutral-700"}><span><b>Transparency Note:</b></span> Some of the pictures show the bunker
                   in the original historic shape, which has partially degraded due to vandalism before our ownership of
                   the bunker. Our aim is to restore, overcome and upgrade the original way the facility was designed -
                   together with you, the community.</p>
