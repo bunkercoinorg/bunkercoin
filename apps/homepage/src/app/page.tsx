@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import Roadmap from "@/components/sections/roadmap";
 import LandingGallerySlideshow from "@/components/sections/gallery-slideshow";
-import {SiTelegram, SiX} from "@icons-pack/react-simple-icons";
+import {SiCoinmarketcap, SiTelegram, SiX} from "@icons-pack/react-simple-icons";
 import Link from "next/link";
 import FAQ from "@/components/sections/faq";
 import HowToBuy from "@/components/sections/how-to-buy";
@@ -58,6 +58,8 @@ export default function Home() {
                   <Link href={"https://x.com/bunkercoin_io"}><SiX className={"size-8"}></SiX></Link>
                   <Link href={"https://t.me/bunkercoin_io"}><SiTelegram
                       className={"size-8"}></SiTelegram></Link>
+                  <Link href={"https://coinmarketcap.com/currencies/bunkercoin"}><SiCoinmarketcap
+                      className={"size-8"}></SiCoinmarketcap></Link>
               </div>
               <h1 className={"text-7xl font-bold font-mona-extended primary-heading mb-8"}>$BUNKER</h1>
               <div className={"flex items-center gap-x-4 mt-6 mb-10"}>
