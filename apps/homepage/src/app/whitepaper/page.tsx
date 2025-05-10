@@ -1,12 +1,11 @@
+"use client"
+
 import React from 'react';
 import Link from "next/link";
 import {Button} from "@/components/ui/button";
-import {ArrowLeft} from "lucide-react";
-"use client"
-
-import { AlertTriangle } from "lucide-react"
+import {ArrowLeft, AlertTriangle} from "lucide-react";
 import PDFViewer from "@/components/sections/pdf-viewer"
-import { useEffect, useState, Suspense } from "react"
+import {  Suspense } from "react"
 
 interface PDFFile {
     url: string
