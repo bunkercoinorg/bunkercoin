@@ -17,7 +17,8 @@ const HowToBuy = () => {
                 <span className={"text-neutral-400"}>
                     Setup a Solana wallet, if you don&apos;t have one already. We recommend Phantom:
                     <a href={"https://phantom.app"} target={"_blank"}
-                       className={"mt-2 bg-[#AB9FF2] font-semibold flex text-white w-1/2 md:w-1/3 items-center justify-center rounded-lg"}><img
+                       className={"mt-2 bg-[#AB9FF2] font-semibold flex text-white w-1/2 md:w-1/3 items-center justify-center rounded-lg"}>
+                        <img
                         className={"size-10"} src={"/img/phantom-logo.svg"}></img>Phantom</a>
                 </span>
             </div>

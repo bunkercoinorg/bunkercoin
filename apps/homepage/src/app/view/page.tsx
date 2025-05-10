@@ -18,7 +18,7 @@ const pdfFiles: Record<string, PDFFile> = {
     'trade-register': {
         url: 'https://bunkercoin.io/docs/trade-register.pdf',
         title: 'Trade Register'
-    }
+    },
 }
 
 const PDFViewContent = () => {
