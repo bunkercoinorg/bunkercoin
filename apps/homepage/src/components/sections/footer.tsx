@@ -13,9 +13,8 @@ Ownership of BunkerCoin does not grant rights to any property. Bunker spaces wil
 By purchasing BunkerCoin, you accept all associated risks and acknowledge its speculative nature.
         </span>
         <div
-            className={"mt-4 z-10 !w-[100vw] !max-w-[100vw] text-neutral-600 flex flex-col gap-y-3 md:gap-y-0 md:flex-row justify-around p-8"}>
-            <span>Copyright © 2025 - BunkerCoin Ltd. All Rights Reserved.</span>
-            <span>BunkerCoin Ltd. - contact@bunkercoin.io</span>
+            className={"mt-4 z-10 w-full text-sm text-neutral-700 flex flex-col gap-y-3 md:gap-y-0 md:flex-row justify-around p-8"}>
+            <span>Copyright © 2025 - BunkerCoin. All Rights Reserved.</span>
             <div
                 className={"flex justify-between pr-8 md:pr-0 *:underline md:*:no-underline md:justify-center gap-x-2"}>
                 <Link className={"hover:text-neutral-600"} href={"/legal/imprint"}>Imprint / Contact</Link>
