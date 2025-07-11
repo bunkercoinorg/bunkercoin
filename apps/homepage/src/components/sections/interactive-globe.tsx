@@ -181,7 +181,7 @@ const InteractiveGlobe = () => {
                 arcStroke={0.3}
 
                 ringsData={nodes}
-                ringColor={() => 'rgba(0, 255, 178, 0.4)'}
+                ringColor={() => ['rgba(0, 255, 178, 0.6)', 'rgba(0, 255, 178, 0)']}
                 ringMaxRadius={3}
                 ringPropagationSpeed={2}
                 ringRepeatPeriod={1000}
