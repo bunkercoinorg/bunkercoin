@@ -37,51 +37,35 @@ const FAQ: React.FC = () => {
     const faqItems = [
         {
             question: "What is BunkerCoin?",
-            answer: "BunkerCoin is a project that creates safe havens in times of uncertainty and crisis. The focus is on the renovation and modernisation of the world's largest private bunker facility near Berlin (750’000 sqft of bunker space + 10’700’000 sqft of land above), which is designed to offer maximum protection. In addition, we will be developing an app that provides early warnings in the event of a crisis and efficiently coordinates evacuations, as well as enabling backup communication between the community. In the future, we also plan to offer customised panic rooms as well as private security services to provide the best possible support for the evacuation and safety of our community members. In the long term, we are planning further projects, such as in The Gambia, the friendliest and most peaceful country in Africa."
+            answer: "BunkerCoin is building Crypto's Resilience Layer. It consists of two main components: a blockchain that operates on shortwave radio signals, independent of the internet, and a network of physical safe havens, including the world's largest privately-owned bunker."
         },
         {
-            question: "How to become part of the BunkerCoin community?",
-            answer: "As of now, you can become a member by purchasing BunkerCoin tokens and participating in our community events. You can also use BunkerCoins to buy Bunker NFTs in the future, which will secure you a place in the bunker."},
-        {
-            question: "Can I visit the bunker?",
-            answer: "Of course you can visit and take a look at the bunker - register [here](https://thebunker.community) for a tour. However, keep in mind that tours are only organised exclusively for BunkerCoin and NFT holders."},
-        {
-            question: "What are Bunker-NFTs?",
-            answer: "With the bunker NFTs you can secure access to space in the bunker for emergencies, or space to safely store things that are important to you in the largest private bunker facility in the world. Access to your personal space in the bunker!"},
-        {
-            question: "Will the Bunker-NFTs be tradable?",
-            answer: "Even if you don't want access to bunker space, you can still freely trade the Bunker-NFTs, e.g. as a hedge against crisis, to profit from rising prices."},
-
-        {
-            question: "When will the Bunker-NFTs be released?",
-            answer: "The exact timing will depend on the success and momentum of the project. However, as stated in the roadmap, we have planned to release the NFTs in the second quarter of 2025."
+            question: "A blockchain on radio waves? How does that work?",
+            answer: "Our nodes communicate using shortwave radio instead of the internet. This creates a censorship-resistant and highly resilient network that can operate even during widespread internet outages. It's designed for robustness, not high-frequency trading."
         },
         {
-            question: "How is the renovation of the bunker being financed?",
-            answer: "The renovation and modernisation will be financed by the 15% renovation allocation and a portion of the proceeds from the sale of NFTs. The more successful the coin, the more is invested in the bunker."
+            question: "What's the point if it's slower than other blockchains?",
+            answer: "The primary use case is resilience, not speed. BunkerCoin is designed to be a 'lifeboat' for digital assets. When other chains might be inaccessible due to internet censorship or infrastructure failure, BunkerCoin is built to remain operational. Our long-term goal is to match Bitcoin's TPS."
         },
         {
-            question: "Are there events I can take part in?",
-            answer: "Yes, we organise closed community events in the bunker where members have the opportunity to interact directly with our team and learn more about the project."
+            question: "Is this technology real? Who is behind it?",
+            answer: "Yes. The concept was detailed in a technical abstract by Solana co-founder Anatoly Yakovenko. Our team has built a working, simulated version of the network which you can view on our [explorer](https://explorer.bunkercoin.io/). We are now building the physical hardware nodes for the testnet."
         },
         {
-            question: "How can I interact with the BunkerCoin community?",
-            answer: "Join our [Telegram community](https://links.bunkercoin.io/telegram)!"
+            question: "How can I use BunkerCoin if I don't have a radio node?",
+            answer: "The network is a hybrid. Nodes communicate via radio waves but also have optional internet gateways. This means you can interact with the BunkerCoin blockchain just like any other, using your regular devices, while benefiting from the resilience of the underlying radio network."
         },
         {
-            question: "Is the bunker facility real?",
-            answer: "Yes, the bunker is real and in our possession. Just google 'Bunker code name Malachit' or look it up in Wikipedia"},
-        {
-            question: "How does BunkerCoin ensure transparency?",
-            answer: "We document all renovation progress and keep the community informed of all important decisions. A Decentralised Autonomous Organisation (DAO) will also allow the community to influence important decisions."
+            question: "What is the role of the bunker?",
+            answer: "The bunker is the first of our physical safe havens, representing the physical component of our resilience layer. While the blockchain protects your digital assets, our safe havens are being developed to protect people. Access and rights to these spaces are managed via NFTs on our chain."
         },
         {
-            question: "Can I search for hidden treasures in the bunker complex, such as the old GDR money or the Amber Room?",
-            answer: "Yes, you can ^^"
+            question: "What is the utility of the $BUNKER token?",
+            answer: "The token is used for network transaction fees, participating in governance via the DAO, staking to secure the network, and as the primary currency within our safe haven ecosystem (e.g., for NFT-based access rights)."
         },
         {
-            question: "Where can I find more information?",
-            answer: "Further information can be found in our [whitepaper](/whitepaper), and on our social media channels. Stay tuned for updates and new announcements!"
+            question: "How does this relate to Solana?",
+            answer: "Our consensus mechanism is an adapted version of Alpenglow, a next-generation protocol being developed for Solana. We are also building a bridge to allow seamless asset transfers to and from the Solana ecosystem, making BunkerCoin a key resilience layer for the Solana community and beyond."
         }
     ];
 

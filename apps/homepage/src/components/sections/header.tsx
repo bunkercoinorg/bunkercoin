@@ -7,13 +7,15 @@ const Header: React.FC = () => {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
     const navItems = [
+        { label: "Explorer", href: "https://explorer.bunkercoin.io" },
+        { label: "Our Bunker", href: "/our-bunker" },
         { label: "Blog", href: "https://blog.bunkercoin.io" },
         { label: "App", href: "https://app.bunkercoin.io" },
     ];
 
     return (
-        <header className="fixed top-0 w-full flex flex-col backdrop-blur-md bg-black/5 md:px-[30vw] z-[100]">
-            <div className="container mx-auto p-6 flex items-center justify-between">
+        <header className="fixed top-0 w-full flex flex-col backdrop-blur-md bg-black/5 z-[100]">
+            <div className="container mx-auto px-6 py-8 flex items-center justify-between">
                 <div className="flex-shrink-0">
                     <Link href="/">
                         <img
@@ -24,7 +26,7 @@ const Header: React.FC = () => {
                     </Link>
                 </div>
 
-                <nav className="hidden md:flex space-x-4">
+                <nav className="hidden md:flex space-x-6">
                     {navItems.map((item) => (
                         <Link key={item.label} href={item.href} passHref>
                             <Button className="bg-transparent hover:bg-neutral-50/10">

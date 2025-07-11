@@ -19,18 +19,39 @@ const pdfFiles: Record<string, PDFFile> = {
         url: 'https://bunkercoin.io/docs/trade-register.pdf',
         title: 'Trade Register'
     },
+    'technical-whitepaper': {
+        url: 'https://raw.githubusercontent.com/TheBunkerCoin/bunker_coin/docs/whitepaper/bunker_coin.pdf',
+        title: 'BunkerCoin Technical Whitepaper'
+    },
 }
 
 const PDFViewContent = () => {
     const searchParams = useSearchParams()
     const [selectedPDF, setSelectedPDF] = useState<PDFFile | null>(null)
+    const [isLoading, setIsLoading] = useState(true)
 
     useEffect(() => {
         const fileParam = searchParams.get('file')
+        
+        // Check if it's a predefined file
         if (fileParam && pdfFiles[fileParam]) {
             setSelectedPDF(pdfFiles[fileParam])
+        } 
+        // Handle direct URL for backward compatibility
+        else if (fileParam && fileParam.startsWith('http')) {
+            setSelectedPDF({
+                url: fileParam,
+                title: 'Document Viewer'
+            })
         }
+       
+        // Set loading to false after checking
+        setIsLoading(false)
     }, [searchParams])
+
+    if (isLoading) {
+        return <LoadingState />
+    }
 
     if (!selectedPDF) {
         return (
@@ -49,6 +70,9 @@ const PDFViewContent = () => {
                         </code>
                         <code className="block bg-neutral-700 p-2 rounded">
                             ?file=trade-register
+                        </code>
+                        <code className="block bg-neutral-700 p-2 rounded">
+                            ?file=technical-whitepaper
                         </code>
                     </div>
                 </div>
