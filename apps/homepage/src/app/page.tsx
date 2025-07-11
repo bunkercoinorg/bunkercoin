@@ -8,7 +8,7 @@ import {
     ExternalLinkIcon, FileTextIcon, ImagesIcon, MessageCircleQuestionIcon, NewspaperIcon,
     ShieldCheckIcon,
     SparklesIcon,
-    WrenchIcon, ArrowDownIcon, ChevronDownIcon, NetworkIcon, ShieldIcon, UsersIcon, CodeIcon, RadioIcon, ZapIcon, WifiOffIcon, AlertTriangleIcon, BuildingIcon, MapPinIcon, LoaderIcon, CheckIcon
+    WrenchIcon, ArrowDownIcon, ChevronDownIcon, NetworkIcon, ShieldIcon, UsersIcon, CodeIcon, RadioIcon, ZapIcon, WifiOffIcon, AlertTriangleIcon, BuildingIcon, MapPinIcon, LoaderIcon, CheckIcon, CopyIcon
 } from "lucide-react";
 import Roadmap from "@/components/sections/roadmap";
 import LandingGallerySlideshow from "@/components/sections/gallery-slideshow";
@@ -160,8 +160,9 @@ export default function Home() {
 
               {/* Contract address */}
               <div className="mb-4">
-                  <button onClick={copyCA} className="mt-4 md:mt-1 text-md md:text-base text-neutral-500 hover:text-neutral-300 transition focus:outline-none select-none" title="Click to copy contract address">
+                  <button onClick={copyCA} className="mt-4 md:mt-1 text-md md:text-base text-neutral-500 hover:text-neutral-300 transition focus:outline-none select-none inline-flex items-center gap-1" title="Click to copy contract address">
                       CA: {copied ? 'Copied!' : truncatedCA}
+                      <CopyIcon className="w-3 h-3" />
                   </button>
               </div>
                       <div className={"flex justify-center md:justify-start gap-x-6 mb-8 mt-4"}>
