@@ -49,6 +49,16 @@ const InteractiveGlobe = dynamic(() => import('@/components/sections/interactive
 export default function Home() {
   const tokenCA = "8NCievmJCg2d9Vc2TWgz2HkE6ANeSX7kwvdq5AL7pump"
 
+  const [copied, setCopied] = useState(false);
+  const truncatedCA = `${tokenCA.slice(0,5)}...${tokenCA.slice(-5)}`;
+
+  const copyCA = () => {
+    navigator.clipboard.writeText(tokenCA).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
     useEffect(() => {
         if (typeof window !== 'undefined') {
             initX();
@@ -140,12 +150,19 @@ export default function Home() {
                       <p className={"text-lg mt-6 text-neutral-400 max-w-xl"}>
                           BunkerCoin will be the first Layer 1 blockchain on radiowaves—a censorship-resistant network that operates fully independent from the internet. We anchor this groundbreaking tech with a network of physical safe havens, starting with the world&apos;s largest bunker.
                       </p>
-                      <div className={"flex items-center gap-x-4 mt-8 mb-6"}>
+                      <div className={"flex items-center gap-x-4 mt-8 mb-2"}>
                   <BuyNowButton/>
                   <a className={"group flex items-center gap-x-2 px-4 py-2 rounded-md bg-neutral-800/50 backdrop-blur-md border border-neutral-700 text-white hover:border-neutral-600 transition-all duration-300"}
                      href={"/view?file=technical-whitepaper"}>Technical Whitepaper<FileTextIcon
                       className={"text-neutral-600 size-5 stroke-1 group-hover:text-neutral-500 transition-all duration-300"}
                   /></a>
+              </div>
+
+              {/* Contract address */}
+              <div className="mb-4">
+                  <button onClick={copyCA} className="mt-4 md:mt-1 text-md md:text-base text-neutral-500 hover:text-neutral-300 transition focus:outline-none select-none" title="Click to copy contract address">
+                      CA: {copied ? 'Copied!' : truncatedCA}
+                  </button>
               </div>
                       <div className={"flex justify-center md:justify-start gap-x-6 mb-8 mt-4"}>
                           <Link href={"https://github.com/TheBunkerCoin"}><SiGithub className={"size-8 opacity-50"}></SiGithub></Link>
@@ -278,7 +295,7 @@ export default function Home() {
                                 Since 2019, he's been sharing humorous thoughts about this idea, including a playful April Fools' 2024 technical abstract.
                             </p>
                             <p className="text-neutral-400 text-sm mb-4">
-                                <Link href="https://x.com/search?q=from%3Aaeyakovenko%20bunker%20coin&src=typed_query&f=live" className="text-bunker hover:text-bunker/80 transition inline-flex items-center gap-1">
+                                <Link href="https://x.com/search?q=from%3Aaeyakovenko%20(bunkercoin%20OR%20%22bunker%20coin%22%20OR%20radio%20OR%20%22cool%20if%20true%22)&src=typed_query&f=live" className="text-bunker hover:text-bunker/80 transition inline-flex items-center gap-1">
                                     View his posts here <ExternalLinkIcon className="w-3 h-3" />
                                 </Link>
                                 — a <i>very</i> entertaining read.
@@ -305,9 +322,7 @@ export default function Home() {
                                     <img src="/img/toly/quote.png" alt="Toly quote repost about BunkerCoin" className="max-w-full max-h-full rounded-lg" />
                                 </div>
                                 <div className="h-32 flex items-center justify-center">
-                                    <div className="bg-neutral-800/50 rounded p-4 text-neutral-600 text-sm text-center rounded-lg">
-                                        Our physical testnet post will go here
-                                    </div>
+                                    <img src="/img/toly/wen-bls.png" alt="Wen BLS grinder tweet tagging BunkerCoin (2024)" className="max-w-full max-h-full rounded-lg" />
                                 </div>
                             </div>
                             <p className="text-center text-sm text-neutral-500 mt-4">A few excerpts from X</p>
@@ -418,11 +433,11 @@ export default function Home() {
                             <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 mb-6">
                                 <p className="text-sm text-neutral-400 mb-3">Ownership verified via German Land Registry & Trade Register</p>
                                 <div className="flex gap-3 text-xs">
-                                    <Link href="/view?file=land-registry" className="text-neutral-500 hover:text-neutral-300 transition">
+                                    <Link href="/view?file=land-registry" target="_blank" className="text-neutral-500 hover:text-neutral-300 transition" rel="noopener noreferrer">
                                         View Land Registry
                                     </Link>
                                     <span className="text-neutral-700">•</span>
-                                    <Link href="/view?file=trade-register" className="text-neutral-500 hover:text-neutral-300 transition">
+                                    <Link href="/view?file=trade-register" target="_blank" className="text-neutral-500 hover:text-neutral-300 transition" rel="noopener noreferrer">
                                         View Trade Register
                                     </Link>
               </div>
