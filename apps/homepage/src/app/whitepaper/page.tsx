@@ -13,7 +13,7 @@ interface PDFFile {
 }
 
 const selectedPDF: PDFFile = {
-    url: 'https://bunkercoin.io/docs/whitepaper-1.0.pdf',
+    url: 'https://assets.bunkercoin.com/docs/whitepaper-1.0.pdf',
     title: 'BunkerCoin Whitepaper'
 }
 
