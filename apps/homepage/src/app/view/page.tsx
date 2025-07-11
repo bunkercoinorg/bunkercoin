@@ -12,11 +12,11 @@ interface PDFFile {
 
 const pdfFiles: Record<string, PDFFile> = {
     'land-registry': {
-        url: '/docs/land-registry.pdf',
+        url: 'https://assets.bunkercoin.com/docs/land-registry.pdf',
         title: 'Land-Registry'
     },
     'trade-register': {
-        url: '/docs/trade-register.pdf',
+        url: 'https://assets.bunkercoin.com/docs/trade-register.pdf',
         title: 'Trade Register'
     },
     'technical-whitepaper': {
