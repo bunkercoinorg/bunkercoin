@@ -8,7 +8,7 @@ const data = [
   { name: "Marketing", value: 1 },
   { name: "Listings", value: 1 },
   { name: "Team", value: 5 },
-  { name: "Renovation", value: 15 },
+  { name: "Renovation/Protocol", value: 15 },
 ]
 
 const chartConfig = {
@@ -28,8 +28,8 @@ const chartConfig = {
     label: "Team",
     color: "#F59E0B", // Amber-500
   },
-  "Renovation": {
-    label: "Renovation",
+  "Renovation/Protocol": {
+    label: "Renovation/Protocol",
     color: "#EC4899", // Pink-500
   },
 }
@@ -71,7 +71,14 @@ export function TokenomicsChart() {
             />
           } 
         />
-        <ChartLegend content={<ChartLegendContent />} />
+        <ChartLegend 
+          content={
+            <ChartLegendContent 
+              className="flex flex-wrap justify-center gap-2 md:gap-4 mt-4 text-xs md:text-sm px-2"
+              nameKey="name"
+            />
+          } 
+        />
       </PieChart>
     </ChartContainer>
   )

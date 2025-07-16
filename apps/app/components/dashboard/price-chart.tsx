@@ -1,86 +1,121 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Area, AreaChart, ResponsiveContainer, Tooltip } from "recharts"
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
-
-interface PriceData {
-  timestamp: number
-  price: number
-}
-
-const chartConfig = {
-  price: {
-    label: "Price",
-    color: "#10B981", // Emerald-500
-  },
-}
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
+import { ArrowUpIcon, ArrowDownIcon, TrendingUpIcon } from "lucide-react"
+import { getPriceData, getPriceHistory, PriceData } from "@/lib/solana"
 
 export function PriceChart() {
-  const [data, setData] = useState<PriceData[]>([])
+  const [priceData, setPriceData] = useState<PriceData | null>(null)
+  const [priceHistory, setPriceHistory] = useState<{ time: string; price: number }[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const fetchData = async () => {
-      try {
-        // Fetch 365 days of daily data
-        const response = await fetch(
-          "https://api.coingecko.com/api/v3/coins/bunkercoin/market_chart?vs_currency=usd&days=365&interval=daily"
-        )
-        const json = await response.json()
-        
-        // Transform the data
-        const formattedData = json.prices.map(([timestamp, price]: [number, number]) => ({
-          timestamp,
-          price,
-        }))
-        
-        setData(formattedData)
-      } catch (error) {
-        console.error("Error fetching price data:", error)
-      } finally {
-        setLoading(false)
-      }
+      const [currentPrice, history] = await Promise.all([
+        getPriceData(),
+        getPriceHistory()
+      ])
+      setPriceData(currentPrice)
+      setPriceHistory(history)
+      setLoading(false)
     }
 
     fetchData()
+    // Refresh price data every minute
+    const interval = setInterval(fetchData, 60 * 1000)
+    
+    return () => clearInterval(interval)
   }, [])
 
-  if (loading) {
-    return <div className="w-[full+50px] h-full flex items-center justify-center text-white">Loading...</div>
-  }
+  const isPositive = priceData?.priceChange24h ? priceData.priceChange24h > 0 : true
 
   return (
-    <ChartContainer config={chartConfig} className="w-full h-full">
-      <ResponsiveContainer>
-        <AreaChart data={data}>
-          <defs>
-            <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#10B981" stopOpacity={0.1} />
-              <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <Area
-            type="monotone"
-            dataKey="price"
-            stroke="#10B981"
-            strokeOpacity={0.5}
-            fill="url(#priceGradient)"
-            strokeWidth={1.5}
-          />
-          <ChartTooltip
-            content={
-              <ChartTooltipContent
-                className="bg-neutral-900 border-neutral-800"
-                formatter={(value: any) => {
-                  const numValue = Number(value)
-                  return `Price: $${numValue.toFixed(4)}`
-                }}
-              />
-            }
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-    </ChartContainer>
+    <div className="h-full flex flex-col">
+      {/* Price Header */}
+      <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div>
+          <p className="text-neutral-400 text-sm mb-1">Current Price</p>
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-bold text-white">
+              ${loading ? "..." : priceData?.price.toFixed(6) || "0.000000"}
+            </span>
+            {!loading && priceData && (
+              <span className={`flex items-center text-sm ${isPositive ? 'text-bunker-green' : 'text-red-500'}`}>
+                {isPositive ? <ArrowUpIcon className="size-3" /> : <ArrowDownIcon className="size-3" />}
+                {Math.abs(priceData.priceChange24h).toFixed(2)}%
+              </span>
+            )}
+          </div>
+        </div>
+        
+        <div>
+          <p className="text-neutral-400 text-sm mb-1">24h Volume</p>
+          <p className="text-xl font-semibold text-white">
+            ${loading ? "..." : (priceData?.volume24h || 0).toLocaleString()}
+          </p>
+        </div>
+        
+        <div>
+          <p className="text-neutral-400 text-sm mb-1">Market Cap</p>
+          <p className="text-xl font-semibold text-white">
+            ${loading ? "..." : (priceData?.marketCap || 0).toLocaleString()}
+          </p>
+        </div>
+        
+        <div>
+          <p className="text-neutral-400 text-sm mb-1">FDV</p>
+          <p className="text-xl font-semibold text-white">
+            ${loading ? "..." : ((priceData?.price || 0) * 1_000_000_000).toLocaleString()}
+          </p>
+        </div>
+      </div>
+
+      {/* Chart */}
+      <div className="flex-1">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={priceHistory} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+            <XAxis 
+              dataKey="time" 
+              stroke="#71717a"
+              fontSize={12}
+            />
+            <YAxis 
+              stroke="#71717a"
+              fontSize={12}
+              tickFormatter={(value) => `$${value.toFixed(6)}`}
+            />
+            <Tooltip 
+              contentStyle={{ 
+                backgroundColor: '#18181b', 
+                border: '1px solid #27272a',
+                borderRadius: '8px' 
+              }}
+              labelStyle={{ color: '#a1a1aa' }}
+              itemStyle={{ color: '#00FFB2' }}
+              formatter={(value: any) => [`$${Number(value).toFixed(6)}`, 'Price']}
+            />
+            <defs>
+              <linearGradient id="priceGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stopColor="#00FFB2" stopOpacity={0.6} />
+                <stop offset="50%" stopColor="#00FFB2" stopOpacity={0.3} />
+                <stop offset="100%" stopColor="#00FFB2" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <Area 
+              type="monotone" 
+              dataKey="price" 
+              stroke="#00FFB2" 
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 4, fill: '#00FFB2' }}
+              fillOpacity={0.4}
+              fill="url(#priceGradient)"
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
   )
 } 
