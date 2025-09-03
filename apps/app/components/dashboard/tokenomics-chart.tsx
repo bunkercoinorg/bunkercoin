@@ -1,5 +1,6 @@
 "use client"
 
+import React, { memo } from "react";
 import { PieChart, Pie, Cell } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from "@/components/ui/chart"
 
@@ -42,7 +43,7 @@ const COLORS = [
   "#EC4899", // Pink-500
 ]
 
-export function TokenomicsChart() {
+const TokenomicsChartComponent = () => {
   return (
     <ChartContainer config={chartConfig} className="min-h-[400px] w-full">
       <PieChart>
@@ -82,4 +83,6 @@ export function TokenomicsChart() {
       </PieChart>
     </ChartContainer>
   )
-} 
+};
+
+export const TokenomicsChart = memo(TokenomicsChartComponent); 

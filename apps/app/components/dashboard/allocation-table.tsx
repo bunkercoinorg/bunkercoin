@@ -8,8 +8,13 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import type { LiquidityPool } from "@/lib/solana"
 
-export function AllocationTable() {
+interface Props {
+  liquidityPools: LiquidityPool[]
+}
+
+export function AllocationTable({ liquidityPools = [] }: Props) {
   const allocations = [
     {
       name: "Renovation / Protocol Allocation",
@@ -43,10 +48,18 @@ export function AllocationTable() {
     }
   ]
 
+  const tagClass = (platform: string) =>
+    platform === "Raydium"
+      ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
+      : platform === "Meteora"
+      ? "bg-orange-500/20 text-orange-400 border-orange-500/30"
+      : "bg-neutral-700"
+
   return (
     <div className="overflow-hidden">
       {/* Desktop Table */}
       <div className="hidden md:block">
+      <h4 className="text-sm font-semibold mb-2 md:text-base text-white">Allocation Details</h4>
         <Table>
           <TableHeader>
             <TableRow className="border-neutral-800">
@@ -99,6 +112,45 @@ export function AllocationTable() {
             ))}
           </TableBody>
         </Table>
+
+        {liquidityPools.length > 0 && (
+          <div className="mt-6">
+            <h4 className="text-sm font-semibold mb-2 md:text-base text-white">Locked Liquidity Pools</h4>
+            <Table className="w-full">
+              <TableHeader>
+                <TableRow className="border-neutral-800">
+                  <TableHead className="text-neutral-400">Platform</TableHead>
+                  <TableHead className="text-neutral-400">Amount</TableHead>
+                  <TableHead className="text-neutral-400 text-right">Details</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="border-neutral-800">
+                {liquidityPools.map((pool) => (
+                  <TableRow key={pool.address} className="border-neutral-800">
+                    <TableCell>
+                      <Badge className={tagClass(pool.platform)}>
+                        {pool.platform === "Meteora" ? "Meteora DAMM V1" : pool.platform}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-neutral-300">
+                      {(pool?.amount ?? 0).toLocaleString()} BUNKER
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <a
+                        href={`https://solscan.io/account/${pool.address}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-400 hover:text-blue-300"
+                      >
+                        View on Solscan <ExternalLink className="inline size-4" />
+                      </a>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </div>
 
       {/* Mobile Stacked Layout */}
@@ -144,6 +196,33 @@ export function AllocationTable() {
             </div>
           </div>
         ))}
+
+        {liquidityPools.length > 0 && (
+          <>
+            <h3 className="text-lg font-semibold text-white mt-8 mb-4">Locked Liquidity Pools</h3>
+            {liquidityPools.map((pool) => (
+              <div key={pool.address} className="bg-neutral-800/30 rounded-lg p-4 border border-neutral-700">
+                <div className="flex justify-between items-start mb-2">
+                  <Badge className={`${tagClass(pool.platform)} text-xs`}>
+                    {pool.platform}
+                  </Badge>
+                  <span className="text-sm text-neutral-300 font-medium">
+                    {(pool?.amount ?? 0).toLocaleString()} BUNKER
+                  </span>
+                </div>
+                <a
+                  href={`https://solscan.io/account/${pool.address}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-blue-400 hover:text-blue-300 transition-colors text-xs"
+                >
+                  View on Solscan
+                  <ExternalLink className="size-3" />
+                </a>
+              </div>
+            ))}
+          </>
+        )}
       </div>
     </div>
   )

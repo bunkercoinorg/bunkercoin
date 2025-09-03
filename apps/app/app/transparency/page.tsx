@@ -6,7 +6,7 @@ import { CirculatingChart } from "@/components/dashboard/circulating-chart"
 import { AllocationTable } from "@/components/dashboard/allocation-table"
 import { PriceChart } from "@/components/dashboard/price-chart"
 import { HoldingsTable } from "@/components/dashboard/holdings-table"
-import { getLockData, LockSummary, getLiquidityPoolData, getBurnedTokenData } from "@/lib/solana"
+import { getLockData, LockSummary, getLiquidityPoolData, getBurnedTokenData, LiquidityPool } from "@/lib/solana"
 import { useEffect, useState } from "react"
 
 export default function DashboardPage() {
@@ -14,29 +14,46 @@ export default function DashboardPage() {
   const [liquidityData, setLiquidityData] = useState<number>(0)
   const [burnedData, setBurnedData] = useState<number>(0)
   const [loading, setLoading] = useState(true)
+  const [liquidityPools, setLiquidityPools] = useState<LiquidityPool[]>([])
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [lockDataResult, liquidityDataResult, burnedDataResult] = await Promise.all([
+     const fetchData = async () => {
+       try {
+        const [lockDataResult, liquidityInfoResult, burnedDataResult] = await Promise.all([
           getLockData(),
           getLiquidityPoolData(),
           getBurnedTokenData()
         ])
+
+        const liquidityDataResult = liquidityInfoResult.total;
+
+        setLiquidityPools(liquidityInfoResult.pools);
+
+        const validLocks = lockDataResult && lockDataResult.totalLocked > 0;
+        const validLiquidity = liquidityDataResult > 0;
+        const validBurned = burnedDataResult > 0;
+
         setLockData(lockDataResult)
         setLiquidityData(liquidityDataResult)
         setBurnedData(burnedDataResult)
-      } catch (error) {
-        console.error("Error fetching data:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
+
+        // If any piece still invalid schedule quick retry
+        if (!(validLocks && validLiquidity && validBurned)) {
+          setTimeout(fetchData, 10_000)
+        }
+       } catch (error) {
+         console.error("Error fetching data:", error)
+        // Retry quickly on error
+        setTimeout(fetchData, 10_000)
+       } finally {
+         setLoading(false)
+       }
+     }
 
     fetchData()
-    // Refresh data every 5 minutes
+    // Regular refresh every 5 minutes
     const interval = setInterval(fetchData, 5 * 60 * 1000)
-    
+
     return () => clearInterval(interval)
   }, [])
 
@@ -131,7 +148,7 @@ export default function DashboardPage() {
                 <TokenomicsChart />
               </div>
               <div className="flex-1 bg-neutral-900/50 rounded-xl p-6 border border-neutral-800">
-                <AllocationTable />
+                <AllocationTable liquidityPools={liquidityPools} />
               </div>
             </div>
           </div>

@@ -3,9 +3,43 @@ import { TOKEN_PROGRAM_ID } from "@solana/spl-token"
 import { Buffer } from "buffer"
 import { SolanaFMParser, ParserType, checkIfAccountParser } from "@solanafm/explorer-kit"
 import { getProgramIdl } from "@solanafm/explorer-kit-idls"
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 
-// Initialize Solana connection with PublicNode endpoint
-const connection = new Connection("https://solana-rpc.publicnode.com", "confirmed")
+let connection: Connection | undefined;
+
+function getConnection(): Connection {
+  if (connection) return connection;
+
+  // Browser: use public RPC (client won’t hit these heavy endpoints)
+  if (typeof window !== "undefined") {
+    connection = new Connection("https://solana-rpc.publicnode.com", "confirmed");
+    return connection;
+  }
+
+  // Worker: prefer RPC_URL secret if provided
+  let rpc = "https://solana-rpc.publicnode.com";
+  try {
+    const { env } = getCloudflareContext();
+    if (env && (env as any).RPC_URL) {
+      rpc = (env as any).RPC_URL as string;
+    }
+    rpcUrlResolved = rpc;
+  } catch {
+    // not in worker context during static build
+  }
+  connection = new Connection(rpc, "confirmed");
+  return connection;
+}
+
+let rpcUrlResolved = "https://solana-rpc.publicnode.com";
+
+function getRpcUrl(): string {
+  // Ensure connection initialized so env is considered
+  if (!connection) {
+    getConnection();
+  }
+  return rpcUrlResolved;
+}
 
 // BUNKER token mint address
 const BUNKER_MINT = new PublicKey("8NCievmJCg2d9Vc2TWgz2HkE6ANeSX7kwvdq5AL7pump")
@@ -53,7 +87,7 @@ export interface PriceData {
 
 export async function getTokenBalance(walletAddress: string): Promise<number> {
   try {
-    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+    const tokenAccounts = await getConnection().getParsedTokenAccountsByOwner(
       new PublicKey(walletAddress),
       { mint: BUNKER_MINT }
     )
@@ -74,7 +108,7 @@ export async function getTokenBalance(walletAddress: string): Promise<number> {
 export async function getTopHolders(limit: number = 10): Promise<TokenBalance[]> {
   try {
     // Get all token accounts for BUNKER
-    const tokenAccounts = await connection.getProgramAccounts(TOKEN_PROGRAM_ID, {
+    const tokenAccounts = await getConnection().getProgramAccounts(TOKEN_PROGRAM_ID, {
       filters: [
         {
           dataSize: 165, // size of account (bytes)
@@ -123,7 +157,7 @@ export async function getTopHolders(limit: number = 10): Promise<TokenBalance[]>
 
 export async function getTotalSupply(): Promise<number> {
   try {
-    const tokenAccounts = await connection.getProgramAccounts(TOKEN_PROGRAM_ID, {
+    const tokenAccounts = await getConnection().getProgramAccounts(TOKEN_PROGRAM_ID, {
       filters: [
         {
           dataSize: 165,
@@ -152,6 +186,13 @@ export async function getTotalSupply(): Promise<number> {
 }
 
 export async function getLockData(): Promise<LockSummary> {
+  // Client browser: hit cached API route
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/locks");
+      if (res.ok) return await res.json();
+    } catch {}
+  }
   try {
     // Get SolanaFM IDL for Jupiter Locker
     const SFMIdlItem = await getProgramIdl(LOCK_PROGRAM_ID.toBase58())
@@ -168,7 +209,7 @@ export async function getLockData(): Promise<LockSummary> {
     }
 
     // Step 1: Get all VestingEscrow accounts (lock data)
-    const response = await fetch('https://solana-rpc.publicnode.com', {
+    const response = await fetch(getRpcUrl(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -221,7 +262,7 @@ export async function getLockData(): Promise<LockSummary> {
     
     // Step 2: Get detailed metadata for each lock account
     const pubkeys = lockAccountData.map((account: any) => account.pubkey)
-    const metadataResponse = await fetch('https://solana-rpc.publicnode.com', {
+    const metadataResponse = await fetch(getRpcUrl(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -391,11 +432,17 @@ export async function getLockData(): Promise<LockSummary> {
 }
 
 export async function getBurnedTokenData(): Promise<number> {
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/burned");
+      if (res.ok) return await res.json();
+    } catch {}
+  }
   try {
     const ORIGINAL_TOTAL_SUPPLY = 1_000_000_000 // 1 billion BUNKER
     
     // Get current mint info
-    const mintInfo = await connection.getParsedAccountInfo(BUNKER_MINT)
+    const mintInfo = await getConnection().getParsedAccountInfo(BUNKER_MINT)
     
     if (mintInfo.value?.data && typeof mintInfo.value.data === 'object' && 'parsed' in mintInfo.value.data) {
       const parsed = mintInfo.value.data.parsed
@@ -416,6 +463,12 @@ export async function getBurnedTokenData(): Promise<number> {
 }
 
 export async function getPriceData(): Promise<PriceData | null> {
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/price");
+      if (res.ok) return await res.json();
+    } catch {}
+  }
   try {
     // Using CoinGecko API with BunkerCoin ID
     const response = await fetch(
@@ -452,11 +505,36 @@ export async function getPriceData(): Promise<PriceData | null> {
 }
 
 export async function getPriceHistory(): Promise<{ time: string; price: number }[]> {
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/history");
+      if (res.ok) return await res.json();
+    } catch {}
+  }
   try {
     // Get 30 days of price data from CoinGecko
-    const response = await fetch(
+    const endpoint =
       'https://api.coingecko.com/api/v3/coins/bunkercoin/market_chart?vs_currency=usd&days=30&interval=daily'
-    )
+
+    let response = await fetch(endpoint, {
+      headers: {
+        'User-Agent': 'cf-worker',
+        Accept: 'application/json',
+      },
+    })
+
+    // If blocked (rate-limited) retry once w/out interval param
+    if (response.status === 429 || response.status === 403) {
+      response = await fetch(
+        'https://api.coingecko.com/api/v3/coins/bunkercoin/market_chart?vs_currency=usd&days=30',
+        {
+          headers: {
+            'User-Agent': 'cf-worker',
+            Accept: 'application/json',
+          },
+        }
+      )
+    }
     
     if (!response.ok) {
       console.error("Failed to fetch price history")
@@ -485,22 +563,40 @@ export async function getPriceHistory(): Promise<{ time: string; price: number }
   }
 }
 
-export async function getLiquidityPoolData(): Promise<number> {
+export interface LiquidityPool {
+  platform: "Raydium" | "Meteora" | string;
+  address: string;
+  amount: number; // in BUNKER units
+}
+
+export interface LiquidityInfo {
+  total: number;
+  pools: LiquidityPool[];
+}
+
+export async function getLiquidityPoolData(): Promise<LiquidityInfo> {
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/liquidity");
+      if (res.ok) return await res.json();
+    } catch {}
+  }
   try {
     // These are token account addresses that hold BUNKER in liquidity pools
     // Raydium pool token account: Gpb5ADcBXuu2komURWXrAf9UZjM1UfBuYSTfVSiDe4M6
     // Meteora DLMM V1 pool token account: DjY4XrZZWMLxo13MZ6fU6qcoHX5ZuiJXTgBnE6of1T7B
-    const tokenAccountAddresses = [
-      "Gpb5ADcBXuu2komURWXrAf9UZjM1UfBuYSTfVSiDe4M6",
-      "DjY4XrZZWMLxo13MZ6fU6qcoHX5ZuiJXTgBnE6of1T7B"
+    const tokenAccountAddresses: { address: string; platform: "Raydium" | "Meteora" }[] = [
+      { address: "Gpb5ADcBXuu2komURWXrAf9UZjM1UfBuYSTfVSiDe4M6", platform: "Raydium" },
+      { address: "DjY4XrZZWMLxo13MZ6fU6qcoHX5ZuiJXTgBnE6of1T7B", platform: "Meteora" }
     ]
 
+    const pools: LiquidityPool[] = []
     let totalBunkerInLiquidity = 0
 
-    for (const accountAddress of tokenAccountAddresses) {
+    for (const { address: accountAddress, platform } of tokenAccountAddresses) {
       try {
         // Get parsed account info for the token account
-        const accountInfo = await connection.getParsedAccountInfo(new PublicKey(accountAddress))
+        const accountInfo = await getConnection().getParsedAccountInfo(new PublicKey(accountAddress))
         
         if (accountInfo.value?.data && typeof accountInfo.value.data === 'object' && 'parsed' in accountInfo.value.data) {
           const parsed = accountInfo.value.data.parsed
@@ -509,6 +605,12 @@ export async function getLiquidityPoolData(): Promise<number> {
             // This is a BUNKER token account, get the balance
             const balance = Number(parsed.info.tokenAmount.amount)
             totalBunkerInLiquidity += balance
+
+            pools.push({
+              platform,
+              address: accountAddress,
+              amount: balance / Math.pow(10, DECIMALS)
+            })
           }
         }
       } catch (error) {
@@ -517,9 +619,12 @@ export async function getLiquidityPoolData(): Promise<number> {
     }
 
     // Convert from raw amount to BUNKER (6 decimals)
-    return totalBunkerInLiquidity / Math.pow(10, DECIMALS)
+    return {
+      total: totalBunkerInLiquidity / Math.pow(10, DECIMALS),
+      pools
+    }
   } catch (error) {
     console.error("Error fetching liquidity pool data:", error)
-    return 0
+    return { total: 0, pools: [] }
   }
 } 

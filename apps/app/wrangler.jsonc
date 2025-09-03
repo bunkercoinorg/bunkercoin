@@ -29,4 +29,11 @@
       //   "bucket_name": "<BUCKET_NAME>",
       // },
     ],
+    "kv_namespaces": [
+        {
+          "binding": "BUNKERCOIN_APP_CACHE",
+          "id": "a057119d145f40ac81bad993af5c3484",
+          "preview_id": "a057119d145f40ac81bad993af5c3484"
+        }
+      ]
   }

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { getTopHolders, TokenBalance } from "@/lib/solana"
+import type { TokenBalance } from "@/lib/solana"
 import { ExternalLink } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -25,13 +25,25 @@ export function HoldingsTable() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const fetchHolders = async () => {
-      const data = await getTopHolders(10)
-      setHolders(data)
-      setLoading(false)
-    }
-
-    fetchHolders()
+     const fetchHolders = async () => {
+       try {
+         const res = await fetch('/api/holders?limit=10');
+         if (res.status === 503) throw new Error('Data not ready');
+         const data: TokenBalance[] = res.ok ? await res.json() : [];
+         if (data.length > 0) {
+           setHolders(data);
+           setLoading(false);
+         } else {
+           throw new Error('Empty');
+         }
+       } catch (e) {
+         console.error('Error fetching holders', e);
+         // retry in 10s
+         setTimeout(fetchHolders, 10_000);
+       }
+     };
+ 
+     fetchHolders();
   }, [])
 
   const formatAddress = (address: string) => {
