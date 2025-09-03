@@ -27,5 +27,5 @@ async function fetchPrice(): Promise<PriceData | null> {
 
 export async function GET() {
   // 10 minutes TTL
-  return withKvCache<PriceData | null>("price-data", 10 * 60 * 1000, fetchPrice);
+  return withKvCache<PriceData | null>("price-data", 60 * 60 * 1000, fetchPrice);
 } 
