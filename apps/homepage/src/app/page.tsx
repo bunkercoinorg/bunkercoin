@@ -478,8 +478,8 @@ export default function Home() {
                 </div>
             </section>}
 
-            {/* Roadmap Section */}
-            <section id="roadmap" className="min-h-screen flex items-center py-20">
+            {/* Roadmap Section - hidden */}
+            {false && <section id="roadmap" className="min-h-screen flex items-center py-20">
                 <div className="w-full fade-in">
                     <div className="text-center mb-16">
                         <h2 className="text-4xl md:text-5xl font-bold mb-4">Roadmap to Testnet</h2>
@@ -614,7 +614,7 @@ export default function Home() {
                         </div>
                     </div>
                 </div>
-            </section>
+            </section>}
 
             {/* Join the Network Section */}
             <section id="join" className="min-h-screen flex items-center py-20">
