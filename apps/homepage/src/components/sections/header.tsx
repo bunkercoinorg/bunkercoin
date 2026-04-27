@@ -7,10 +7,10 @@ const Header: React.FC = () => {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
     const navItems = [
-        { label: "Explorer", href: "https://explorer.bunkercoin.io" },
+        // { label: "Explorer", href: "https://explorer.bunkercoin.io" },
         // { label: "Our Bunker", href: "/our-bunker" },
-        { label: "Blog", href: "https://blog.bunkercoin.io" },
-        { label: "App", href: "https://app.bunkercoin.io" },
+        // { label: "Blog", href: "https://blog.bunkercoin.io" },
+        // { label: "App", href: "https://app.bunkercoin.io" },
     ];
 
     return (
