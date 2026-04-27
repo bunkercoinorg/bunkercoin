@@ -8,7 +8,7 @@ const Header: React.FC = () => {
 
     const navItems = [
         { label: "Explorer", href: "https://explorer.bunkercoin.io" },
-        { label: "Our Bunker", href: "/our-bunker" },
+        // { label: "Our Bunker", href: "/our-bunker" },
         { label: "Blog", href: "https://blog.bunkercoin.io" },
         { label: "App", href: "https://app.bunkercoin.io" },
     ];

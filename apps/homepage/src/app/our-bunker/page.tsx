@@ -1,13 +1,21 @@
 "use client"
 
+import { notFound } from "next/navigation";
+
+export default function OurBunkerDisabled() {
+    notFound();
+}
+
+// page disabled - original code kept below for future re-enable
+
 import Footer from "@/components/sections/footer";
 import LayeredIcon from "@/components/ui-wrapper/layered-icon";
 import {
     BadgeInfoIcon,
     ChartNoAxesGanttIcon,
-    ExternalLinkIcon, 
-    FileTextIcon, 
-    ImagesIcon, 
+    ExternalLinkIcon,
+    FileTextIcon,
+    ImagesIcon,
     MessageCircleQuestionIcon,
     ShieldCheckIcon,
     SparklesIcon,
@@ -23,7 +31,7 @@ import Header from "@/components/sections/header";
 import {useEffect} from "react";
 import {initX, trackXConversionOnce} from "@/components/util/x";
 
-export default function Malachite() {
+function Malachite() {
     useEffect(() => {
         if (typeof window !== 'undefined') {
             initX();
@@ -241,4 +249,4 @@ export default function Malachite() {
           </div>
       </>
   );
-} 
+}

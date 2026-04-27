@@ -398,8 +398,8 @@ export default function Home() {
                 </div>
             </section>
 
-            {/* Physical Safe Haven Network Section */}
-            <section id="safe-havens" className="min-h-screen flex items-center py-20">
+            {/* Physical Safe Haven Network Section - hidden */}
+            {false && <section id="safe-havens" className="min-h-screen flex items-center py-20">
                 <div className="w-full fade-in">
                     <div className="text-center mb-16">
                         <h2 className="text-4xl md:text-5xl font-bold mb-4">Physical Safe Haven Network</h2>
@@ -476,7 +476,7 @@ export default function Home() {
                         </div>
                     </div>
                 </div>
-            </section>
+            </section>}
 
             {/* Roadmap Section */}
             <section id="roadmap" className="min-h-screen flex items-center py-20">
