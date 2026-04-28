@@ -11,6 +11,9 @@ const inter = Inter({
 export const metadata: Metadata = {
     title: "BunkerCoin",
     description: "The first blockchain on radiowaves, working without internet.",
+    other: {
+        "google": "notranslate",
+    },
 };
 
 export default function RootLayout({
@@ -20,8 +23,8 @@ export default function RootLayout({
 }>) {
 
     return (
-        <html lang="en">
-        <body className={`${inter.variable} antialiased bg-neutral-950 text-white `}>
+        <html lang="en" translate="no">
+        <body className={`${inter.variable} antialiased bg-neutral-950 text-white notranslate`}>
         {children}
         </body>
         </html>
