@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import GeoBlock from "@/components/sections/geo-block";
 
 const inter = Inter({
     subsets: ["latin"],
@@ -26,6 +27,7 @@ export default function RootLayout({
         <html lang="en" translate="no">
         <body className={`${inter.variable} antialiased bg-neutral-950 text-white notranslate`}>
         {children}
+        <GeoBlock />
         </body>
         </html>
     );
