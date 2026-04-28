@@ -36,6 +36,7 @@ const Header: React.FC = () => {
                     ))}
                 </nav>
 
+                {/* mobile menu button - hidden
                 <div className="md:hidden">
                     <button
                         onClick={() => setMobileMenuOpen((prev) => !prev)}
@@ -45,6 +46,7 @@ const Header: React.FC = () => {
                         {mobileMenuOpen ? <XIcon /> : <Menu size={24} />}
                     </button>
                 </div>
+                */}
             </div>
 
             {mobileMenuOpen && (

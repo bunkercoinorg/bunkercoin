@@ -8,7 +8,7 @@ const Footer: React.FC = () => {
             <span className={"font-bold"}>Disclaimer:</span><br/>
             BunkerCoin is a meme token created for entertainment and community engagement. It is not an investment opportunity, security, or real estate asset. Purchasing BunkerCoin involves high risk, including the potential total loss of your investment.
 
-Ownership of BunkerCoin does not grant rights to any property. Bunker spaces will later be available for purchase via Bunker NFTs. At least 15% of the token supply (see tokenomics), and potentially additional profits, will be reinvested into the bunker project, protocol development, and other secure locations.
+Ownership of BunkerCoin does not grant rights to any property. BunkerCoin is the supporting community token of the Bunker ecosystem, rallying believers around the mission of building resilience.
 
 By purchasing BunkerCoin, you accept all associated risks and acknowledge its speculative nature.
         </span>
