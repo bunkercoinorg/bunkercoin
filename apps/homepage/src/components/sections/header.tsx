@@ -6,7 +6,7 @@ import { Menu, XIcon } from "lucide-react";
 const Header: React.FC = () => {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-    const navItems = [
+    const navItems: { label: string; href: string }[] = [
         // { label: "Explorer", href: "https://explorer.bunkercoin.io" },
         // { label: "Our Bunker", href: "/our-bunker" },
         // { label: "Blog", href: "https://blog.bunkercoin.io" },
