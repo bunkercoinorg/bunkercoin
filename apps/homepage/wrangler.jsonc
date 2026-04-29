@@ -12,6 +12,10 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "routes": [
+    { "pattern": "bunkercoin.com", "custom_domain": true },
+    { "pattern": "www.bunkercoin.com", "custom_domain": true }
+  ],
   "observability": {
     "enabled": true
   }
