@@ -31,7 +31,7 @@ export default function Blocked() {
         <div className="min-h-screen bg-neutral-950 flex items-center justify-center px-6">
             <div className="text-center">
                 <EUStars />
-                <h1 className="text-2xl md:text-3xl font-semibold mb-4 whitespace-nowrap">
+                <h1 className="text-lg sm:text-2xl md:text-3xl font-semibold mb-4 whitespace-nowrap">
                     Not available in the European Union
                 </h1>
                 <p className="text-neutral-400 text-sm md:text-base leading-relaxed max-w-lg mx-auto">
