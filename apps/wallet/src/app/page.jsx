@@ -46,6 +46,8 @@ export default function Wallet() {
   return (
     <main className="shell">
       <div className="brand">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/bunker-favicon.png" alt="" width={26} height={26} />
         <h1>
           Bunker<span>Coin</span> Wallet
         </h1>

@@ -1,16 +1,16 @@
 :root {
-  --bg: #0b0d10;
-  --panel: #14181d;
-  --panel-2: #1b2129;
-  --border: #262d36;
-  --text: #e8edf2;
-  --muted: #8b96a3;
-  --accent: #e11d48;
-  --accent-soft: rgba(225, 29, 72, 0.12);
-  --green: #34d399;
+  --bg: #0a0a0a;
+  --panel: #111412;
+  --panel-2: #181c1a;
+  --border: #232825;
+  --text: #ededed;
+  --muted: #a3a3a3;
+  --accent: #00ffb2;
+  --accent-soft: rgba(0, 255, 178, 0.1);
+  --green: #00ffb2;
   --amber: #fbbf24;
   --red: #f87171;
-  --radius: 12px;
+  --radius: 10px;
 }
 
 * {
@@ -35,9 +35,15 @@ body {
 
 .brand {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
   margin-bottom: 28px;
+}
+.brand img {
+  border-radius: 6px;
+}
+.brand .tag {
+  align-self: center;
 }
 .brand h1 {
   font-size: 22px;
@@ -75,7 +81,7 @@ body {
 button {
   font: inherit;
   border: none;
-  border-radius: 10px;
+  border-radius: 6px;
   padding: 12px 18px;
   cursor: pointer;
   font-weight: 600;
@@ -90,7 +96,7 @@ button:not(:disabled):hover {
 }
 .btn-primary {
   background: var(--accent);
-  color: #fff;
+  color: #000;
   width: 100%;
 }
 .btn-ghost {
@@ -161,13 +167,13 @@ label {
 }
 
 .warn {
-  background: var(--accent-soft);
-  border: 1px solid rgba(225, 29, 72, 0.3);
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.3);
   border-radius: 10px;
   padding: 12px 14px;
   font-size: 13px;
   line-height: 1.5;
-  color: #fda4af;
+  color: #fca5a5;
   margin: 12px 0;
 }
 
