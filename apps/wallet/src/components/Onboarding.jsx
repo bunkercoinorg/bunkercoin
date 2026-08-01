@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { createMnemonic, isValidMnemonic, normalizeMnemonic, keypairFromMnemonic } from '@/lib/keys';
 import { encryptMnemonic, saveKeystore } from '@/lib/keystore';
+import { copyText } from '@/lib/clipboard';
 
 const MIN_PASSWORD = 8;
 
@@ -87,7 +88,7 @@ function Reveal({ mnemonic, onNext }) {
         <button
           className="btn-ghost"
           onClick={async () => {
-            await navigator.clipboard.writeText(mnemonic);
+            await copyText(mnemonic);
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
           }}

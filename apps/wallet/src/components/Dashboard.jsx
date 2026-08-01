@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BunkerConnection } from '@/lib/connection';
 import { signTransfer, isValidAddress } from '@/lib/keys';
-import { clearKeystore } from '@/lib/keystore';
+import { clearKeystore, decryptMnemonic, loadKeystore } from '@/lib/keystore';
 import { formatUnits, parseBunker, shortAddress, elapsedLabel } from '@/lib/format';
 import { loadPending, addPending, removePending } from '@/lib/pending';
+import { copyText } from '@/lib/clipboard';
 
 const BALANCE_POLL_MS = 20_000;
 const FAUCET_UNITS = 1_000_000; // 1 BUNKER per tap
@@ -139,6 +140,8 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }) {
         </div>
       )}
 
+      <RecoveryPhrase />
+
       <div className="card">
         <h2>Danger zone</h2>
         <p className="sub">
@@ -167,6 +170,120 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }) {
         )}
       </div>
     </>
+  );
+}
+
+function RecoveryPhrase() {
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState('');
+  const [phrase, setPhrase] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  // The phrase must never sit on screen unattended.
+  useEffect(() => {
+    if (!phrase) return;
+    const timer = setTimeout(() => hide(), 60_000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phrase]);
+
+  const hide = () => {
+    setPhrase('');
+    setPassword('');
+    setOpen(false);
+    setError('');
+  };
+
+  const reveal = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      setPhrase(await decryptMnemonic(loadKeystore(), password));
+      setPassword('');
+    } catch (e) {
+      setError(e.message === 'Incorrect password' ? 'Incorrect password.' : e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card">
+      <h2>Recovery phrase</h2>
+      {!open && !phrase && (
+        <>
+          <p className="sub">View or copy the 24 words this wallet was created with.</p>
+          <button className="btn-ghost btn-small" onClick={() => setOpen(true)}>
+            Show recovery phrase…
+          </button>
+        </>
+      )}
+      {open && !phrase && (
+        <>
+          <p className="sub">Enter your password to decrypt the phrase.</p>
+          <input
+            type="password"
+            value={password}
+            autoFocus
+            disabled={busy}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              setError('');
+            }}
+            onKeyDown={(e) => e.key === 'Enter' && password && !busy && reveal()}
+          />
+          {error && <p className="error">{error}</p>}
+          {busy && (
+            <div className="progress">
+              <span className="spinner" />
+              Decrypting — intentionally takes a few seconds…
+            </div>
+          )}
+          <hr className="divider" />
+          <div className="row">
+            <button className="btn-ghost" disabled={busy} onClick={hide}>
+              Cancel
+            </button>
+            <button className="btn-primary" disabled={busy || !password} onClick={reveal}>
+              Reveal
+            </button>
+          </div>
+        </>
+      )}
+      {phrase && (
+        <>
+          <div className="warn">
+            Anyone with these words controls your funds. Hide them as soon as you are done — they
+            disappear automatically after a minute.
+          </div>
+          <div className="words">
+            {phrase.split(' ').map((w, i) => (
+              <span className="word" key={i}>
+                <i>{i + 1}</i>
+                {w}
+              </span>
+            ))}
+          </div>
+          <div className="row">
+            <button
+              className="btn-ghost"
+              onClick={async () => {
+                await copyText(phrase);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }}
+            >
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+            <button className="btn-primary" onClick={hide}>
+              Hide
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
