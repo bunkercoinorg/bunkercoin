@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3007",
-    "build": "next build",
+    "build": "NEXT_BUILD_DIR=.next-build next build",
     "test": "node --test 'test/*.test.js'"
   },
   "dependencies": {
