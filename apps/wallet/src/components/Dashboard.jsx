@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BunkerConnection } from '@/lib/connection';
-import { signTransfer, isValidAddress } from '@/lib/keys';
+import { signTransfer, isValidAddress, addressToHex, hexToBase58 } from '@/lib/keys';
 import { clearKeystore, decryptMnemonic, loadKeystore } from '@/lib/keystore';
 import { formatUnits, parseBunker, shortAddress, elapsedLabel } from '@/lib/format';
 import { loadPending, addPending, removePending } from '@/lib/pending';
@@ -16,14 +16,18 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }) {
   const [balance, setBalance] = useState(null);
   const [tokens, setTokens] = useState([]);
   const [pending, setPending] = useState([]);
+  const [history, setHistory] = useState([]);
   const [copied, setCopied] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [, tick] = useState(0);
 
   const refresh = useCallback(async () => {
+    const meHex = addressToHex(keypair.address);
     try {
       setBalance(await conn.getBalance(keypair.address));
       setTokens(await conn.getTokenBalances(keypair.address));
+      const txs = await conn.getTransactions(200, 0);
+      setHistory(txs.filter((t) => t.sender === meHex || t.body?.to === meHex).slice(0, 10));
     } catch {
       // Keep the last known values through RPC blips.
     }
@@ -110,7 +114,7 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }) {
       <Faucet conn={conn} address={keypair.address} onSubmitted={submitted} />
       <Send conn={conn} keypair={keypair} balance={balance} onSubmitted={submitted} />
 
-      {pending.length > 0 && (
+      {(pending.length > 0 || history.length > 0) && (
         <div className="card">
           <h2>Activity</h2>
           <p className="sub">
@@ -137,6 +141,24 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }) {
               )}
             </div>
           ))}
+          {history.map((t) => {
+            const outgoing = t.sender === addressToHex(keypair.address);
+            const counterparty = hexToBase58(outgoing ? t.body?.to ?? t.sender : t.sender);
+            const failed = t.status?.success === false;
+            return (
+              <div className="pending-row" key={t.hash}>
+                <span>
+                  {outgoing ? '↑ Sent' : '↓ Received'} {formatUnits(t.body?.amount ?? 0)}
+                  <span className="hint" style={{ marginLeft: 8 }}>
+                    {outgoing ? 'to' : 'from'} {shortAddress(counterparty)} · slot {t.slot}
+                  </span>
+                </span>
+                <span className={failed ? 'status failed' : 'status finalized'} title={t.status?.error || ''}>
+                  {failed ? 'failed' : '✓ finalized'}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
 

@@ -70,6 +70,12 @@ export class BunkerConnection {
     return this.rpc('requestAirdrop', [address, amount]);
   }
 
+  /** Global newest-first list — the node has no per-account filter yet. */
+  async getTransactions(limit = 200, offset = 0) {
+    const result = await this.rpc('getTransactions', [limit, offset]);
+    return result?.transactions ?? [];
+  }
+
   async getSignatureStatus(txId) {
     const { value } = await this.rpc('getSignatureStatuses', [[txId]]);
     return value?.[0] ?? null;

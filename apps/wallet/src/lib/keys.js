@@ -42,6 +42,15 @@ export function decodeAddress(address) {
   return bytes;
 }
 
+/** Node tx listings use hex; the wallet displays base58. */
+export function addressToHex(address) {
+  return Array.from(decodeAddress(address), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+export function hexToBase58(hex) {
+  return bs58.encode(Uint8Array.from(hex.match(/../g).map((b) => parseInt(b, 16))));
+}
+
 export function isValidAddress(address) {
   try {
     decodeAddress(address);
