@@ -2,9 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { decryptMnemonic, loadKeystore, clearKeystore } from '@/lib/keystore';
-import { keypairFromMnemonic } from '@/lib/keys';
+import { keypairFromMnemonic, type Keypair } from '@/lib/keys';
 
-export default function Unlock({ onUnlocked, onReset }) {
+interface UnlockProps {
+  onUnlocked: (keypair: Keypair) => void;
+  onReset: () => void;
+}
+
+export default function Unlock({ onUnlocked, onReset }: UnlockProps) {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -26,7 +31,8 @@ export default function Unlock({ onUnlocked, onReset }) {
       const mnemonic = await decryptMnemonic(loadKeystore(), password);
       onUnlocked(keypairFromMnemonic(mnemonic));
     } catch (e) {
-      setError(e.message === 'Incorrect password' ? 'Incorrect password.' : e.message);
+      const msg = (e as Error).message;
+      setError(msg === 'Incorrect password' ? 'Incorrect password.' : msg);
       setBusy(false);
       setElapsed(0);
     }

@@ -5,13 +5,16 @@ import Onboarding from '@/components/Onboarding';
 import Unlock from '@/components/Unlock';
 import Dashboard from '@/components/Dashboard';
 import { hasKeystore } from '@/lib/keystore';
+import type { Keypair } from '@/lib/keys';
 
 const AUTO_LOCK_MS = 15 * 60_000;
 
+type Phase = 'loading' | 'onboarding' | 'locked' | 'unlocked';
+
 export default function Wallet() {
   // 'loading' avoids hydration mismatch: localStorage exists only client-side.
-  const [phase, setPhase] = useState('loading');
-  const keypairRef = useRef(null);
+  const [phase, setPhase] = useState<Phase>('loading');
+  const keypairRef = useRef<Keypair | null>(null);
 
   useEffect(() => {
     setPhase(hasKeystore() ? 'locked' : 'onboarding');
@@ -30,7 +33,7 @@ export default function Wallet() {
       clearTimeout(timer);
       timer = setTimeout(lock, AUTO_LOCK_MS);
     };
-    const events = ['pointerdown', 'keydown'];
+    const events = ['pointerdown', 'keydown'] as const;
     events.forEach((e) => window.addEventListener(e, reset));
     return () => {
       clearTimeout(timer);
@@ -38,7 +41,7 @@ export default function Wallet() {
     };
   }, [phase]);
 
-  const unlocked = (keypair) => {
+  const unlocked = (keypair: Keypair) => {
     keypairRef.current = keypair;
     setPhase('unlocked');
   };
@@ -62,8 +65,12 @@ export default function Wallet() {
           )}
         </div>
       )}
-      {phase === 'unlocked' && (
-        <Dashboard keypair={keypairRef.current} onLock={lock} onWalletRemoved={() => setPhase('onboarding')} />
+      {phase === 'unlocked' && keypairRef.current && (
+        <Dashboard
+          keypair={keypairRef.current}
+          onLock={lock}
+          onWalletRemoved={() => setPhase('onboarding')}
+        />
       )}
     </main>
   );

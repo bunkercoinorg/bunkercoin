@@ -1,14 +1,26 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { createMnemonic, isValidMnemonic, normalizeMnemonic, keypairFromMnemonic } from '@/lib/keys';
+import {
+  createMnemonic,
+  isValidMnemonic,
+  normalizeMnemonic,
+  keypairFromMnemonic,
+  type Keypair,
+} from '@/lib/keys';
 import { encryptMnemonic, saveKeystore } from '@/lib/keystore';
 import { copyText } from '@/lib/clipboard';
 
 const MIN_PASSWORD = 8;
 
-export default function Onboarding({ onUnlocked }) {
-  const [step, setStep] = useState('choice');
+type Step = 'choice' | 'reveal' | 'confirm' | 'recover' | 'password';
+
+interface OnboardingProps {
+  onUnlocked: (keypair: Keypair) => void;
+}
+
+export default function Onboarding({ onUnlocked }: OnboardingProps) {
+  const [step, setStep] = useState<Step>('choice');
   const [mnemonic, setMnemonic] = useState('');
 
   if (step === 'choice') {
@@ -62,7 +74,7 @@ export default function Onboarding({ onUnlocked }) {
   return <SetPassword mnemonic={mnemonic} onUnlocked={onUnlocked} />;
 }
 
-function Reveal({ mnemonic, onNext }) {
+function Reveal({ mnemonic, onNext }: { mnemonic: string; onNext: () => void }) {
   const [copied, setCopied] = useState(false);
   const words = mnemonic.split(' ');
   return (
@@ -103,11 +115,19 @@ function Reveal({ mnemonic, onNext }) {
   );
 }
 
-function ConfirmWords({ mnemonic, onBack, onNext }) {
+function ConfirmWords({
+  mnemonic,
+  onBack,
+  onNext,
+}: {
+  mnemonic: string;
+  onBack: () => void;
+  onNext: () => void;
+}) {
   const words = mnemonic.split(' ');
   // Three positions to prove they actually saved the phrase.
   const positions = useMemo(() => {
-    const set = new Set();
+    const set = new Set<number>();
     while (set.size < 3) set.add(Math.floor(Math.random() * 24));
     return [...set].sort((a, b) => a - b);
   }, []);
@@ -157,7 +177,7 @@ function ConfirmWords({ mnemonic, onBack, onNext }) {
   );
 }
 
-function Recover({ onBack, onValid }) {
+function Recover({ onBack, onValid }: { onBack: () => void; onValid: (phrase: string) => void }) {
   const [phrase, setPhrase] = useState('');
   const [error, setError] = useState('');
   const submit = () => {
@@ -201,7 +221,7 @@ function Recover({ onBack, onValid }) {
   );
 }
 
-function SetPassword({ mnemonic, onUnlocked }) {
+function SetPassword({ mnemonic, onUnlocked }: { mnemonic: string; onUnlocked: (kp: Keypair) => void }) {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
@@ -232,7 +252,7 @@ function SetPassword({ mnemonic, onUnlocked }) {
       saveKeystore(record);
       onUnlocked(keypairFromMnemonic(mnemonic));
     } catch (e) {
-      setError(e.message || 'Encryption failed');
+      setError((e as Error).message || 'Encryption failed');
       setBusy(false);
     }
   };

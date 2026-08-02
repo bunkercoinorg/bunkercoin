@@ -12,7 +12,7 @@ import {
   transferSigningHash,
   tokenTransferSigningHash,
   signTransfer,
-} from '../src/lib/keys.js';
+} from '../src/lib/keys.ts';
 
 test('generated mnemonic has 24 words and round-trips to a stable address', () => {
   const phrase = createMnemonic();
@@ -80,7 +80,7 @@ test('signing hash changes with every field', () => {
     fee: 100,
     amount: 5000,
   };
-  const h = (o) => Buffer.from(transferSigningHash({ ...base, ...o })).toString('hex');
+  const h = (o: Partial<typeof base>) => Buffer.from(transferSigningHash({ ...base, ...o })).toString('hex');
   const original = h({});
   assert.notEqual(h({ nonce: 2 }), original, 'nonce must affect the hash (replay protection)');
   assert.notEqual(h({ fee: 101 }), original);
@@ -124,6 +124,7 @@ test('signed transfer verifies under the sender public key', () => {
   const tx = signTransfer({ privateKey, publicKey, to, amount: 12345, nonce: 0, fee: 100 });
 
   assert.equal(tx.sender, address);
+  assert.ok('Transfer' in tx.body);
   assert.equal(tx.body.Transfer.amount, 12345);
   const hash = transferSigningHash({
     sender: publicKey,

@@ -1,13 +1,13 @@
 // 1 base unit = 1 µBUNKER (the RPC calls the field `lamports`).
 export const UNITS_PER_BUNKER = 1_000_000;
 
-export function formatUnits(units) {
+export function formatUnits(units: number | bigint): string {
   const value = Number(units) / UNITS_PER_BUNKER;
   return value.toLocaleString('en-US', { maximumFractionDigits: 6 });
 }
 
 /** "0.5" BUNKER -> 500000 units. Throws on malformed or sub-unit input. */
-export function parseBunker(text) {
+export function parseBunker(text: string): number {
   const trimmed = String(text).trim();
   if (!/^\d+(\.\d+)?$/.test(trimmed)) throw new Error('Enter a positive amount');
   const [whole, frac = ''] = trimmed.split('.');
@@ -18,12 +18,12 @@ export function parseBunker(text) {
   return Number(units);
 }
 
-export function shortAddress(address, chars = 4) {
+export function shortAddress(address: string, chars = 4): string {
   if (!address || address.length <= chars * 2 + 3) return address;
   return `${address.slice(0, chars)}…${address.slice(-chars)}`;
 }
 
-export function elapsedLabel(sinceMs) {
+export function elapsedLabel(sinceMs: number): string {
   const s = Math.floor((Date.now() - sinceMs) / 1000);
   if (s < 60) return `${s}s`;
   return `${Math.floor(s / 60)}m ${s % 60}s`;

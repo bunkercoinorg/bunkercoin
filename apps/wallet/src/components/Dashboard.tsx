@@ -1,28 +1,33 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BunkerConnection } from '@/lib/connection';
-import { signTransfer, isValidAddress, addressToHex, hexToBase58 } from '@/lib/keys';
+import { BunkerConnection, type ChainTransaction, type TokenBalance } from '@/lib/connection';
+import { signTransfer, isValidAddress, addressToHex, hexToBase58, type Keypair } from '@/lib/keys';
 import { clearKeystore, decryptMnemonic, loadKeystore } from '@/lib/keystore';
 import { formatUnits, parseBunker, shortAddress, elapsedLabel } from '@/lib/format';
-import { loadPending, addPending, removePending } from '@/lib/pending';
+import { loadPending, addPending, removePending, type PendingTx } from '@/lib/pending';
 import { copyText } from '@/lib/clipboard';
 
 const BALANCE_POLL_MS = 20_000;
 const FAUCET_UNITS = 1_000_000; // 1 BUNKER per tap
 
-export default function Dashboard({ keypair, onLock, onWalletRemoved }) {
+interface DashboardProps {
+  keypair: Keypair;
+  onLock: () => void;
+  onWalletRemoved: () => void;
+}
+
+export default function Dashboard({ keypair, onLock, onWalletRemoved }: DashboardProps) {
   const conn = useRef(new BunkerConnection()).current;
-  const [balance, setBalance] = useState(null);
-  const [tokens, setTokens] = useState([]);
-  const [pending, setPending] = useState([]);
-  const [history, setHistory] = useState([]);
-  const [expanded, setExpanded] = useState(null);
+  const [balance, setBalance] = useState<number | null>(null);
+  const [tokens, setTokens] = useState<TokenBalance[]>([]);
+  const [pending, setPending] = useState<PendingTx[]>([]);
+  const [history, setHistory] = useState<ChainTransaction[]>([]);
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [slot, setSlot] = useState<number | null>(null);
   const [, tick] = useState(0);
-
-  const [slot, setSlot] = useState(null);
 
   const refresh = useCallback(async () => {
     const meHex = addressToHex(keypair.address);
@@ -48,6 +53,22 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }) {
     };
   }, [refresh]);
 
+  const trackConfirmation = useCallback(
+    async (entry: PendingTx, signal?: AbortSignal) => {
+      try {
+        await conn.confirm(entry.txId, { signal });
+        setPending(removePending(entry.txId));
+        void refresh();
+      } catch (e) {
+        if (String((e as Error).message).includes('cancelled')) return;
+        setPending((prev) =>
+          prev.map((p) => (p.txId === entry.txId ? { ...p, failed: String((e as Error).message) } : p)),
+        );
+      }
+    },
+    [conn, refresh],
+  );
+
   // Resume confirmation polling for every pending tx (incl. after reload).
   useEffect(() => {
     const abort = new AbortController();
@@ -55,23 +76,9 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }) {
       void trackConfirmation(entry, abort.signal);
     }
     return () => abort.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [trackConfirmation]);
 
-  async function trackConfirmation(entry, signal) {
-    try {
-      await conn.confirm(entry.txId, { signal });
-      setPending(removePending(entry.txId));
-      void refresh();
-    } catch (e) {
-      if (String(e.message).includes('cancelled')) return;
-      setPending((prev) =>
-        prev.map((p) => (p.txId === entry.txId ? { ...p, failed: String(e.message) } : p)),
-      );
-    }
-  }
-
-  const submitted = (entry) => {
+  const submitted = (entry: PendingTx) => {
     setPending(addPending(entry));
     void trackConfirmation(entry);
   };
@@ -99,7 +106,7 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }) {
           <button
             className="btn-ghost btn-small"
             onClick={async () => {
-              await navigator.clipboard.writeText(keypair.address);
+              await copyText(keypair.address);
               setCopied(true);
               setTimeout(() => setCopied(false), 1500);
             }}
@@ -137,7 +144,7 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }) {
                 onClick={() => setExpanded(expanded === p.txId ? null : p.txId)}
               >
                 <span>
-                  {p.kind === 'faucet' ? 'Faucet' : `Send ${formatUnits(p.amount)} → ${shortAddress(p.to)}`}
+                  {p.kind === 'faucet' ? 'Faucet' : `Send ${formatUnits(p.amount)} → ${shortAddress(p.to ?? '')}`}
                   <span className="hint" style={{ marginLeft: 8 }}>
                     {elapsedLabel(p.at)}
                   </span>
@@ -164,10 +171,10 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }) {
                 <TxDetails
                   rows={[
                     ['Transaction id', p.txId],
-                    p.to && ['To', p.to],
+                    p.to ? ['To', p.to] : null,
                     ['Amount', `${formatUnits(p.amount)} BUNKER`],
                     ['Submitted', new Date(p.at).toLocaleString()],
-                    p.failed && ['Error', p.failed],
+                    p.failed ? ['Error', p.failed] : null,
                   ]}
                 />
               )}
@@ -199,13 +206,13 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }) {
                       ['Type', t.body?.type ?? 'Transfer'],
                       ['Hash', t.hash],
                       ['From', hexToBase58(t.sender)],
-                      t.body?.to && ['To', hexToBase58(t.body.to)],
+                      t.body?.to ? ['To', hexToBase58(t.body.to)] : null,
                       ['Amount', `${formatUnits(t.body?.amount ?? 0)} BUNKER`],
                       ['Fee', `${formatUnits(t.fee ?? 0)} BUNKER`],
                       ['Nonce', String(t.nonce)],
                       ['Slot', String(t.slot)],
                       ['Block', t.block_hash],
-                      t.status?.error && ['Error', String(t.status.error)],
+                      t.status?.error ? ['Error', String(t.status.error)] : null,
                     ]}
                   />
                 )}
@@ -248,31 +255,33 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }) {
   );
 }
 
-function TxDetails({ rows }) {
-  const [copiedKey, setCopiedKey] = useState(null);
+function TxDetails({ rows }: { rows: ([string, string] | null)[] }) {
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   // Long values (hashes, addresses) get a copy affordance; short ones don't need it.
   return (
     <div className="tx-details">
-      {rows.filter(Boolean).map(([label, value]) => (
-        <div className="tx-detail-row" key={label}>
-          <span className="tx-detail-label">{label}</span>
-          <span
-            className={value.length > 20 ? 'mono clickable' : 'mono'}
-            title={value.length > 20 ? 'Click to copy' : undefined}
-            onClick={
-              value.length > 20
-                ? async () => {
-                    await copyText(value);
-                    setCopiedKey(label);
-                    setTimeout(() => setCopiedKey(null), 1200);
-                  }
-                : undefined
-            }
-          >
-            {copiedKey === label ? 'Copied' : value.length > 28 ? shortAddress(value, 10) : value}
-          </span>
-        </div>
-      ))}
+      {rows
+        .filter((r): r is [string, string] => r !== null)
+        .map(([label, value]) => (
+          <div className="tx-detail-row" key={label}>
+            <span className="tx-detail-label">{label}</span>
+            <span
+              className={value.length > 20 ? 'mono clickable' : 'mono'}
+              title={value.length > 20 ? 'Click to copy' : undefined}
+              onClick={
+                value.length > 20
+                  ? async () => {
+                      await copyText(value);
+                      setCopiedKey(label);
+                      setTimeout(() => setCopiedKey(null), 1200);
+                    }
+                  : undefined
+              }
+            >
+              {copiedKey === label ? 'Copied' : value.length > 28 ? shortAddress(value, 10) : value}
+            </span>
+          </div>
+        ))}
     </div>
   );
 }
@@ -285,20 +294,19 @@ function RecoveryPhrase() {
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
 
+  const hide = useCallback(() => {
+    setPhrase('');
+    setPassword('');
+    setOpen(false);
+    setError('');
+  }, []);
+
   // The phrase must never sit on screen unattended.
   useEffect(() => {
     if (!phrase) return;
     const timer = setTimeout(() => hide(), 60_000);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phrase]);
-
-  const hide = () => {
-    setPhrase('');
-    setPassword('');
-    setOpen(false);
-    setError('');
-  };
+  }, [phrase, hide]);
 
   const reveal = async () => {
     setBusy(true);
@@ -307,7 +315,8 @@ function RecoveryPhrase() {
       setPhrase(await decryptMnemonic(loadKeystore(), password));
       setPassword('');
     } catch (e) {
-      setError(e.message === 'Incorrect password' ? 'Incorrect password.' : e.message);
+      const msg = (e as Error).message;
+      setError(msg === 'Incorrect password' ? 'Incorrect password.' : msg);
     } finally {
       setBusy(false);
     }
@@ -391,7 +400,13 @@ function RecoveryPhrase() {
   );
 }
 
-function Faucet({ conn, address, onSubmitted }) {
+interface FaucetProps {
+  conn: BunkerConnection;
+  address: string;
+  onSubmitted: (entry: PendingTx) => void;
+}
+
+function Faucet({ conn, address, onSubmitted }: FaucetProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const request = async () => {
@@ -401,7 +416,7 @@ function Faucet({ conn, address, onSubmitted }) {
       const txId = await conn.requestAirdrop(address, FAUCET_UNITS);
       onSubmitted({ txId, kind: 'faucet', amount: FAUCET_UNITS, at: Date.now() });
     } catch (e) {
-      setError(e.message);
+      setError((e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -418,10 +433,17 @@ function Faucet({ conn, address, onSubmitted }) {
   );
 }
 
-function Send({ conn, keypair, balance, onSubmitted }) {
+interface SendProps {
+  conn: BunkerConnection;
+  keypair: Keypair;
+  balance: number | null;
+  onSubmitted: (entry: PendingTx) => void;
+}
+
+function Send({ conn, keypair, balance, onSubmitted }: SendProps) {
   const [to, setTo] = useState('');
   const [amount, setAmount] = useState('');
-  const [fee, setFee] = useState(null);
+  const [fee, setFee] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -431,11 +453,11 @@ function Send({ conn, keypair, balance, onSubmitted }) {
 
   const submit = async () => {
     setError('');
-    let units;
+    let units: number;
     try {
       units = parseBunker(amount);
     } catch (e) {
-      setError(e.message);
+      setError((e as Error).message);
       return;
     }
     if (!isValidAddress(to)) {
@@ -468,7 +490,7 @@ function Send({ conn, keypair, balance, onSubmitted }) {
       setTo('');
       setAmount('');
     } catch (e) {
-      setError(e.message);
+      setError((e as Error).message);
     } finally {
       setBusy(false);
     }

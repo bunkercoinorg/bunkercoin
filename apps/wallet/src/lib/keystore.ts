@@ -2,10 +2,24 @@ import { argon2id } from 'hash-wasm';
 
 const STORAGE_KEY = 'bunkercoin.keystore.v1';
 
+export interface KdfParams {
+  iterations: number;
+  memorySizeKiB: number;
+  parallelism: number;
+}
+
+export interface KeystoreRecord {
+  version: number;
+  kdf: KdfParams & { name: string };
+  salt: string;
+  iv: string;
+  ciphertext: string;
+}
+
 // Tuned so derivation costs 2-3s on desktop hardware: brute-forcing a stolen
 // keystore has to pay this per guess. Parameters are stored per-record so
 // existing wallets keep working if these defaults change.
-export const KDF_DEFAULTS = {
+export const KDF_DEFAULTS: KdfParams = {
   iterations: 14,
   memorySizeKiB: 256 * 1024,
   parallelism: 1,
@@ -14,10 +28,10 @@ export const KDF_DEFAULTS = {
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-const toB64 = (bytes) => btoa(String.fromCharCode(...bytes));
-const fromB64 = (text) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
+const toB64 = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes));
+const fromB64 = (text: string): Uint8Array => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
 
-async function deriveKey(password, salt, params) {
+async function deriveKey(password: string, salt: Uint8Array, params: KdfParams): Promise<CryptoKey> {
   const raw = await argon2id({
     password,
     salt,
@@ -27,11 +41,18 @@ async function deriveKey(password, salt, params) {
     hashLength: 32,
     outputType: 'binary',
   });
-  return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+  return crypto.subtle.importKey('raw', raw as Uint8Array<ArrayBuffer>, { name: 'AES-GCM' }, false, [
+    'encrypt',
+    'decrypt',
+  ]);
 }
 
 /** Encrypts the mnemonic under the password. Plaintext never leaves memory. */
-export async function encryptMnemonic(mnemonic, password, params = KDF_DEFAULTS) {
+export async function encryptMnemonic(
+  mnemonic: string,
+  password: string,
+  params: KdfParams = KDF_DEFAULTS,
+): Promise<KeystoreRecord> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveKey(password, salt, params);
@@ -47,8 +68,9 @@ export async function encryptMnemonic(mnemonic, password, params = KDF_DEFAULTS)
   };
 }
 
-export async function decryptMnemonic(record, password) {
-  const params = {
+export async function decryptMnemonic(record: KeystoreRecord | null, password: string): Promise<string> {
+  if (!record) throw new Error('No wallet on this device');
+  const params: KdfParams = {
     iterations: record.kdf.iterations,
     memorySizeKiB: record.kdf.memorySizeKiB,
     parallelism: record.kdf.parallelism,
@@ -56,9 +78,9 @@ export async function decryptMnemonic(record, password) {
   const key = await deriveKey(password, fromB64(record.salt), params);
   try {
     const plaintext = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: fromB64(record.iv) },
+      { name: 'AES-GCM', iv: fromB64(record.iv) as Uint8Array<ArrayBuffer> },
       key,
-      fromB64(record.ciphertext),
+      fromB64(record.ciphertext) as Uint8Array<ArrayBuffer>,
     );
     return dec.decode(plaintext);
   } catch {
@@ -67,25 +89,25 @@ export async function decryptMnemonic(record, password) {
   }
 }
 
-export function loadKeystore() {
+export function loadKeystore(): KeystoreRecord | null {
   if (typeof localStorage === 'undefined') return null;
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw);
+    return JSON.parse(raw) as KeystoreRecord;
   } catch {
     return null;
   }
 }
 
-export function saveKeystore(record) {
+export function saveKeystore(record: KeystoreRecord): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(record));
 }
 
-export function clearKeystore() {
+export function clearKeystore(): void {
   localStorage.removeItem(STORAGE_KEY);
 }
 
-export function hasKeystore() {
+export function hasKeystore(): boolean {
   return loadKeystore() !== null;
 }

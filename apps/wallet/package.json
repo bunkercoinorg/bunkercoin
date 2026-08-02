@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev -p 3007",
     "build": "NEXT_BUILD_DIR=.next-build next build",
-    "test": "node --test 'test/*.test.js'"
+    "test": "node --test 'test/*.test.ts'",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@noble/curves": "^1.9.0",
@@ -17,5 +18,11 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
-  "type": "module"
+  "type": "module",
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "typescript": "^5.9.3"
+  }
 }

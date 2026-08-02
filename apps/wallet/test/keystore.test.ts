@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { encryptMnemonic, decryptMnemonic, KDF_DEFAULTS } from '../src/lib/keystore.js';
+import { encryptMnemonic, decryptMnemonic, KDF_DEFAULTS } from '../src/lib/keystore.ts';
 
 // Fast parameters for functional tests — production strength is timed separately.
 const FAST = { iterations: 1, memorySizeKiB: 1024, parallelism: 1 };
