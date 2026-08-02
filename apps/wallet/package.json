@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3007",
-    "build": "NEXT_BUILD_DIR=.next-build next build",
+    "build": "NEXT_BUILD_DIR=.next-build next build && rm -rf out && cp -R .next-build out",
     "test": "node --test 'test/*.test.ts'",
     "typecheck": "tsc --noEmit",
     "postbuild": "test -f out/index.html || (echo 'export missing: out/ was not generated' && exit 1)"
