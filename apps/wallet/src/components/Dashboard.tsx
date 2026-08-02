@@ -285,7 +285,7 @@ function TxDetails({ rows, explorerHash }: { rows: ([string, string] | null)[]; 
         <div className="tx-detail-row">
           <a
             className="tx-link"
-            href={`${EXPLORER_URL}/tx?hash=${explorerHash}`}
+            href={`${EXPLORER_URL}/tx?sig=${explorerHash}`}
             target="_blank"
             rel="noreferrer"
           >
