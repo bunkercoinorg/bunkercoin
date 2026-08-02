@@ -17,6 +17,7 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }) {
   const [tokens, setTokens] = useState([]);
   const [pending, setPending] = useState([]);
   const [history, setHistory] = useState([]);
+  const [expanded, setExpanded] = useState(null);
   const [copied, setCopied] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [, tick] = useState(0);
@@ -122,22 +123,45 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }) {
             page; tracking resumes when you return.
           </p>
           {pending.map((p) => (
-            <div className="pending-row" key={p.txId}>
-              <span>
-                {p.kind === 'faucet' ? 'Faucet' : `Send ${formatUnits(p.amount)} → ${shortAddress(p.to)}`}
-                <span className="hint" style={{ marginLeft: 8 }}>
-                  {elapsedLabel(p.at)}
+            <div key={p.txId}>
+              <div
+                className="pending-row clickable"
+                onClick={() => setExpanded(expanded === p.txId ? null : p.txId)}
+              >
+                <span>
+                  {p.kind === 'faucet' ? 'Faucet' : `Send ${formatUnits(p.amount)} → ${shortAddress(p.to)}`}
+                  <span className="hint" style={{ marginLeft: 8 }}>
+                    {elapsedLabel(p.at)}
+                  </span>
                 </span>
-              </span>
-              {p.failed ? (
-                <span className="status failed" title={p.failed}>
-                  failed
-                  <button className="btn-ghost btn-small" style={{ marginLeft: 6 }} onClick={() => setPending(removePending(p.txId))}>
-                    ✕
-                  </button>
-                </span>
-              ) : (
-                <span className="status processed">confirming…</span>
+                {p.failed ? (
+                  <span className="status failed" title={p.failed}>
+                    failed
+                    <button
+                      className="btn-ghost btn-small"
+                      style={{ marginLeft: 6 }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPending(removePending(p.txId));
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ) : (
+                  <span className="status processed">confirming…</span>
+                )}
+              </div>
+              {expanded === p.txId && (
+                <TxDetails
+                  rows={[
+                    ['Transaction id', p.txId],
+                    p.to && ['To', p.to],
+                    ['Amount', `${formatUnits(p.amount)} BUNKER`],
+                    ['Submitted', new Date(p.at).toLocaleString()],
+                    p.failed && ['Error', p.failed],
+                  ]}
+                />
               )}
             </div>
           ))}
@@ -146,16 +170,37 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }) {
             const counterparty = hexToBase58(outgoing ? t.body?.to ?? t.sender : t.sender);
             const failed = t.status?.success === false;
             return (
-              <div className="pending-row" key={t.hash}>
-                <span>
-                  {outgoing ? '↑ Sent' : '↓ Received'} {formatUnits(t.body?.amount ?? 0)}
-                  <span className="hint" style={{ marginLeft: 8 }}>
-                    {outgoing ? 'to' : 'from'} {shortAddress(counterparty)} · slot {t.slot}
+              <div key={t.hash}>
+                <div
+                  className="pending-row clickable"
+                  onClick={() => setExpanded(expanded === t.hash ? null : t.hash)}
+                >
+                  <span>
+                    {outgoing ? '↑ Sent' : '↓ Received'} {formatUnits(t.body?.amount ?? 0)}
+                    <span className="hint" style={{ marginLeft: 8 }}>
+                      {outgoing ? 'to' : 'from'} {shortAddress(counterparty)} · slot {t.slot}
+                    </span>
                   </span>
-                </span>
-                <span className={failed ? 'status failed' : 'status finalized'} title={t.status?.error || ''}>
-                  {failed ? 'failed' : '✓ finalized'}
-                </span>
+                  <span className={failed ? 'status failed' : 'status finalized'} title={t.status?.error || ''}>
+                    {failed ? 'failed' : '✓ finalized'}
+                  </span>
+                </div>
+                {expanded === t.hash && (
+                  <TxDetails
+                    rows={[
+                      ['Type', t.body?.type ?? 'Transfer'],
+                      ['Hash', t.hash],
+                      ['From', hexToBase58(t.sender)],
+                      t.body?.to && ['To', hexToBase58(t.body.to)],
+                      ['Amount', `${formatUnits(t.body?.amount ?? 0)} BUNKER`],
+                      ['Fee', `${formatUnits(t.fee ?? 0)} BUNKER`],
+                      ['Nonce', String(t.nonce)],
+                      ['Slot', String(t.slot)],
+                      ['Block', t.block_hash],
+                      t.status?.error && ['Error', String(t.status.error)],
+                    ]}
+                  />
+                )}
               </div>
             );
           })}
@@ -192,6 +237,35 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }) {
         )}
       </div>
     </>
+  );
+}
+
+function TxDetails({ rows }) {
+  const [copiedKey, setCopiedKey] = useState(null);
+  // Long values (hashes, addresses) get a copy affordance; short ones don't need it.
+  return (
+    <div className="tx-details">
+      {rows.filter(Boolean).map(([label, value]) => (
+        <div className="tx-detail-row" key={label}>
+          <span className="tx-detail-label">{label}</span>
+          <span
+            className={value.length > 20 ? 'mono clickable' : 'mono'}
+            title={value.length > 20 ? 'Click to copy' : undefined}
+            onClick={
+              value.length > 20
+                ? async () => {
+                    await copyText(value);
+                    setCopiedKey(label);
+                    setTimeout(() => setCopiedKey(null), 1200);
+                  }
+                : undefined
+            }
+          >
+            {copiedKey === label ? 'Copied' : value.length > 28 ? shortAddress(value, 10) : value}
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }
 

@@ -277,3 +277,28 @@ label {
 .mono {
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
 }
+
+.clickable {
+  cursor: pointer;
+}
+.pending-row.clickable:hover {
+  background: var(--panel-2);
+}
+.tx-details {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  margin: 2px 0 10px;
+}
+.tx-detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 0;
+  font-size: 13px;
+}
+.tx-detail-label {
+  color: var(--muted);
+  flex: none;
+}
