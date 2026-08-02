@@ -22,11 +22,14 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }) {
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [, tick] = useState(0);
 
+  const [slot, setSlot] = useState(null);
+
   const refresh = useCallback(async () => {
     const meHex = addressToHex(keypair.address);
     try {
       setBalance(await conn.getBalance(keypair.address));
       setTokens(await conn.getTokenBalances(keypair.address));
+      setSlot(await conn.getSlot());
       const txs = await conn.getTransactions(200, 0);
       setHistory(txs.filter((t) => t.sender === meHex || t.body?.to === meHex).slice(0, 10));
     } catch {
@@ -76,6 +79,11 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }) {
   return (
     <>
       <div className="topbar">
+        <span className="telemetry">
+          <span className="dot" />
+          {slot === null ? 'linking…' : `slot ${slot}`}
+        </span>
+        <span className="spacer" />
         <button className="btn-ghost btn-small" onClick={onLock}>
           Lock
         </button>

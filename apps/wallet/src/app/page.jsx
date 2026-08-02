@@ -47,15 +47,21 @@ export default function Wallet() {
     <main className="shell">
       <div className="brand">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/bunker-favicon.png" alt="" width={26} height={26} />
+        <img src="/bunker-favicon.png" alt="" width={22} height={22} />
         <h1>
           Bunker<span>Coin</span> Wallet
         </h1>
         <span className="tag">testnet</span>
       </div>
 
-      {phase === 'onboarding' && <Onboarding onUnlocked={unlocked} />}
-      {phase === 'locked' && <Unlock onUnlocked={unlocked} onReset={() => setPhase('onboarding')} />}
+      {(phase === 'onboarding' || phase === 'locked') && (
+        <div className="stage-center">
+          {phase === 'onboarding' && <Onboarding onUnlocked={unlocked} />}
+          {phase === 'locked' && (
+            <Unlock onUnlocked={unlocked} onReset={() => setPhase('onboarding')} />
+          )}
+        </div>
+      )}
       {phase === 'unlocked' && (
         <Dashboard keypair={keypairRef.current} onLock={lock} onWalletRemoved={() => setPhase('onboarding')} />
       )}

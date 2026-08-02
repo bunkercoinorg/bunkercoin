@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createMnemonic, isValidMnemonic, normalizeMnemonic, keypairFromMnemonic } from '@/lib/keys';
 import { encryptMnemonic, saveKeystore } from '@/lib/keystore';
 import { copyText } from '@/lib/clipboard';
@@ -206,6 +206,14 @@ function SetPassword({ mnemonic, onUnlocked }) {
   const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!busy) return;
+    const start = Date.now();
+    const timer = setInterval(() => setElapsed((Date.now() - start) / 1000), 100);
+    return () => clearInterval(timer);
+  }, [busy]);
 
   const submit = async () => {
     if (password.length < MIN_PASSWORD) {
@@ -247,16 +255,24 @@ function SetPassword({ mnemonic, onUnlocked }) {
         onKeyDown={(e) => e.key === 'Enter' && !busy && submit()}
       />
       {error && <p className="error">{error}</p>}
-      {busy && (
-        <div className="progress">
-          <span className="spinner" />
-          Encrypting — intentionally takes a few seconds…
+      {busy ? (
+        <div className="kdf" role="status" aria-live="polite">
+          <div className="kdf-track">
+            <div className="kdf-bar" />
+          </div>
+          <div className="kdf-line">
+            <span>Deriving key · argon2id · 256 MiB</span>
+            <span className="t">{elapsed.toFixed(1)}s</span>
+          </div>
         </div>
+      ) : (
+        <>
+          <hr className="divider" />
+          <button className="btn-primary" disabled={!password || !confirm} onClick={submit}>
+            Encrypt and finish
+          </button>
+        </>
       )}
-      <hr className="divider" />
-      <button className="btn-primary" disabled={busy || !password || !confirm} onClick={submit}>
-        Encrypt and finish
-      </button>
     </div>
   );
 }
