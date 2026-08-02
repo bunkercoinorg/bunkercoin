@@ -21,7 +21,16 @@ export const metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${inter.variable} ${plexMono.variable}`}>
-      <body>{children}</body>
+      <body>
+        {/* WebCrypto needs a secure context — hop to https before anything runs. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "if(location.protocol==='http:'&&!['localhost','127.0.0.1'].includes(location.hostname))location.replace(location.href.replace(/^http:/,'https:'));",
+          }}
+        />
+        {children}
+      </body>
     </html>
   );
 }

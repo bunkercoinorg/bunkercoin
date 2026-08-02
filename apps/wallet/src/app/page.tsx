@@ -9,7 +9,7 @@ import type { Keypair } from '@/lib/keys';
 
 const AUTO_LOCK_MS = 15 * 60_000;
 
-type Phase = 'loading' | 'onboarding' | 'locked' | 'unlocked';
+type Phase = 'loading' | 'insecure' | 'onboarding' | 'locked' | 'unlocked';
 
 export default function Wallet() {
   // 'loading' avoids hydration mismatch: localStorage exists only client-side.
@@ -17,6 +17,12 @@ export default function Wallet() {
   const keypairRef = useRef<Keypair | null>(null);
 
   useEffect(() => {
+    // WebCrypto only exists in secure contexts — without it nothing can be
+    // encrypted or decrypted, so stop at the door with directions.
+    if (!window.crypto?.subtle) {
+      setPhase('insecure');
+      return;
+    }
     setPhase(hasKeystore() ? 'locked' : 'onboarding');
   }, []);
 
@@ -57,6 +63,17 @@ export default function Wallet() {
         <span className="tag">testnet</span>
       </div>
 
+      {phase === 'insecure' && (
+        <div className="stage-center">
+          <div className="card gate">
+            <h2>Open the wallet over a secure connection</h2>
+            <p className="sub">
+              Your browser disables encryption on plain http addresses, so the wallet cannot
+              protect your keys here. Use the https address (or localhost during development).
+            </p>
+          </div>
+        </div>
+      )}
       {(phase === 'onboarding' || phase === 'locked') && (
         <div className="stage-center">
           {phase === 'onboarding' && <Onboarding onUnlocked={unlocked} />}
