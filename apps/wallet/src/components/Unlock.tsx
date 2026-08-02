@@ -66,7 +66,7 @@ export default function Unlock({ onUnlocked, onReset }: UnlockProps) {
             <div className="kdf-bar" />
           </div>
           <div className="kdf-line">
-            <span>Deriving key · argon2id · 256 MiB</span>
+            <span>Unlocking — checking your password</span>
             <span className="t">{elapsed.toFixed(1)}s</span>
           </div>
         </div>
@@ -98,7 +98,6 @@ export default function Unlock({ onUnlocked, onReset }: UnlockProps) {
           </button>
         )}
       </p>
-      <p className="gate-telemetry">keystore · aes-256-gcm · local only</p>
     </div>
   );
 }

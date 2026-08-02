@@ -281,7 +281,7 @@ function SetPassword({ mnemonic, onUnlocked }: { mnemonic: string; onUnlocked: (
             <div className="kdf-bar" />
           </div>
           <div className="kdf-line">
-            <span>Deriving key · argon2id · 256 MiB</span>
+            <span>Encrypting your recovery phrase</span>
             <span className="t">{elapsed.toFixed(1)}s</span>
           </div>
         </div>

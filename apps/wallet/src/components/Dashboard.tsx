@@ -86,9 +86,9 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }: Dashboar
   return (
     <>
       <div className="topbar">
-        <span className="telemetry">
+        <span className="telemetry" title={slot === null ? undefined : `chain slot ${slot}`}>
           <span className="dot" />
-          {slot === null ? 'linking…' : `slot ${slot}`}
+          {slot === null ? 'connecting…' : 'live'}
         </span>
         <span className="spacer" />
         <button className="btn-ghost btn-small" onClick={onLock}>
@@ -193,7 +193,7 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }: Dashboar
                   <span>
                     {outgoing ? '↑ Sent' : '↓ Received'} {formatUnits(t.body?.amount ?? 0)}
                     <span className="hint" style={{ marginLeft: 8 }}>
-                      {outgoing ? 'to' : 'from'} {shortAddress(counterparty)} · slot {t.slot}
+                      {outgoing ? 'to' : 'from'} {shortAddress(counterparty)}
                     </span>
                   </span>
                   <span className={failed ? 'status failed' : 'status finalized'} title={t.status?.error || ''}>
@@ -203,17 +203,14 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }: Dashboar
                 {expanded === t.hash && (
                   <TxDetails
                     rows={[
-                      ['Type', t.body?.type ?? 'Transfer'],
-                      ['Hash', t.hash],
                       ['From', hexToBase58(t.sender)],
                       t.body?.to ? ['To', hexToBase58(t.body.to)] : null,
                       ['Amount', `${formatUnits(t.body?.amount ?? 0)} BUNKER`],
                       ['Fee', `${formatUnits(t.fee ?? 0)} BUNKER`],
-                      ['Nonce', String(t.nonce)],
-                      ['Slot', String(t.slot)],
-                      ['Block', t.block_hash],
+                      ['Reference', t.hash],
                       t.status?.error ? ['Error', String(t.status.error)] : null,
                     ]}
+                    explorerHash={t.hash}
                   />
                 )}
               </div>
@@ -255,7 +252,9 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }: Dashboar
   );
 }
 
-function TxDetails({ rows }: { rows: ([string, string] | null)[] }) {
+const EXPLORER_URL = process.env.NEXT_PUBLIC_EXPLORER_URL || 'https://explorer.bunkercoin.com';
+
+function TxDetails({ rows, explorerHash }: { rows: ([string, string] | null)[]; explorerHash?: string }) {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   // Long values (hashes, addresses) get a copy affordance; short ones don't need it.
   return (
@@ -282,6 +281,18 @@ function TxDetails({ rows }: { rows: ([string, string] | null)[] }) {
             </span>
           </div>
         ))}
+      {explorerHash && (
+        <div className="tx-detail-row">
+          <a
+            className="tx-link"
+            href={`${EXPLORER_URL}/tx?hash=${explorerHash}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            View in explorer ↗
+          </a>
+        </div>
+      )}
     </div>
   );
 }
