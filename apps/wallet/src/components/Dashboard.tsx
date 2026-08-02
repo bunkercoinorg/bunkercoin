@@ -120,7 +120,8 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }: Dashboar
             {tokens.map((t, i) => (
               <div className="token-row" key={i}>
                 <span>{t.ticker || `Token ${t.tokenId ?? t.token_id ?? i}`}</span>
-                <span className="mono">{formatUnits(t.amount ?? t.balance ?? 0)}</span>
+                {/* Custom tokens have no decimals on-chain — raw count, not µ units. */}
+                <span className="mono">{(t.amount ?? t.balance ?? 0).toLocaleString()}</span>
               </div>
             ))}
           </>
@@ -184,6 +185,10 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }: Dashboar
             const outgoing = t.sender === addressToHex(keypair.address);
             const counterparty = hexToBase58(outgoing ? t.body?.to ?? t.sender : t.sender);
             const failed = t.status?.success === false;
+            const isToken = t.body?.type === 'TokenTransfer';
+            const amountLabel = isToken
+              ? `${(t.body?.amount ?? 0).toLocaleString()} tokens`
+              : formatUnits(t.body?.amount ?? 0);
             return (
               <div key={t.hash}>
                 <div
@@ -191,7 +196,7 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }: Dashboar
                   onClick={() => setExpanded(expanded === t.hash ? null : t.hash)}
                 >
                   <span>
-                    {outgoing ? '↑ Sent' : '↓ Received'} {formatUnits(t.body?.amount ?? 0)}
+                    {outgoing ? '↑ Sent' : '↓ Received'} {amountLabel}
                     <span className="hint" style={{ marginLeft: 8 }}>
                       {outgoing ? 'to' : 'from'} {shortAddress(counterparty)}
                     </span>
@@ -205,7 +210,12 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }: Dashboar
                     rows={[
                       ['From', hexToBase58(t.sender)],
                       t.body?.to ? ['To', hexToBase58(t.body.to)] : null,
-                      ['Amount', `${formatUnits(t.body?.amount ?? 0)} BUNKER`],
+                      [
+                        'Amount',
+                        isToken
+                          ? `${(t.body?.amount ?? 0).toLocaleString()} tokens`
+                          : `${formatUnits(t.body?.amount ?? 0)} BUNKER`,
+                      ],
                       ['Fee', `${formatUnits(t.fee ?? 0)} BUNKER`],
                       ['Reference', t.hash],
                       t.status?.error ? ['Error', String(t.status.error)] : null,
