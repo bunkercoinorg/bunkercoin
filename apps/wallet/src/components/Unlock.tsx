@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { decryptMnemonic, loadKeystore, clearKeystore } from '@/lib/keystore';
 import { keypairFromMnemonic, type Keypair } from '@/lib/keys';
+import { useElapsed } from '@/hooks/useElapsed';
+import KdfProgress from '@/components/KdfProgress';
 
 interface UnlockProps {
   onUnlocked: (keypair: Keypair) => void;
@@ -14,15 +16,7 @@ export default function Unlock({ onUnlocked, onReset }: UnlockProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
-
-  // Honest telemetry: derivation is slow on purpose, so show it working.
-  useEffect(() => {
-    if (!busy) return;
-    const start = Date.now();
-    const timer = setInterval(() => setElapsed((Date.now() - start) / 1000), 100);
-    return () => clearInterval(timer);
-  }, [busy]);
+  const elapsed = useElapsed(busy);
 
   const submit = async () => {
     setBusy(true);
@@ -34,7 +28,6 @@ export default function Unlock({ onUnlocked, onReset }: UnlockProps) {
       const msg = (e as Error).message;
       setError(msg === 'Incorrect password' ? 'Incorrect password.' : msg);
       setBusy(false);
-      setElapsed(0);
     }
   };
 
@@ -61,15 +54,7 @@ export default function Unlock({ onUnlocked, onReset }: UnlockProps) {
       {error && <p className="error">{error}</p>}
 
       {busy ? (
-        <div className="kdf" role="status" aria-live="polite">
-          <div className="kdf-track">
-            <div className="kdf-bar" />
-          </div>
-          <div className="kdf-line">
-            <span>Unlocking — checking your password</span>
-            <span className="t">{elapsed.toFixed(1)}s</span>
-          </div>
-        </div>
+        <KdfProgress label="Unlocking — checking your password" elapsed={elapsed} />
       ) : (
         <div style={{ marginTop: 18 }}>
           <button className="btn-primary" disabled={!password} onClick={submit}>
