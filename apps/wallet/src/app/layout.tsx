@@ -9,12 +9,27 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata = {
+  metadataBase: new URL('https://wallet.bunkercoin.com'),
   title: 'BunkerCoin Wallet',
   description: 'Local-only wallet for the BunkerCoin testnet',
   icons: {
     icon: '/bunker-favicon.png',
     shortcut: '/bunker-favicon.png',
     apple: '/bunker-favicon.png',
+  },
+  openGraph: {
+    title: 'BunkerCoin Wallet',
+    description: 'Local-only wallet for the BunkerCoin testnet',
+    url: 'https://wallet.bunkercoin.com',
+    siteName: 'BunkerCoin Wallet',
+    images: [{ url: '/og.png', width: 1200, height: 630 }],
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'BunkerCoin Wallet',
+    description: 'Local-only wallet for the BunkerCoin testnet',
+    images: ['/og.png'],
   },
 };
 
