@@ -5,9 +5,10 @@ import Onboarding from '@/components/Onboarding';
 import Unlock from '@/components/Unlock';
 import Dashboard from '@/components/Dashboard';
 import { hasKeystore } from '@/lib/keystore';
+import { loadSession, saveSession, clearSession, touchSession, SESSION_IDLE_MS } from '@/lib/session';
 import type { Keypair } from '@/lib/keys';
 
-const AUTO_LOCK_MS = 15 * 60_000;
+const AUTO_LOCK_MS = SESSION_IDLE_MS;
 
 type Phase = 'loading' | 'insecure' | 'onboarding' | 'locked' | 'unlocked';
 
@@ -17,17 +18,34 @@ export default function Wallet() {
   const keypairRef = useRef<Keypair | null>(null);
 
   useEffect(() => {
-    // WebCrypto only exists in secure contexts — without it nothing can be
-    // encrypted or decrypted, so stop at the door with directions.
+    // WebCrypto needs a secure context; without it nothing can be decrypted.
     if (!window.crypto?.subtle) {
       setPhase('insecure');
       return;
     }
-    setPhase(hasKeystore() ? 'locked' : 'onboarding');
+    if (!hasKeystore()) {
+      setPhase('onboarding');
+      return;
+    }
+    // Refresh inside the idle window resumes the session, not the Argon2id unlock.
+    let cancelled = false;
+    void loadSession().then((keypair) => {
+      if (cancelled) return;
+      if (keypair) {
+        keypairRef.current = keypair;
+        setPhase('unlocked');
+      } else {
+        setPhase('locked');
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const lock = () => {
     keypairRef.current = null; // decrypted key lives only while unlocked
+    clearSession();
     setPhase('locked');
   };
 
@@ -38,6 +56,7 @@ export default function Wallet() {
     const reset = () => {
       clearTimeout(timer);
       timer = setTimeout(lock, AUTO_LOCK_MS);
+      touchSession(); // keep the refresh-survival window aligned with auto-lock
     };
     const events = ['pointerdown', 'keydown'] as const;
     events.forEach((e) => window.addEventListener(e, reset));
@@ -49,6 +68,7 @@ export default function Wallet() {
 
   const unlocked = (keypair: Keypair) => {
     keypairRef.current = keypair;
+    void saveSession(keypair);
     setPhase('unlocked');
   };
 
@@ -82,7 +102,13 @@ export default function Wallet() {
         <div className="flex flex-1 animate-gate-in flex-col justify-center pb-[9vh] motion-reduce:animate-none">
           {phase === 'onboarding' && <Onboarding onUnlocked={unlocked} />}
           {phase === 'locked' && (
-            <Unlock onUnlocked={unlocked} onReset={() => setPhase('onboarding')} />
+            <Unlock
+              onUnlocked={unlocked}
+              onReset={() => {
+                clearSession();
+                setPhase('onboarding');
+              }}
+            />
           )}
         </div>
       )}
@@ -90,7 +116,11 @@ export default function Wallet() {
         <Dashboard
           keypair={keypairRef.current}
           onLock={lock}
-          onWalletRemoved={() => setPhase('onboarding')}
+          onWalletRemoved={() => {
+            keypairRef.current = null;
+            clearSession();
+            setPhase('onboarding');
+          }}
         />
       )}
     </main>
