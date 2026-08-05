@@ -75,7 +75,7 @@ export default function Send({ conn, keypair, balance, onSubmitted }: SendProps)
       <Label>Recipient address</Label>
       <Input
         value={to}
-        placeholder="base58 address"
+        placeholder="e.g. 5k1S1Sfj1JSdmTXixc5y12qxBjfGp7LeyEtpEnbKBgZK"
         autoCapitalize="none"
         autoCorrect="off"
         spellCheck={false}
