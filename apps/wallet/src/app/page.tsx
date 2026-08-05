@@ -53,21 +53,25 @@ export default function Wallet() {
   };
 
   return (
-    <main className="shell">
-      <div className="brand">
+    <main className="mx-auto flex min-h-screen max-w-155 flex-col px-6 pb-18">
+      <div className="mb-7 flex items-center gap-2.5 border-b border-line py-5.5">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/bunker-favicon.png" alt="" width={22} height={22} />
-        <h1>
-          Bunker<span>Coin</span> Wallet
+        <img src="/bunker-favicon.png" alt="" width={22} height={22} className="block rounded-[5px]" />
+        <h1 className="text-[15px] font-semibold tracking-[0.01em]">
+          Bunker<span className="text-accent">Coin</span> Wallet
         </h1>
-        <span className="tag">testnet</span>
+        <span className="ml-auto rounded-full border border-line px-2.5 py-[3px] font-mono text-[10.5px] tracking-[0.14em] uppercase text-muted">
+          testnet
+        </span>
       </div>
 
       {phase === 'insecure' && (
-        <div className="stage-center">
-          <div className="card gate">
-            <h2>Open the wallet over a secure connection</h2>
-            <p className="sub">
+        <div className="flex flex-1 flex-col justify-center pb-[9vh]">
+          <div className="mx-auto w-full max-w-105 text-center">
+            <h2 className="mb-2 text-[21px] font-semibold tracking-tight">
+              Open the wallet over a secure connection
+            </h2>
+            <p className="text-[13.5px] leading-relaxed text-muted">
               Your browser disables encryption on plain http addresses, so the wallet cannot
               protect your keys here. Use the https address (or localhost during development).
             </p>
@@ -75,7 +79,7 @@ export default function Wallet() {
         </div>
       )}
       {(phase === 'onboarding' || phase === 'locked') && (
-        <div className="stage-center">
+        <div className="flex flex-1 animate-gate-in flex-col justify-center pb-[9vh] motion-reduce:animate-none">
           {phase === 'onboarding' && <Onboarding onUnlocked={unlocked} />}
           {phase === 'locked' && (
             <Unlock onUnlocked={unlocked} onReset={() => setPhase('onboarding')} />

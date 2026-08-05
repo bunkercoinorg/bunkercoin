@@ -6,6 +6,12 @@ import { addressToHex, hexToBase58 } from '@/lib/keys';
 import { formatUnits, shortAddress, elapsedLabel } from '@/lib/format';
 import type { PendingTx } from '@/lib/pending';
 import TxDetails from '@/components/TxDetails';
+import { Button, Card } from '@/components/ui';
+
+const ROW =
+  'flex cursor-pointer items-center justify-between border-t border-line py-3 text-sm ' +
+  'hover:bg-[linear-gradient(90deg,transparent,rgba(0,255,178,0.08)_50%,transparent)]';
+const PILL = 'rounded-full px-2 py-[3px] font-mono text-[11px] tracking-[0.04em] whitespace-nowrap';
 
 interface ActivityProps {
   address: string;
@@ -20,40 +26,34 @@ export default function Activity({ address, pending, history, onDismiss }: Activ
   if (pending.length === 0 && history.length === 0) return null;
 
   return (
-    <div className="card">
-      <h2>Activity</h2>
-      <p className="sub">
-        Transactions finalize over the radio link — usually a few minutes. You can close this page;
-        tracking resumes when you return.
-      </p>
+    <Card
+      title="Activity"
+      sub="Transactions finalize over the radio link — usually a few minutes. You can close this page; tracking resumes when you return."
+    >
       {pending.map((p) => (
         <div key={p.txId}>
-          <div
-            className="pending-row clickable"
-            onClick={() => setExpanded(expanded === p.txId ? null : p.txId)}
-          >
+          <div className={ROW} onClick={() => setExpanded(expanded === p.txId ? null : p.txId)}>
             <span>
               {p.kind === 'faucet' ? 'Faucet' : `Send ${formatUnits(p.amount)} → ${shortAddress(p.to ?? '')}`}
-              <span className="hint" style={{ marginLeft: 8 }}>
-                {elapsedLabel(p.at)}
-              </span>
+              <span className="ml-2 text-[12.5px] text-faint">{elapsedLabel(p.at)}</span>
             </span>
             {p.failed ? (
-              <span className="status failed" title={p.failed}>
+              <span className={`${PILL} bg-danger/10 text-danger`} title={p.failed}>
                 failed
-                <button
-                  className="btn-ghost btn-small"
-                  style={{ marginLeft: 6 }}
+                <Button
+                  variant="ghost"
+                  small
+                  className="ml-1.5"
                   onClick={(e) => {
                     e.stopPropagation();
                     onDismiss(p.txId);
                   }}
                 >
                   ✕
-                </button>
+                </Button>
               </span>
             ) : (
-              <span className="status processed">confirming…</span>
+              <span className={`${PILL} bg-amber/10 text-amber`}>confirming…</span>
             )}
           </div>
           {expanded === p.txId && (
@@ -78,7 +78,7 @@ export default function Activity({ address, pending, history, onDismiss }: Activ
           onToggle={() => setExpanded(expanded === t.hash ? null : t.hash)}
         />
       ))}
-    </div>
+    </Card>
   );
 }
 
@@ -103,14 +103,17 @@ function HistoryRow({
 
   return (
     <div>
-      <div className="pending-row clickable" onClick={onToggle}>
+      <div className={ROW} onClick={onToggle}>
         <span>
           {outgoing ? '↑ Sent' : '↓ Received'} {amountLabel}
-          <span className="hint" style={{ marginLeft: 8 }}>
+          <span className="ml-2 text-[12.5px] text-faint">
             {outgoing ? 'to' : 'from'} {shortAddress(counterparty)}
           </span>
         </span>
-        <span className={failed ? 'status failed' : 'status finalized'} title={t.status?.error || ''}>
+        <span
+          className={`${PILL} ${failed ? 'bg-danger/10 text-danger' : 'bg-accent/10 text-accent'}`}
+          title={t.status?.error || ''}
+        >
           {failed ? 'failed' : '✓ finalized'}
         </span>
       </div>

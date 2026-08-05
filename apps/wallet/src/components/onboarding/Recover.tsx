@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { isValidMnemonic, normalizeMnemonic } from '@/lib/keys';
+import { Button, Card, Divider, ErrorText, Row, Textarea } from '@/components/ui';
 
 export default function Recover({
   onBack,
@@ -27,10 +28,8 @@ export default function Recover({
   };
 
   return (
-    <div className="card">
-      <h2>Recover a wallet</h2>
-      <p className="sub">Enter your 24-word recovery phrase, separated by spaces.</p>
-      <textarea
+    <Card title="Recover a wallet" sub="Enter your 24-word recovery phrase, separated by spaces.">
+      <Textarea
         rows={4}
         value={phrase}
         autoCapitalize="none"
@@ -41,16 +40,16 @@ export default function Recover({
           setError('');
         }}
       />
-      {error && <p className="error">{error}</p>}
-      <hr className="divider" />
-      <div className="row">
-        <button className="btn-ghost" onClick={onBack}>
+      {error && <ErrorText>{error}</ErrorText>}
+      <Divider />
+      <Row>
+        <Button variant="ghost" onClick={onBack}>
           Back
-        </button>
-        <button className="btn-primary" disabled={!phrase.trim()} onClick={submit}>
+        </Button>
+        <Button disabled={!phrase.trim()} onClick={submit}>
           Continue
-        </button>
-      </div>
-    </div>
+        </Button>
+      </Row>
+    </Card>
   );
 }

@@ -6,6 +6,7 @@ import Reveal from '@/components/onboarding/Reveal';
 import ConfirmWords from '@/components/onboarding/ConfirmWords';
 import Recover from '@/components/onboarding/Recover';
 import SetPassword from '@/components/onboarding/SetPassword';
+import { Button, Card, Row } from '@/components/ui';
 
 type Step = 'choice' | 'reveal' | 'confirm' | 'recover' | 'password';
 
@@ -19,27 +20,24 @@ export default function Onboarding({ onUnlocked }: OnboardingProps) {
 
   if (step === 'choice') {
     return (
-      <div className="card">
-        <h2>Set up your wallet</h2>
-        <p className="sub">
-          Your keys are created and stored only on this device, encrypted with a password you
-          choose. There is no server and no account.
-        </p>
-        <div className="row">
-          <button
-            className="btn-primary"
+      <Card
+        title="Set up your wallet"
+        sub="Your keys are created and stored only on this device, encrypted with a password you choose. There is no server and no account."
+      >
+        <Row>
+          <Button
             onClick={() => {
               setMnemonic(createMnemonic());
               setStep('reveal');
             }}
           >
             Create new wallet
-          </button>
-          <button className="btn-ghost" onClick={() => setStep('recover')}>
+          </Button>
+          <Button variant="ghost" onClick={() => setStep('recover')}>
             Recover existing
-          </button>
-        </div>
-      </div>
+          </Button>
+        </Row>
+      </Card>
     );
   }
 

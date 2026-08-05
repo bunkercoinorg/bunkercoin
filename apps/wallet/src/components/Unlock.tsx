@@ -5,6 +5,7 @@ import { decryptMnemonic, loadKeystore, clearKeystore } from '@/lib/keystore';
 import { keypairFromMnemonic, type Keypair } from '@/lib/keys';
 import { useElapsed } from '@/hooks/useElapsed';
 import KdfProgress from '@/components/KdfProgress';
+import { Button, ErrorText, Input } from '@/components/ui';
 
 interface UnlockProps {
   onUnlocked: (keypair: Keypair) => void;
@@ -32,13 +33,15 @@ export default function Unlock({ onUnlocked, onReset }: UnlockProps) {
   };
 
   return (
-    <div className="card gate">
+    <div className="mx-auto w-full max-w-105">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/bunker-favicon.png" alt="" width={40} height={40} className="gate-mark" />
-      <h2>Unlock your wallet</h2>
-      <p className="sub">Keys stay on this device, decrypted only in memory.</p>
+      <img src="/bunker-favicon.png" alt="" width={40} height={40} className="mx-auto mb-4.5 block rounded-lg" />
+      <h2 className="mb-2 text-center text-[21px] font-semibold tracking-tight">Unlock your wallet</h2>
+      <p className="mb-6.5 text-center text-[13.5px] leading-relaxed text-muted">
+        Keys stay on this device, decrypted only in memory.
+      </p>
 
-      <input
+      <Input
         type="password"
         aria-label="Password"
         placeholder="Password"
@@ -51,36 +54,37 @@ export default function Unlock({ onUnlocked, onReset }: UnlockProps) {
         }}
         onKeyDown={(e) => e.key === 'Enter' && password && !busy && submit()}
       />
-      {error && <p className="error">{error}</p>}
+      {error && <ErrorText>{error}</ErrorText>}
 
       {busy ? (
         <KdfProgress label="Unlocking — checking your password" elapsed={elapsed} />
       ) : (
-        <div style={{ marginTop: 18 }}>
-          <button className="btn-primary" disabled={!password} onClick={submit}>
+        <div className="mt-4.5">
+          <Button disabled={!password} onClick={submit}>
             Unlock
-          </button>
+          </Button>
         </div>
       )}
 
-      <p className="gate-foot">
+      <p className="mt-8.5 text-center text-[12.5px] leading-relaxed text-faint">
         Forgot the password? The only way back in is your 24-word recovery phrase.
         <br />
         {confirmReset ? (
-          <button
-            className="btn-danger btn-small"
-            style={{ marginTop: 10 }}
+          <Button
+            variant="danger"
+            small
+            className="mt-2.5"
             onClick={() => {
               clearKeystore();
               onReset();
             }}
           >
             Really erase this wallet from the device
-          </button>
+          </Button>
         ) : (
-          <button className="btn-link" onClick={() => setConfirmReset(true)}>
+          <Button variant="link" onClick={() => setConfirmReset(true)}>
             Erase and recover
-          </button>
+          </Button>
         )}
       </p>
     </div>

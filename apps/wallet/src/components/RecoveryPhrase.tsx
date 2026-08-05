@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { decryptMnemonic, loadKeystore } from '@/lib/keystore';
 import { copyText } from '@/lib/clipboard';
+import { Button, Card, Divider, ErrorText, Input, Row, Warn, WordGrid } from '@/components/ui';
 
 export default function RecoveryPhrase() {
   const [open, setOpen] = useState(false);
@@ -41,20 +42,23 @@ export default function RecoveryPhrase() {
   };
 
   return (
-    <div className="card">
-      <h2>Recovery phrase</h2>
+    <Card title="Recovery phrase">
       {!open && !phrase && (
         <>
-          <p className="sub">View or copy the 24 words this wallet was created with.</p>
-          <button className="btn-ghost btn-small" onClick={() => setOpen(true)}>
+          <p className="mb-4 text-[13.5px] leading-relaxed text-muted">
+            View or copy the 24 words this wallet was created with.
+          </p>
+          <Button variant="ghost" small onClick={() => setOpen(true)}>
             Show recovery phrase…
-          </button>
+          </Button>
         </>
       )}
       {open && !phrase && (
         <>
-          <p className="sub">Enter your password to decrypt the phrase.</p>
-          <input
+          <p className="mb-4 text-[13.5px] leading-relaxed text-muted">
+            Enter your password to decrypt the phrase.
+          </p>
+          <Input
             type="password"
             value={password}
             autoFocus
@@ -65,41 +69,34 @@ export default function RecoveryPhrase() {
             }}
             onKeyDown={(e) => e.key === 'Enter' && password && !busy && reveal()}
           />
-          {error && <p className="error">{error}</p>}
+          {error && <ErrorText>{error}</ErrorText>}
           {busy && (
-            <div className="progress">
-              <span className="spinner" />
+            <div className="mt-3 flex items-center gap-2.5 text-[13.5px] text-muted">
+              <span className="h-3.5 w-3.5 flex-none animate-spin rounded-full border-2 border-line-strong border-t-accent" />
               Checking your password — a few seconds…
             </div>
           )}
-          <hr className="divider" />
-          <div className="row">
-            <button className="btn-ghost" disabled={busy} onClick={hide}>
+          <Divider />
+          <Row>
+            <Button variant="ghost" disabled={busy} onClick={hide}>
               Cancel
-            </button>
-            <button className="btn-primary" disabled={busy || !password} onClick={reveal}>
+            </Button>
+            <Button disabled={busy || !password} onClick={reveal}>
               Reveal
-            </button>
-          </div>
+            </Button>
+          </Row>
         </>
       )}
       {phrase && (
         <>
-          <div className="warn">
+          <Warn>
             Anyone with these words controls your funds. Hide them as soon as you are done — they
             disappear automatically after a minute.
-          </div>
-          <div className="words">
-            {phrase.split(' ').map((w, i) => (
-              <span className="word" key={i}>
-                <i>{i + 1}</i>
-                {w}
-              </span>
-            ))}
-          </div>
-          <div className="row">
-            <button
-              className="btn-ghost"
+          </Warn>
+          <WordGrid words={phrase.split(' ')} />
+          <Row>
+            <Button
+              variant="ghost"
               onClick={async () => {
                 await copyText(phrase);
                 setCopied(true);
@@ -107,13 +104,11 @@ export default function RecoveryPhrase() {
               }}
             >
               {copied ? 'Copied' : 'Copy'}
-            </button>
-            <button className="btn-primary" onClick={hide}>
-              Hide
-            </button>
-          </div>
+            </Button>
+            <Button onClick={hide}>Hide</Button>
+          </Row>
         </>
       )}
-    </div>
+    </Card>
   );
 }

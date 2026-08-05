@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { BunkerConnection } from '@/lib/connection';
 import type { PendingTx } from '@/lib/pending';
+import { Button, Card, ErrorText } from '@/components/ui';
 
 const FAUCET_UNITS = 1_000_000; // 1 BUNKER per tap
 
@@ -30,13 +31,11 @@ export default function Faucet({ conn, address, onSubmitted }: FaucetProps) {
   };
 
   return (
-    <div className="card">
-      <h2>Faucet</h2>
-      <p className="sub">Testnet tokens, free. 1 BUNKER per request.</p>
-      <button className="btn-ghost" disabled={busy} onClick={request}>
+    <Card title="Faucet" sub="Testnet tokens, free. 1 BUNKER per request.">
+      <Button variant="ghost" disabled={busy} onClick={request}>
         {busy ? 'Requesting…' : 'Request 1 BUNKER'}
-      </button>
-      {error && <p className="error">{error}</p>}
-    </div>
+      </Button>
+      {error && <ErrorText>{error}</ErrorText>}
+    </Card>
   );
 }

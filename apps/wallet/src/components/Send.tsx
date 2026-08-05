@@ -5,6 +5,7 @@ import type { BunkerConnection } from '@/lib/connection';
 import { signTransfer, isValidAddress, type Keypair } from '@/lib/keys';
 import { formatUnits, parseBunker } from '@/lib/format';
 import type { PendingTx } from '@/lib/pending';
+import { Button, Card, Divider, ErrorText, Hint, Input, Label } from '@/components/ui';
 
 interface SendProps {
   conn: BunkerConnection;
@@ -70,10 +71,9 @@ export default function Send({ conn, keypair, balance, onSubmitted }: SendProps)
   };
 
   return (
-    <div className="card">
-      <h2>Send</h2>
-      <label>Recipient address</label>
-      <input
+    <Card title="Send">
+      <Label>Recipient address</Label>
+      <Input
         value={to}
         placeholder="base58 address"
         autoCapitalize="none"
@@ -84,8 +84,8 @@ export default function Send({ conn, keypair, balance, onSubmitted }: SendProps)
           setError('');
         }}
       />
-      <label>Amount (BUNKER)</label>
-      <input
+      <Label>Amount (BUNKER)</Label>
+      <Input
         value={amount}
         placeholder="0.25"
         inputMode="decimal"
@@ -94,12 +94,12 @@ export default function Send({ conn, keypair, balance, onSubmitted }: SendProps)
           setError('');
         }}
       />
-      {fee !== null && <p className="hint">Network fee: {formatUnits(fee)} BUNKER</p>}
-      {error && <p className="error">{error}</p>}
-      <hr className="divider" />
-      <button className="btn-primary" disabled={busy || !to || !amount} onClick={submit}>
+      {fee !== null && <Hint>Network fee: {formatUnits(fee)} BUNKER</Hint>}
+      {error && <ErrorText>{error}</ErrorText>}
+      <Divider />
+      <Button disabled={busy || !to || !amount} onClick={submit}>
         {busy ? 'Signing & sending…' : 'Send'}
-      </button>
-    </div>
+      </Button>
+    </Card>
   );
 }

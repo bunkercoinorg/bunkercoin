@@ -5,6 +5,7 @@ import { keypairFromMnemonic, type Keypair } from '@/lib/keys';
 import { encryptMnemonic, saveKeystore } from '@/lib/keystore';
 import { useElapsed } from '@/hooks/useElapsed';
 import KdfProgress from '@/components/KdfProgress';
+import { Button, Card, Divider, ErrorText, Input, Label } from '@/components/ui';
 
 const MIN_PASSWORD = 8;
 
@@ -43,33 +44,31 @@ export default function SetPassword({ mnemonic, onUnlocked }: SetPasswordProps) 
   };
 
   return (
-    <div className="card">
-      <h2>Choose a password</h2>
-      <p className="sub">
-        It encrypts your recovery phrase on this device. You will need it every time you open the
-        wallet — it cannot be reset, only re-created from the 24 words.
-      </p>
-      <label>Password</label>
-      <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} />
-      <label>Repeat password</label>
-      <input
+    <Card
+      title="Choose a password"
+      sub="It encrypts your recovery phrase on this device. You will need it every time you open the wallet — it cannot be reset, only re-created from the 24 words."
+    >
+      <Label>Password</Label>
+      <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} />
+      <Label>Repeat password</Label>
+      <Input
         type="password"
         value={confirm}
         onChange={(e) => setConfirm(e.target.value)}
         disabled={busy}
         onKeyDown={(e) => e.key === 'Enter' && !busy && submit()}
       />
-      {error && <p className="error">{error}</p>}
+      {error && <ErrorText>{error}</ErrorText>}
       {busy ? (
         <KdfProgress label="Encrypting your recovery phrase" elapsed={elapsed} />
       ) : (
         <>
-          <hr className="divider" />
-          <button className="btn-primary" disabled={!password || !confirm} onClick={submit}>
+          <Divider />
+          <Button disabled={!password || !confirm} onClick={submit}>
             Encrypt and finish
-          </button>
+          </Button>
         </>
       )}
-    </div>
+    </Card>
   );
 }

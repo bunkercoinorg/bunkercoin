@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { Button, Card, Divider, ErrorText, Input, Label, Row } from '@/components/ui';
 
 interface ConfirmWordsProps {
   mnemonic: string;
@@ -29,13 +30,11 @@ export default function ConfirmWords({ mnemonic, onBack, onNext }: ConfirmWordsP
   };
 
   return (
-    <div className="card">
-      <h2>Confirm your phrase</h2>
-      <p className="sub">Enter the requested words from your notes.</p>
+    <Card title="Confirm your phrase" sub="Enter the requested words from your notes.">
       {positions.map((p, i) => (
         <div key={p}>
-          <label>Word #{p + 1}</label>
-          <input
+          <Label>Word #{p + 1}</Label>
+          <Input
             value={answers[i]}
             autoCapitalize="none"
             autoCorrect="off"
@@ -48,16 +47,16 @@ export default function ConfirmWords({ mnemonic, onBack, onNext }: ConfirmWordsP
           />
         </div>
       ))}
-      {error && <p className="error">{error}</p>}
-      <hr className="divider" />
-      <div className="row">
-        <button className="btn-ghost" onClick={onBack}>
+      {error && <ErrorText>{error}</ErrorText>}
+      <Divider />
+      <Row>
+        <Button variant="ghost" onClick={onBack}>
           Show phrase again
-        </button>
-        <button className="btn-primary" disabled={answers.some((a) => !a.trim())} onClick={check}>
+        </Button>
+        <Button disabled={answers.some((a) => !a.trim())} onClick={check}>
           Continue
-        </button>
-      </div>
-    </div>
+        </Button>
+      </Row>
+    </Card>
   );
 }

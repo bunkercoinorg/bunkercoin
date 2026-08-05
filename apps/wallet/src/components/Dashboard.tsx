@@ -10,6 +10,7 @@ import Send from '@/components/Send';
 import Activity from '@/components/Activity';
 import RecoveryPhrase from '@/components/RecoveryPhrase';
 import DangerZone from '@/components/DangerZone';
+import { Button } from '@/components/ui';
 
 const BALANCE_POLL_MS = 20_000;
 
@@ -84,15 +85,18 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }: Dashboar
 
   return (
     <>
-      <div className="topbar">
-        <span className="telemetry" title={slot === null ? undefined : `chain slot ${slot}`}>
-          <span className="dot" />
+      <div className="mb-3.5 flex items-center gap-2">
+        <span
+          className="flex items-center gap-[7px] font-mono text-[11px] tracking-[0.12em] uppercase text-muted"
+          title={slot === null ? undefined : `chain slot ${slot}`}
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-accent shadow-[0_0_8px_rgba(0,255,178,0.22)]" />
           {slot === null ? 'connecting…' : 'live'}
         </span>
-        <span className="spacer" />
-        <button className="btn-ghost btn-small" onClick={onLock}>
+        <span className="flex-1" />
+        <Button variant="ghost" small onClick={onLock}>
           Lock
-        </button>
+        </Button>
       </div>
 
       <BalanceCard address={keypair.address} balance={balance} tokens={tokens} />
