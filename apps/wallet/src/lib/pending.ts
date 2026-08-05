@@ -1,5 +1,4 @@
-// Pending transactions survive reloads: radio finality takes minutes, and the
-// user will close the tab before it lands.
+// Persisted because radio finality takes minutes — the tab closes before it lands.
 const STORAGE_KEY = 'bunkercoin.pending.v1';
 
 export interface PendingTx {

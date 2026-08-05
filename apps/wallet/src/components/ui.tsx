@@ -96,7 +96,6 @@ export function Hint({ children }: { children: ReactNode }) {
   return <p className="mt-2 text-[12.5px] text-faint">{children}</p>;
 }
 
-/** Two equal-width controls side by side. */
 export function Row({ children }: { children: ReactNode }) {
   return <div className="flex gap-2.5 *:flex-1">{children}</div>;
 }
@@ -109,7 +108,6 @@ export function Warn({ children }: { children: ReactNode }) {
   );
 }
 
-/** 24-word recovery phrase grid. */
 export function WordGrid({ words }: { words: string[] }) {
   return (
     <div className="my-4 grid grid-cols-3 gap-2 max-[480px]:grid-cols-2">

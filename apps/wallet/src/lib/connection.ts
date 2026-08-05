@@ -134,10 +134,7 @@ export class BunkerConnection {
     return value?.[0] ?? null;
   }
 
-  /**
-   * Polls patiently until finalized. onStatus fires on every poll so the UI
-   * can show elapsed time instead of a dead spinner.
-   */
+  /** Polls until finalized; onStatus fires each poll so the UI can show progress. */
   async confirm(
     txId: string,
     { pollMs = CONFIRM_POLL_MS, timeoutMs = CONFIRM_TIMEOUT_MS, onStatus, signal }: ConfirmOptions = {},

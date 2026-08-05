@@ -16,9 +16,7 @@ export interface KeystoreRecord {
   ciphertext: string;
 }
 
-// Tuned so derivation costs 2-3s on desktop hardware: brute-forcing a stolen
-// keystore has to pay this per guess. Parameters are stored per-record so
-// existing wallets keep working if these defaults change.
+// ~2-3s per guess by design; params live in each record so defaults can change safely.
 export const KDF_DEFAULTS: KdfParams = {
   iterations: 14,
   memorySizeKiB: 256 * 1024,

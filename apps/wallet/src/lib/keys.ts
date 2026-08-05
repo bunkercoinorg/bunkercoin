@@ -90,8 +90,7 @@ interface TransferHashInput {
   amount: number | bigint;
 }
 
-// Mirrors Transaction::signing_hash in crates/core/src/transaction.rs. The byte
-// layout is consensus-critical: any drift produces silently invalid signatures.
+// Mirrors Transaction::signing_hash byte-for-byte — any drift = silently invalid signatures.
 export function transferSigningHash({ sender, nonce, fee, to, amount }: TransferHashInput): Uint8Array {
   return sha256(new Uint8Array([...sender, ...u64le(nonce), ...u64le(fee), 0x00, ...to, ...u64le(amount)]));
 }
