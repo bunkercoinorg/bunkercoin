@@ -11,6 +11,14 @@ import { Button, Card } from '@/components/ui';
 const ROW =
   'flex cursor-pointer items-center justify-between border-t border-line py-3 text-sm ' +
   'hover:bg-[linear-gradient(90deg,transparent,rgba(0,255,178,0.08)_50%,transparent)]';
+function pendingLabel(p: PendingTx): string {
+  if (p.kind === 'faucet') return 'Faucet';
+  if (p.kind === 'mint') return `Create ${p.ticker} · ${p.amount.toLocaleString()} supply`;
+  if (p.kind === 'token-send')
+    return `Send ${p.amount.toLocaleString()} ${p.ticker} → ${shortAddress(p.to ?? '')}`;
+  return `Send ${formatUnits(p.amount)} → ${shortAddress(p.to ?? '')}`;
+}
+
 const PILL = 'rounded-full px-2 py-[3px] font-mono text-[11px] tracking-[0.04em] whitespace-nowrap';
 
 interface ActivityProps {
@@ -34,7 +42,7 @@ export default function Activity({ address, pending, history, onDismiss }: Activ
         <div key={p.txId}>
           <div className={ROW} onClick={() => setExpanded(expanded === p.txId ? null : p.txId)}>
             <span>
-              {p.kind === 'faucet' ? 'Faucet' : `Send ${formatUnits(p.amount)} → ${shortAddress(p.to ?? '')}`}
+              {pendingLabel(p)}
               <span className="ml-2 text-[12.5px] text-faint">{elapsedLabel(p.at)}</span>
             </span>
             {p.failed ? (
@@ -61,7 +69,10 @@ export default function Activity({ address, pending, history, onDismiss }: Activ
               rows={[
                 ['Transaction id', p.txId],
                 p.to ? ['To', p.to] : null,
-                ['Amount', `${formatUnits(p.amount)} BUNKER`],
+                [
+                  'Amount',
+                  p.ticker ? `${p.amount.toLocaleString()} ${p.ticker}` : `${formatUnits(p.amount)} BUNKER`,
+                ],
                 ['Submitted', new Date(p.at).toLocaleString()],
                 p.failed ? ['Error', p.failed] : null,
               ]}

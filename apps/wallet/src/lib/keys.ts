@@ -12,6 +12,9 @@ export interface Keypair {
   address: string;
 }
 
+export const MIN_TICKER_LEN = 3;
+export const MAX_TICKER_LEN = 8;
+
 export interface SignedTransaction {
   sender: string;
   nonce: number;
@@ -19,7 +22,8 @@ export interface SignedTransaction {
   signature: string;
   body:
     | { Transfer: { to: string; amount: number } }
-    | { TokenTransfer: { to: string; token_id: number[]; amount: number } };
+    | { TokenTransfer: { to: string; token_id: number[]; amount: number } }
+    | { Mint: { ticker: string; max_supply: number; metadata_hash: string } };
 }
 
 export function createMnemonic(): string {
@@ -108,6 +112,92 @@ export function tokenTransferSigningHash({
   return sha256(
     new Uint8Array([...sender, ...u64le(nonce), ...u64le(fee), 0x01, ...to, ...tokenId, ...u64le(amount)]),
   );
+}
+
+const u32le = (value: number): Uint8Array => {
+  const bytes = new Uint8Array(4);
+  new DataView(bytes.buffer).setUint32(0, value, true);
+  return bytes;
+};
+
+// Mint layout: sender ‖ nonce ‖ fee ‖ 0x02 ‖ ticker_len(4 LE) ‖ ticker ‖ max_supply ‖ metadata_hash(32).
+export function mintSigningHash({
+  sender,
+  nonce,
+  fee,
+  ticker,
+  maxSupply,
+  metadataHash,
+}: {
+  sender: Uint8Array;
+  nonce: number | bigint;
+  fee: number | bigint;
+  ticker: string;
+  maxSupply: number | bigint;
+  metadataHash: Uint8Array;
+}): Uint8Array {
+  if (metadataHash.length !== 32) throw new Error('metadataHash must be 32 bytes');
+  const encoded = new TextEncoder().encode(ticker);
+  return sha256(
+    new Uint8Array([
+      ...sender,
+      ...u64le(nonce),
+      ...u64le(fee),
+      0x02,
+      ...u32le(encoded.length),
+      ...encoded,
+      ...u64le(maxSupply),
+      ...metadataHash,
+    ]),
+  );
+}
+
+/** SHA-256 of the off-chain metadata JSON the chain commits to. */
+export function metadataHash(metadata: unknown): Uint8Array {
+  return sha256(new TextEncoder().encode(JSON.stringify(metadata)));
+}
+
+export function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+export function isValidTicker(ticker: string): boolean {
+  return /^[A-Z0-9]{3,8}$/.test(ticker);
+}
+
+export function signMint({
+  privateKey,
+  publicKey,
+  ticker,
+  maxSupply,
+  metadataHash: hash,
+  nonce,
+  fee,
+}: {
+  privateKey: Uint8Array;
+  publicKey: Uint8Array;
+  ticker: string;
+  maxSupply: number;
+  metadataHash: Uint8Array;
+  nonce: number;
+  fee: number;
+}): SignedTransaction {
+  const digest = mintSigningHash({
+    sender: publicKey,
+    nonce,
+    fee,
+    ticker,
+    maxSupply,
+    metadataHash: hash,
+  });
+  return {
+    sender: bs58.encode(publicKey),
+    nonce,
+    fee,
+    signature: bs58.encode(ed25519.sign(digest, privateKey)),
+    // The node's REST layer decodes metadata_hash from hex, not a byte array.
+    body: { Mint: { ticker, max_supply: maxSupply, metadata_hash: toHex(hash) } },
+  };
 }
 
 export function signTransfer({
