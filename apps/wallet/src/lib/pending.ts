@@ -3,10 +3,11 @@ const STORAGE_KEY = 'bunkercoin.pending.v1';
 
 export interface PendingTx {
   txId: string;
-  kind: 'faucet' | 'send';
+  kind: 'faucet' | 'send' | 'mint' | 'token-send';
   amount: number;
   at: number;
   to?: string;
+  ticker?: string;
   failed?: string;
 }
 

@@ -12,6 +12,11 @@ import {
   transferSigningHash,
   tokenTransferSigningHash,
   signTransfer,
+  signMint,
+  signTokenTransfer,
+  mintSigningHash,
+  metadataHash,
+  isValidTicker,
 } from '../src/lib/keys.ts';
 
 test('generated mnemonic has 24 words and round-trips to a stable address', () => {
@@ -149,4 +154,96 @@ test('a signature does not verify against a tampered amount', () => {
     amount: 999999,
   });
   assert.equal(ed25519.verify(bs58.decode(tx.signature), tamperedHash, publicKey), false);
+});
+
+test('mint signing hash matches the node byte layout', async () => {
+  // sender=1s, nonce=0, fee=100, ticker="BNK", supply=1e6, metadata=0s — layout:
+  // sender ‖ nonce_le ‖ fee_le ‖ 0x02 ‖ ticker_len_le(4) ‖ ticker ‖ supply_le ‖ hash(32)
+  const sender = new Uint8Array(32).fill(1);
+  const metadata = new Uint8Array(32);
+  const hash = mintSigningHash({ sender, nonce: 0, fee: 100, ticker: 'BNK', maxSupply: 1_000_000, metadataHash: metadata });
+
+  const expected = new Uint8Array([
+    ...sender,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    100, 0, 0, 0, 0, 0, 0, 0,
+    0x02,
+    3, 0, 0, 0,
+    66, 78, 75,
+    64, 66, 15, 0, 0, 0, 0, 0,
+    ...metadata,
+  ]);
+  const { createHash } = await import('node:crypto');
+  assert.deepEqual(Buffer.from(hash), createHash('sha256').update(expected).digest());
+});
+
+test('mint hash changes with ticker, supply, and metadata', () => {
+  const base = {
+    sender: new Uint8Array(32).fill(1),
+    nonce: 0,
+    fee: 100,
+    ticker: 'BNK',
+    maxSupply: 1_000_000,
+    metadataHash: new Uint8Array(32),
+  };
+  const h = (o: Partial<typeof base>) => Buffer.from(mintSigningHash({ ...base, ...o })).toString('hex');
+  const original = h({});
+  assert.notEqual(h({ ticker: 'BNKX' }), original);
+  assert.notEqual(h({ maxSupply: 1_000_001 }), original);
+  assert.notEqual(h({ metadataHash: new Uint8Array(32).fill(9) }), original);
+  assert.notEqual(h({ nonce: 1 }), original, 'nonce must affect the hash');
+});
+
+test('ticker length prefix prevents a concatenation collision', () => {
+  // Without the length prefix, ("AB","C…") and ("ABC","…") would hash alike.
+  const base = { sender: new Uint8Array(32), nonce: 0, fee: 0, maxSupply: 1, metadataHash: new Uint8Array(32) };
+  assert.notEqual(
+    Buffer.from(mintSigningHash({ ...base, ticker: 'ABC' })).toString('hex'),
+    Buffer.from(mintSigningHash({ ...base, ticker: 'ABCD' })).toString('hex'),
+  );
+});
+
+test('signed mint verifies and carries a hex metadata hash', () => {
+  const { privateKey, publicKey, address } = keypairFromMnemonic(createMnemonic());
+  const hash = metadataHash({ name: 'Bunker Token', description: 'demo' });
+  const tx = signMint({ privateKey, publicKey, ticker: 'BNKR', maxSupply: 500, metadataHash: hash, nonce: 0, fee: 100 });
+
+  assert.equal(tx.sender, address);
+  assert.ok('Mint' in tx.body);
+  assert.equal(tx.body.Mint.ticker, 'BNKR');
+  assert.match(tx.body.Mint.metadata_hash, /^[0-9a-f]{64}$/, 'node decodes metadata_hash from hex');
+  const digest = mintSigningHash({ sender: publicKey, nonce: 0, fee: 100, ticker: 'BNKR', maxSupply: 500, metadataHash: hash });
+  assert.ok(ed25519.verify(bs58.decode(tx.signature), digest, publicKey));
+});
+
+test('metadata hash is stable and content-dependent', () => {
+  const a = metadataHash({ name: 'A', description: 'x' });
+  assert.deepEqual(a, metadataHash({ name: 'A', description: 'x' }));
+  assert.notDeepEqual(a, metadataHash({ name: 'B', description: 'x' }));
+});
+
+test('ticker validation matches the chain rules', () => {
+  assert.ok(isValidTicker('BNK'));
+  assert.ok(isValidTicker('BUNKER12'));
+  assert.equal(isValidTicker('BN'), false, 'min 3 chars');
+  assert.equal(isValidTicker('BUNKERCOIN'), false, 'max 8 chars');
+  assert.equal(isValidTicker('bnk'), false, 'uppercase only');
+  assert.equal(isValidTicker('BN K'), false, 'no spaces');
+});
+
+test('token transfer sends token_id as hex, as the node decodes it', () => {
+  // decode_token_id() in the rpc crate does hex::decode — a byte array 422s.
+  const { privateKey, publicKey } = keypairFromMnemonic(createMnemonic());
+  const to = keypairFromMnemonic(createMnemonic()).address;
+  const tx = signTokenTransfer({
+    privateKey,
+    publicKey,
+    to,
+    tokenId: Uint8Array.from([2, 0, 0, 0]),
+    amount: 100,
+    nonce: 0,
+    fee: 100,
+  });
+  assert.ok('TokenTransfer' in tx.body);
+  assert.equal(tx.body.TokenTransfer.token_id, '02000000');
 });

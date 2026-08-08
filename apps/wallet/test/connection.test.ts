@@ -90,3 +90,19 @@ test('confirm times out with a non-fatal message', async () => {
   const { conn } = mockConnection(() => ({ context: { slot: 1 }, value: [null] }));
   await assert.rejects(conn.confirm('id', { pollMs: 1, timeoutMs: 10 }), /may still finalize/);
 });
+
+test('getTokenBalances unwraps the node {value:{pubkey,tokens}} shape', async () => {
+  // The real node nests balances under value.tokens, not value itself.
+  const { conn } = mockConnection(() => ({
+    context: { slot: 1 },
+    value: { pubkey: 'addr', tokens: [{ ticker: 'BNKTEST', balance: 1_000_000 }] },
+  }));
+  const tokens = await conn.getTokenBalances('addr');
+  assert.ok(Array.isArray(tokens), 'must always return an array');
+  assert.equal(tokens[0]?.ticker, 'BNKTEST');
+});
+
+test('getTokenBalances returns an array for accounts holding nothing', async () => {
+  const { conn } = mockConnection(() => ({ context: { slot: 1 }, value: null }));
+  assert.deepEqual(await conn.getTokenBalances('addr'), []);
+});

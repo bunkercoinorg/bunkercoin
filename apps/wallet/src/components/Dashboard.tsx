@@ -7,6 +7,7 @@ import { loadPending, addPending, removePending, type PendingTx } from '@/lib/pe
 import BalanceCard from '@/components/BalanceCard';
 import Faucet from '@/components/Faucet';
 import Send from '@/components/Send';
+import CreateToken from '@/components/CreateToken';
 import Activity from '@/components/Activity';
 import RecoveryPhrase from '@/components/RecoveryPhrase';
 import DangerZone from '@/components/DangerZone';
@@ -101,7 +102,8 @@ export default function Dashboard({ keypair, onLock, onWalletRemoved }: Dashboar
 
       <BalanceCard address={keypair.address} balance={balance} tokens={tokens} />
       <Faucet conn={conn} address={keypair.address} onSubmitted={submitted} />
-      <Send conn={conn} keypair={keypair} balance={balance} onSubmitted={submitted} />
+      <Send conn={conn} keypair={keypair} balance={balance} tokens={tokens} onSubmitted={submitted} />
+      <CreateToken conn={conn} keypair={keypair} balance={balance} onSubmitted={submitted} />
       <Activity
         address={keypair.address}
         pending={pending}

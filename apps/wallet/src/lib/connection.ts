@@ -13,10 +13,20 @@ export interface AccountInfo {
 
 export interface TokenBalance {
   ticker?: string;
-  tokenId?: number;
-  token_id?: number;
+  // The node emits 4-byte ids as hex ("01000000"); older shapes used a number.
+  tokenId?: string | number;
+  token_id?: string | number;
   amount?: number;
   balance?: number;
+}
+
+export interface TokenMeta {
+  id: string;
+  ticker: string;
+  current_supply: number;
+  max_supply: number;
+  metadata_hash: string;
+  creator: string;
 }
 
 export interface SignatureStatus {
@@ -94,13 +104,25 @@ export class BunkerConnection {
     return (await this.getAccountInfo(address))?.data?.nonce ?? 0;
   }
 
+  /** Node shape: {value: {pubkey, tokens: [...]}}; older/bare shapes tolerated. */
   async getTokenBalances(address: string): Promise<TokenBalance[]> {
-    const result = await this.rpc<RpcResponse<TokenBalance[]> | TokenBalance[] | null>(
-      'getTokenAccountsByOwner',
-      [address],
-    );
-    if (result && typeof result === 'object' && 'value' in result) return result.value ?? [];
-    return (result as TokenBalance[]) ?? [];
+    const result = await this.rpc<unknown>('getTokenAccountsByOwner', [address]);
+    const value =
+      result && typeof result === 'object' && 'value' in result
+        ? (result as { value: unknown }).value
+        : result;
+    if (Array.isArray(value)) return value as TokenBalance[];
+    if (value && typeof value === 'object' && Array.isArray((value as { tokens?: unknown }).tokens)) {
+      return (value as { tokens: TokenBalance[] }).tokens;
+    }
+    return [];
+  }
+
+  /** All tokens on the chain — used to catch ticker collisions before signing. */
+  async getTokens(): Promise<TokenMeta[]> {
+    const result = await this.rpc<{ tokens?: TokenMeta[] } | TokenMeta[]>('getTokens');
+    if (Array.isArray(result)) return result;
+    return result?.tokens ?? [];
   }
 
   async getFee(): Promise<number> {
