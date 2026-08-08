@@ -13,6 +13,7 @@ import {
   tokenTransferSigningHash,
   signTransfer,
   signMint,
+  signTokenTransfer,
   mintSigningHash,
   metadataHash,
   isValidTicker,
@@ -228,4 +229,21 @@ test('ticker validation matches the chain rules', () => {
   assert.equal(isValidTicker('BUNKERCOIN'), false, 'max 8 chars');
   assert.equal(isValidTicker('bnk'), false, 'uppercase only');
   assert.equal(isValidTicker('BN K'), false, 'no spaces');
+});
+
+test('token transfer sends token_id as hex, as the node decodes it', () => {
+  // decode_token_id() in the rpc crate does hex::decode — a byte array 422s.
+  const { privateKey, publicKey } = keypairFromMnemonic(createMnemonic());
+  const to = keypairFromMnemonic(createMnemonic()).address;
+  const tx = signTokenTransfer({
+    privateKey,
+    publicKey,
+    to,
+    tokenId: Uint8Array.from([2, 0, 0, 0]),
+    amount: 100,
+    nonce: 0,
+    fee: 100,
+  });
+  assert.ok('TokenTransfer' in tx.body);
+  assert.equal(tx.body.TokenTransfer.token_id, '02000000');
 });

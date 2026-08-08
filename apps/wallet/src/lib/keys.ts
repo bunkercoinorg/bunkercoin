@@ -22,7 +22,7 @@ export interface SignedTransaction {
   signature: string;
   body:
     | { Transfer: { to: string; amount: number } }
-    | { TokenTransfer: { to: string; token_id: number[]; amount: number } }
+    | { TokenTransfer: { to: string; token_id: string; amount: number } }
     | { Mint: { ticker: string; max_supply: number; metadata_hash: string } };
 }
 
@@ -252,8 +252,9 @@ export function signTokenTransfer({
     signature: bs58.encode(ed25519.sign(hash, privateKey)),
     body: {
       TokenTransfer: {
+        // The node's REST layer decodes token_id from hex, not a byte array.
         to: bs58.encode(recipient),
-        token_id: Array.from(tokenId),
+        token_id: toHex(tokenId),
         amount,
       },
     },
