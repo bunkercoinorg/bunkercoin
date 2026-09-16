@@ -7,7 +7,7 @@ const EU_COUNTRIES = new Set([
     "PL", "PT", "RO", "SK", "SI", "ES", "SE",
 ]);
 
-const GLOBAL_PATHS = ["/whitepaper"];
+const GLOBAL_PATHS = ["/whitepaper", "/view"];
 
 // blocks EU residents server-side using cloudflare's cf-ipcountry header
 export function middleware(request: NextRequest) {
