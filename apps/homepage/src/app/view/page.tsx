@@ -20,7 +20,7 @@ const pdfFiles: Record<string, PDFFile> = {
         title: 'Trade Register'
     },
     'technical-whitepaper': {
-        url: 'https://raw.githubusercontent.com/TheBunkerCoin/bunker_coin/docs/whitepaper/bunker_coin.pdf',
+        url: 'https://raw.githubusercontent.com/TheBunkerCoin/bunker_coin/main/bunker_coin.pdf',
         title: 'BunkerCoin Technical Whitepaper'
     },
 }
