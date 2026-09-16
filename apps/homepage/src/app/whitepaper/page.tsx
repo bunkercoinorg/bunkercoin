@@ -13,8 +13,8 @@ interface PDFFile {
 }
 
 const selectedPDF: PDFFile = {
-    url: 'https://assets.bunkercoin.com/docs/whitepaper-1.0.pdf',
-    title: 'BunkerCoin Whitepaper'
+    url: 'https://raw.githubusercontent.com/TheBunkerCoin/bunker_coin/main/bunker_coin.pdf',
+    title: 'BunkerCoin Technical Whitepaper'
 }
 
 const PDFViewContent = () => {
