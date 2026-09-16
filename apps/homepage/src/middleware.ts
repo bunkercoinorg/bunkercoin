@@ -7,14 +7,22 @@ const EU_COUNTRIES = new Set([
     "PL", "PT", "RO", "SK", "SI", "ES", "SE",
 ]);
 
+const GLOBAL_PATHS = ["/whitepaper"];
+
 // blocks EU residents server-side using cloudflare's cf-ipcountry header
 export function middleware(request: NextRequest) {
+    const { pathname } = request.nextUrl;
     const country = request.headers.get("cf-ipcountry");
 
+    const isGlobal = GLOBAL_PATHS.some(
+        (path) => pathname === path || pathname.startsWith(`${path}/`),
+    );
+
     if (
+        !isGlobal &&
         country &&
         EU_COUNTRIES.has(country) &&
-        !request.nextUrl.pathname.startsWith("/blocked")
+        !pathname.startsWith("/blocked")
     ) {
         const url = request.nextUrl.clone();
         url.pathname = "/blocked";
