@@ -93,9 +93,14 @@ export interface AccountHistory {
   transactions: ChainTransaction[];
   /** Network transactions examined to find them. */
   scanned: number;
-  /** False when older wallet activity may exist beyond what was scanned. */
-  complete: boolean;
+  /**
+   * 'exhausted': the whole list was scanned. 'enough': `want` matches were found, older ones may exist.
+   * 'scan-limit': the page budget ran out first, so older wallet activity may be missing.
+   */
+  end: HistoryEnd;
 }
+
+export type HistoryEnd = 'exhausted' | 'enough' | 'scan-limit';
 
 export interface RequestOptions {
   signal?: AbortSignal;
@@ -196,6 +201,15 @@ function decodeTransaction(method: string, v: Json): ChainTransaction {
 function errText(err: Json): string {
   if (isObject(err) && typeof err.message === 'string') return err.message;
   return stringifyJson(err);
+}
+
+/** A status without an explicit outcome is malformed, never a success. */
+function statusErr(method: string, status: Obj): Json {
+  if ('err' in status) return status.err;
+  const outcome = status.status;
+  if (isObject(outcome) && 'Ok' in outcome) return null;
+  if (isObject(outcome) && 'Err' in outcome && outcome.Err !== null) return outcome.Err;
+  throw bad(method, 'status outcome');
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -345,10 +359,10 @@ export class BunkerConnection {
       const txs = await this.getTransactions(HISTORY_PAGE, page * HISTORY_PAGE, opts);
       scanned += txs.length;
       found.push(...txs.filter((t) => touchesAccount(t, addressHex)));
-      if (found.length >= want) return { transactions: found.slice(0, want), scanned, complete: true };
-      if (txs.length < HISTORY_PAGE) return { transactions: found, scanned, complete: true };
+      if (found.length >= want) return { transactions: found.slice(0, want), scanned, end: 'enough' };
+      if (txs.length < HISTORY_PAGE) return { transactions: found, scanned, end: 'exhausted' };
     }
-    return { transactions: found, scanned, complete: false };
+    return { transactions: found, scanned, end: 'scan-limit' };
   }
 
   /** tx object -> base58 id. Node accepts base64-encoded JSON. */
@@ -370,7 +384,7 @@ export class BunkerConnection {
       const status = obj(m, s, 'status');
       const level = status.confirmationStatus;
       if (level !== 'processed' && level !== 'finalized') throw bad(m, 'confirmation status');
-      return { confirmationStatus: level, err: status.err ?? null };
+      return { confirmationStatus: level, err: statusErr(m, status) };
     });
   }
 

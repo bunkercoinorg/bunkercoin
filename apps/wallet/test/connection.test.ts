@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BunkerConnection, MAX_FEE_UNITS, RpcError } from '../src/lib/connection.ts';
+import { BunkerConnection, ConfirmTimeoutError, MAX_FEE_UNITS, RpcError } from '../src/lib/connection.ts';
 import { parseJson, stringifyJson } from '../src/lib/json.ts';
 
 interface RpcCall {
@@ -205,5 +205,42 @@ test('account history pages past unrelated traffic', async () => {
   assert.equal(calls.length, 3);
   assert.equal(history.transactions.length, 3);
   assert.equal(history.scanned, 600);
-  assert.equal(history.complete, false);
+  assert.equal(history.end, 'scan-limit');
+});
+
+test('account history tells enough results apart from an exhausted list', async () => {
+  const me = 'dd'.repeat(32);
+  const { conn } = mockConnection((_m, params) => {
+    const offset = Number(params[1]);
+    const size = offset === 0 ? 200 : 50;
+    return {
+      transactions: Array.from({ length: size }, (_, i) =>
+        tx({ hash: (offset + i).toString(16).padStart(64, '0'), sender: i % 20 === 0 ? me : 'cc'.repeat(32) }),
+      ),
+    };
+  });
+  assert.equal((await conn.getAccountHistory(me, { want: 10 })).end, 'enough');
+  const all = await conn.getAccountHistory(me, { want: 100 });
+  assert.equal(all.end, 'exhausted');
+  assert.equal(all.scanned, 250);
+});
+
+test('a finalized status without an explicit outcome is malformed, not a success', async () => {
+  const { conn } = mockConnection(() => ({ context: { slot: 1 }, value: [{ confirmationStatus: 'finalized' }] }));
+  await assert.rejects(conn.getSignatureStatus('id'), (e) => e instanceof RpcError && e.kind === 'protocol');
+  await assert.rejects(conn.confirm('id', { pollMs: 1, timeoutMs: 30 }), ConfirmTimeoutError);
+});
+
+test('the Solana status field counts as an explicit outcome', async () => {
+  const { conn } = mockConnection((_m, params) => ({
+    context: { slot: 1 },
+    value: (params[0] as string[]).map((id) =>
+      id === 'ok'
+        ? { confirmationStatus: 'finalized', status: { Ok: null } }
+        : { confirmationStatus: 'finalized', status: { Err: { message: 'nonce too low' } } },
+    ),
+  }));
+  const [ok, failed] = await conn.getSignatureStatuses(['ok', 'bad']);
+  assert.equal(ok?.err, null);
+  assert.deepEqual(failed?.err, { message: 'nonce too low' });
 });

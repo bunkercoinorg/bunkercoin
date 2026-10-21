@@ -35,7 +35,8 @@ export default function Activity({ addressHex, pending, history, tokens, trackin
   const [expanded, setExpanded] = useState<string | null>(null);
   const txs = history?.transactions ?? [];
 
-  if (pending.length === 0 && txs.length === 0) return null;
+  const truncated = history?.end === 'scan-limit';
+  if (pending.length === 0 && txs.length === 0 && !trackingLost && !truncated) return null;
 
   const tickers = new Map(tokens.map((t) => [t.tokenId, tokenLabel(t)]));
 
@@ -101,10 +102,10 @@ export default function Activity({ addressHex, pending, history, tokens, trackin
         />
       ))}
       {trackingLost && <Hint>Tracking could not be saved on this device; open transactions will not be followed after a reload.</Hint>}
-      {history && !history.complete && (
+      {history && truncated && (
         <Hint>
-          Showing your activity among the latest {history.scanned.toLocaleString('en-US')} network transactions; older
-          activity is not listed.
+          {txs.length === 0 ? 'No activity for this wallet' : 'Showing your activity'} among the latest{' '}
+          {history.scanned.toLocaleString('en-US')} network transactions; older activity is not listed.
         </Hint>
       )}
     </Card>
