@@ -1,18 +1,35 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Loader2, Search } from 'lucide-react';
 import { api } from '@/lib/api';
+import { routes } from '@/lib/routes';
+import type { SearchMatch } from '@/lib/types';
+
+function hrefFor(match: SearchMatch): string {
+  switch (match.kind) {
+    case 'transaction':
+      return routes.tx(match.id);
+    case 'account':
+      return routes.account(match.id);
+    case 'block':
+      return routes.block(match.id);
+    case 'token':
+      return routes.token(match.id);
+  }
+}
 
 // Universal explorer search: paste a transaction signature, account address,
-// block slot/hash, or token id and route to its detail page. The kind is
-// resolved by `api.search` (shape + existence probes against the node).
+// block slot/hash, or token id and route to its detail page. Candidates come
+// from the query's shape and are kept only if the node knows them.
 export default function SearchBar() {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [choices, setChoices] = useState<SearchMatch[]>([]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -20,24 +37,12 @@ export default function SearchBar() {
     if (!q || busy) return;
     setBusy(true);
     setError(null);
+    setChoices([]);
     try {
-      const { kind, id } = await api.search(q);
-      switch (kind) {
-        case 'transaction':
-          router.push(`/tx?sig=${encodeURIComponent(id)}`);
-          break;
-        case 'account':
-          router.push(`/account?address=${encodeURIComponent(id)}`);
-          break;
-        case 'block':
-          router.push(`/block?id=${encodeURIComponent(id)}`);
-          break;
-        case 'token':
-          router.push(`/token?id=${encodeURIComponent(id)}`);
-          break;
-        default:
-          setError('Not a recognizable transaction, account, block, or token.');
-      }
+      const matches = await api.search(q);
+      if (matches.length === 1) router.push(hrefFor(matches[0]));
+      else if (matches.length > 1) setChoices(matches);
+      else setError('Nothing on chain matches that transaction, account, block, or token.');
     } catch {
       setError('Search failed — the explorer API may be unreachable.');
     } finally {
@@ -46,10 +51,11 @@ export default function SearchBar() {
   }
 
   return (
-    <form onSubmit={submit} className="w-full">
+    <form onSubmit={submit} className="w-full" role="search">
       <div className="relative">
         <Search
           size={16}
+          aria-hidden
           className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
         />
         <input
@@ -57,7 +63,9 @@ export default function SearchBar() {
           onChange={(e) => {
             setQuery(e.target.value);
             if (error) setError(null);
+            if (choices.length) setChoices([]);
           }}
+          aria-label="Search by tx signature, address, block, or token"
           placeholder="Search by tx signature, address, block, or token"
           spellCheck={false}
           autoComplete="off"
@@ -76,6 +84,20 @@ export default function SearchBar() {
         </button>
       </div>
       {error ? <p className="text-xs text-red-400 mt-2 px-1">{error}</p> : null}
+      {choices.length ? (
+        <div className="mt-2 px-1 text-xs text-muted-foreground">
+          Matches more than one entity:
+          <ul className="mt-1 space-y-1">
+            {choices.map((m) => (
+              <li key={`${m.kind}:${m.id}`}>
+                <Link href={hrefFor(m)} className="font-mono text-emerald-500 hover:underline break-all">
+                  {m.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </form>
   );
 }

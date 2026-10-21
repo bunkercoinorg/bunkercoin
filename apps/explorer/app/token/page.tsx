@@ -1,76 +1,104 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import Header from '@/components/header';
-import { EntityPage, DetailRow, HashLink, NotFoundCard } from '@/components/explorer-ui';
+import { EntityPage, DetailRow, HashLink, NotFoundCard, ErrorCard, Loading } from '@/components/explorer-ui';
 import { useQueryParam } from '@/lib/use-query-param';
-import { api, hexToBase58 } from '@/lib/api';
-import { TokenSummary, TokenHolder } from '@/lib/types';
+import { useEntity } from '@/lib/use-entity';
+import { api, errorMessage, HOLDER_PAGE_SIZE } from '@/lib/api';
+import { toBase58 } from '@/lib/codec';
+import { formatInteger } from '@/lib/amount';
+import { routes } from '@/lib/routes';
+import type { TokenHolder } from '@/lib/types';
+
+interface MoreHolders {
+  key: string;
+  holders: TokenHolder[];
+  total: number | null;
+  loading: boolean;
+  error: string | null;
+}
 
 export default function TokenPage() {
   const id = useQueryParam('id');
-  const [token, setToken] = useState<TokenSummary | null>(null);
-  const [holders, setHolders] = useState<TokenHolder[]>([]);
-  const [loading, setLoading] = useState(true);
+  const token = useEntity(id, (key, signal) => api.getToken(key, { signal }));
+  const firstPage = useEntity(id, (key, signal) => api.getTokenHolders(key, 0, HOLDER_PAGE_SIZE, { signal }));
+  const [more, setMore] = useState<MoreHolders | null>(null);
 
-  useEffect(() => {
-    if (id === undefined) return;
-    if (!id) {
-      setLoading(false);
-      return;
+  const extra = more && more.key === id ? more : null;
+  // Offset pages can overlap when balances shift between requests.
+  const holders = [
+    ...new Map([...(firstPage.data?.holders ?? []), ...(extra?.holders ?? [])].map((h) => [h.pubkey, h])).values(),
+  ];
+  const total = extra?.total ?? firstPage.data?.total ?? 0;
+
+  const loadMore = async () => {
+    if (!id || extra?.loading) return;
+    const base = { key: id, holders: extra?.holders ?? [], total: extra?.total ?? null };
+    setMore({ ...base, loading: true, error: null });
+    try {
+      const page = await api.getTokenHolders(id, holders.length, HOLDER_PAGE_SIZE);
+      setMore((m) =>
+        m?.key === id
+          ? { ...base, holders: [...base.holders, ...(page?.holders ?? [])], total: page?.total ?? base.total, loading: false, error: null }
+          : m,
+      );
+    } catch (e) {
+      setMore((m) => (m?.key === id ? { ...base, loading: false, error: errorMessage(e) } : m));
     }
-    let live = true;
-    setLoading(true);
-    Promise.all([
-      api.getTokens().then((all) => all.find((t) => t.id.toLowerCase() === id.toLowerCase()) ?? null),
-      api.getTokenHolders(id).catch(() => []),
-    ])
-      .then(([t, h]) => {
-        if (!live) return;
-        setToken(t);
-        setHolders(h);
-      })
-      .finally(() => live && setLoading(false));
-    return () => {
-      live = false;
-    };
-  }, [id]);
+  };
+
+  const t = token.data;
 
   return (
     <>
       <Header />
       <EntityPage title="Token">
-        {loading || id === undefined ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 size={15} className="animate-spin" /> Loading…
-          </div>
-        ) : !token ? (
-          <NotFoundCard what="token" id={id} />
+        {token.status === 'loading' ? (
+          <Loading />
+        ) : token.status === 'error' ? (
+          <ErrorCard message={token.error ?? 'Could not load the token.'} onRetry={token.retry} />
+        ) : !t ? (
+          <NotFoundCard what="token" id={id ?? ''} />
         ) : (
           <div className="space-y-5">
             <div className="rounded-lg border border-border/60 bg-card px-5">
               <DetailRow label="Token ID">
-                <HashLink value={token.id} truncateTo={false} />
+                <HashLink value={t.id} truncateTo={false} />
               </DetailRow>
-              <DetailRow label="Ticker">{token.ticker}</DetailRow>
-              <DetailRow label="Supply">{token.current_supply.toLocaleString()}</DetailRow>
-              {token.max_supply !== undefined ? (
-                <DetailRow label="Max supply">{token.max_supply.toLocaleString()}</DetailRow>
+              <DetailRow label="Ticker">{t.ticker}</DetailRow>
+              <DetailRow label="Supply">{formatInteger(t.current_supply)}</DetailRow>
+              {t.max_supply !== undefined ? (
+                <DetailRow label="Max supply">{formatInteger(t.max_supply)}</DetailRow>
               ) : null}
             </div>
 
-            {holders.length > 0 ? (
+            {firstPage.status === 'error' ? (
+              <ErrorCard message={`Holders unavailable: ${firstPage.error}`} onRetry={firstPage.retry} />
+            ) : holders.length > 0 ? (
               <div className="rounded-lg border border-border/60 bg-card p-5">
-                <h3 className="text-sm font-medium mb-3">Holders ({holders.length})</h3>
+                <h3 className="text-sm font-medium mb-3">Holders ({total.toLocaleString('en-US')})</h3>
                 <div className="space-y-2">
                   {holders.map((h) => (
                     <div key={h.pubkey} className="flex items-center justify-between text-sm">
-                      <HashLink value={hexToBase58(h.pubkey)} href={`/account?address=${h.pubkey}`} />
-                      <span className="font-mono">{h.balance.toLocaleString()}</span>
+                      <HashLink value={toBase58(h.pubkey)} href={routes.account(h.pubkey)} />
+                      <span className="font-mono">{formatInteger(h.balance)}</span>
                     </div>
                   ))}
                 </div>
+                {holders.length < total ? (
+                  <button
+                    type="button"
+                    onClick={loadMore}
+                    disabled={extra?.loading}
+                    className="mt-4 inline-flex items-center gap-1.5 text-sm text-emerald-500 hover:text-emerald-400 disabled:opacity-50"
+                  >
+                    {extra?.loading ? <Loader2 size={13} className="animate-spin" /> : null}
+                    Load more holders ({holders.length} of {total.toLocaleString('en-US')})
+                  </button>
+                ) : null}
+                {extra?.error ? <p className="mt-2 text-xs text-red-400">{extra.error}</p> : null}
               </div>
             ) : null}
           </div>

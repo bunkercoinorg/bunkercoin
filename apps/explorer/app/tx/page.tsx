@@ -1,7 +1,5 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
 import Header from '@/components/header';
 import {
   EntityPage,
@@ -9,10 +7,22 @@ import {
   HashLink,
   StatusPill,
   NotFoundCard,
+  ErrorCard,
+  Loading,
 } from '@/components/explorer-ui';
 import { useQueryParam } from '@/lib/use-query-param';
-import { api, hexToBase58, formatBunker } from '@/lib/api';
+import { useEntity } from '@/lib/use-entity';
+import { api } from '@/lib/api';
+import { normalizeHash, normalizeTokenId, toBase58 } from '@/lib/codec';
+import { formatBunker, formatInteger } from '@/lib/amount';
+import { routes } from '@/lib/routes';
 import { TransactionDetails } from '@/lib/types';
+
+// Until final, keep refreshing; a missing tx may still be propagating over radio.
+const PENDING_POLL_MS = 5000;
+const NOT_FOUND_POLL_MS = 15_000;
+const pollUntilFinal = (tx: TransactionDetails | null) =>
+  tx === null ? NOT_FOUND_POLL_MS : tx.status.location !== 'finalized' ? PENDING_POLL_MS : null;
 
 function statusPill(status: TransactionDetails['status']) {
   if (status.location === 'finalized') {
@@ -26,42 +36,27 @@ function statusPill(status: TransactionDetails['status']) {
   return <StatusPill tone="pending">pending (mempool)</StatusPill>;
 }
 
+function AccountLink({ hex }: { hex: string }) {
+  return normalizeHash(hex) ? <HashLink value={toBase58(hex)} href={routes.account(hex)} /> : <HashLink value={hex} />;
+}
+
 export default function TransactionPage() {
   const sig = useQueryParam('sig');
-  const [tx, setTx] = useState<TransactionDetails | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (sig === undefined) return;
-    if (!sig) {
-      setLoading(false);
-      return;
-    }
-    let live = true;
-    setLoading(true);
-    api
-      .getTransaction(sig)
-      .then((r) => live && setTx(r))
-      .catch(() => live && setTx(null))
-      .finally(() => live && setLoading(false));
-    return () => {
-      live = false;
-    };
-  }, [sig]);
+  const { status, data: tx, error, retry } = useEntity(sig, (id, signal) => api.getTransaction(id, { signal }), pollUntilFinal);
 
   const body = tx?.body;
-  const isTransfer = body?.type === 'Transfer' || body?.to !== undefined;
+  const tokenId = body?.token_id && normalizeTokenId(body.token_id);
 
   return (
     <>
       <Header />
       <EntityPage title="Transaction">
-        {loading || sig === undefined ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 size={15} className="animate-spin" /> Loading…
-          </div>
+        {status === 'loading' ? (
+          <Loading />
+        ) : status === 'error' ? (
+          <ErrorCard message={error ?? 'Could not load the transaction.'} onRetry={retry} />
         ) : !tx ? (
-          <NotFoundCard what="transaction" id={sig} />
+          <NotFoundCard what="transaction" id={sig ?? ''} />
         ) : (
           <div className="rounded-lg border border-border/60 bg-card px-5">
             <DetailRow label="Signature">
@@ -75,35 +70,35 @@ export default function TransactionPage() {
             ) : null}
             {tx.status.slot !== undefined ? (
               <DetailRow label="Slot">
-                <HashLink value={String(tx.status.slot)} href={`/block?id=${tx.status.slot}`} truncateTo={false} />
+                <HashLink value={String(tx.status.slot)} href={routes.block(tx.status.slot)} truncateTo={false} />
               </DetailRow>
             ) : null}
             {tx.status.block_hash ? (
               <DetailRow label="Block">
-                <HashLink value={tx.status.block_hash} href={`/block?id=${tx.status.block_hash}`} />
+                <HashLink value={tx.status.block_hash} href={routes.block(tx.status.block_hash)} />
               </DetailRow>
             ) : null}
-            <DetailRow label="Type">{body?.type ?? (isTransfer ? 'Transfer' : 'Unknown')}</DetailRow>
+            <DetailRow label="Type">{body?.type ?? 'Unknown'}</DetailRow>
             <DetailRow label="From">
-              <HashLink value={hexToBase58(tx.sender)} href={`/account?address=${tx.sender}`} />
+              <AccountLink hex={tx.sender} />
             </DetailRow>
             {body?.to ? (
               <DetailRow label="To">
-                <HashLink value={hexToBase58(body.to)} href={`/account?address=${body.to}`} />
+                <AccountLink hex={body.to} />
               </DetailRow>
             ) : null}
             {body?.amount !== undefined ? (
               <DetailRow label="Amount">
-                {body.token_id ? `${body.amount.toLocaleString()} tokens` : `${formatBunker(body.amount)} BUNKER`}
+                {body.token_id ? `${formatInteger(body.amount)} tokens` : `${formatBunker(body.amount)} BUNKER`}
               </DetailRow>
             ) : null}
             {body?.token_id ? (
               <DetailRow label="Token">
-                <HashLink value={body.token_id} href={`/token?id=${body.token_id}`} truncateTo={false} />
+                <HashLink value={body.token_id} href={tokenId ? routes.token(tokenId) : undefined} truncateTo={false} />
               </DetailRow>
             ) : null}
             <DetailRow label="Fee">{formatBunker(tx.fee)} BUNKER</DetailRow>
-            <DetailRow label="Nonce">{tx.nonce}</DetailRow>
+            <DetailRow label="Nonce">{tx.nonce.toString()}</DetailRow>
           </div>
         )}
       </EntityPage>

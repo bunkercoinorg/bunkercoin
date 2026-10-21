@@ -1,61 +1,41 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
 import Header from '@/components/header';
-import { EntityPage, DetailRow, HashLink, NotFoundCard } from '@/components/explorer-ui';
+import { EntityPage, DetailRow, HashLink, NotFoundCard, ErrorCard, Loading } from '@/components/explorer-ui';
 import { useQueryParam } from '@/lib/use-query-param';
-import { api, hexToBase58, formatBunker } from '@/lib/api';
-import { AccountDetails } from '@/lib/types';
+import { useEntity } from '@/lib/use-entity';
+import { api } from '@/lib/api';
+import { toBase58 } from '@/lib/codec';
+import { formatBunker, formatInteger } from '@/lib/amount';
+import { routes } from '@/lib/routes';
 
 export default function AccountPage() {
   const address = useQueryParam('address');
-  const [account, setAccount] = useState<AccountDetails | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { status, data: account, error, retry } = useEntity(address, (id, signal) => api.getAccount(id, { signal }));
 
-  useEffect(() => {
-    if (address === undefined) return;
-    if (!address) {
-      setLoading(false);
-      return;
-    }
-    let live = true;
-    setLoading(true);
-    api
-      .getAccount(address)
-      .then((r) => live && setAccount(r))
-      .catch(() => live && setAccount(null))
-      .finally(() => live && setLoading(false));
-    return () => {
-      live = false;
-    };
-  }, [address]);
-
-  const tokens = account ? Object.entries(account.token_balances ?? {}) : [];
+  const tokens = account ? Object.entries(account.token_balances) : [];
 
   return (
     <>
       <Header />
       <EntityPage title="Account">
-        {loading || address === undefined ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 size={15} className="animate-spin" /> Loading…
-          </div>
+        {status === 'loading' ? (
+          <Loading />
+        ) : status === 'error' ? (
+          <ErrorCard message={error ?? 'Could not load the account.'} onRetry={retry} />
         ) : !account ? (
-          <NotFoundCard what="account" id={address} />
+          <NotFoundCard what="account" id={address ?? ''} />
         ) : (
           <div className="space-y-5">
             <div className="rounded-lg border border-border/60 bg-card px-5">
               <DetailRow label="Address">
-                <HashLink value={hexToBase58(account.pubkey ?? address)} truncateTo={false} />
+                <HashLink value={toBase58(account.pubkey)} truncateTo={false} />
               </DetailRow>
               <DetailRow label="Balance">
-                <span className="text-lg font-semibold">
-                  {formatBunker(account.native_balance)}
-                </span>{' '}
+                <span className="text-lg font-semibold">{formatBunker(account.native_balance)}</span>{' '}
                 <span className="text-muted-foreground text-sm">BUNKER</span>
               </DetailRow>
-              <DetailRow label="Nonce">{account.nonce}</DetailRow>
+              <DetailRow label="Nonce">{account.nonce.toString()}</DetailRow>
             </div>
 
             {tokens.length > 0 ? (
@@ -64,8 +44,8 @@ export default function AccountPage() {
                 <div className="space-y-2">
                   {tokens.map(([id, bal]) => (
                     <div key={id} className="flex items-center justify-between text-sm">
-                      <HashLink value={id} href={`/token?id=${id}`} truncateTo={false} />
-                      <span className="font-mono">{Number(bal).toLocaleString()}</span>
+                      <HashLink value={id} href={routes.token(id)} truncateTo={false} />
+                      <span className="font-mono">{formatInteger(bal)}</span>
                     </div>
                   ))}
                 </div>
