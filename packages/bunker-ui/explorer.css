@@ -1,11 +1,10 @@
 /* @bunkercoin/ui/explorer styles: tables, ledger, transmission strip. */
 .bc-hs { display: flex; width: 330px; }
-.bc-hs .bc-inp { height: 36px; font-size: 12.5px; flex: 1; min-width: 0; }
-.bc-hs .bc-btn { height: 36px; border-left: 0; }
+.bc-hs .bc-inp { height: var(--control-h); font-size: 12.5px; flex: 1; min-width: 0; }
+.bc-hs .bc-btn { height: var(--control-h); border-left: 0; }
 @media (max-width: 40rem) {
   .bc-hs { order: 10; width: 100%; margin: 0 0 12px; }
-  .bc-hs .bc-inp { height: var(--control-h); font-size: var(--t-input); }
-  .bc-hs .bc-btn { height: var(--control-h); }
+  .bc-hs .bc-inp { font-size: var(--t-input); }
 }
 
 .bc-tb { width: 100%; border-collapse: collapse; font: 400 13px/1.4 var(--mono); font-variant-numeric: tabular-nums; }
@@ -45,7 +44,6 @@
   .bc-ledger:not([data-row]) { display: grid; grid-template-columns: 1fr 1fr; column-gap: 16px; }
   .bc-ledger:not([data-row]) > div { grid-template-columns: 1fr; gap: 2px; }
   .bc-ledger[data-row] > div { padding: 10px 12px; }
-  .bc-ledger[data-row] dd .bc-tag { display: none; }
 }
 
 .bc-strip { border: 1px solid var(--line); }
@@ -57,10 +55,10 @@
 .bc-strip .bc-c-g { fill: none; stroke: var(--control); stroke-dasharray: 2 3; stroke-width: 1; }
 .bc-strip-b { position: relative; padding: 10px 16px 6px; }
 .bc-strip-ax { display: flex; justify-content: space-between; padding: 0 16px 10px; font: 400 11px/1 var(--mono); color: var(--dim); }
-.bc-lg { display: inline-flex; gap: 14px; font: 400 11px/1 var(--mono); color: var(--dim); }
+.bc-lg { display: inline-flex; flex-wrap: wrap; gap: 6px 14px; font: 400 11px/1 var(--mono); color: var(--dim); }
 .bc-lg i { display: inline-block; width: 8px; height: 8px; margin-right: 6px; vertical-align: -1px; }
 .bc-lg [data-k="a"] { background: var(--acc-fill); } .bc-lg [data-k="l"] { background: var(--dim); } .bc-lg [data-k="g"] { border: 1px dashed var(--control); }
-@media (max-width: 40rem) { .bc-strip .bc-lg { display: none; } }
+@media (max-width: 40rem) { .bc-strip .bc-pn-h { flex-wrap: wrap; row-gap: 6px; padding-block: 10px; } .bc-strip .bc-lg { order: 3; flex-basis: 100%; } }
 
 .bc-sums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line-soft); border: 1px solid var(--line); }
 .bc-sums > a { background: var(--bg); padding: 14px 16px; display: grid; gap: 4px; color: var(--fg); text-decoration: none; }
