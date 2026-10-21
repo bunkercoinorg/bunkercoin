@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
+    "start": "node scripts/serve.ts out",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "node --test 'test/*.test.ts'"
