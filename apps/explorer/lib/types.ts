@@ -23,6 +23,9 @@ export interface TransactionBody {
   to?: string;
   amount?: bigint;
   token_id?: string;
+  ticker?: string;
+  max_supply?: bigint;
+  metadata_hash?: string;
 }
 
 // Mirrors the node's `status.location`: mempool -> confirmed (in a block) -> finalized.
@@ -44,6 +47,13 @@ export interface TransactionDetails {
   status: TransactionStatus;
 }
 
+export interface TransactionPage {
+  transactions: TransactionDetails[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
 export interface AccountDetails {
   pubkey: string;
   native_balance: bigint;
@@ -56,6 +66,8 @@ export interface TokenSummary {
   ticker: string;
   current_supply: bigint;
   max_supply?: bigint;
+  creator?: string;
+  metadata_hash?: string;
 }
 
 export interface TokenHolder {
@@ -93,4 +105,9 @@ export interface SearchMatch {
   label: string;
   // An account the node knows nothing about yet: any valid key answers zeroed.
   inactive?: boolean;
+  // The probed record, so a result row can say what it is.
+  block?: Block;
+  token?: TokenSummary;
+  transaction?: TransactionDetails;
+  account?: AccountDetails;
 }

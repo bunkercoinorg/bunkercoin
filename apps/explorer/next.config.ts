@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
     unoptimized: true,
   },
   output: 'export',
+  transpilePackages: ['@bunkercoin/ui', '@bunkercoin/chain-format'],
 };
 
 export default nextConfig;

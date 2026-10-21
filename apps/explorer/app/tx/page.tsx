@@ -1,23 +1,17 @@
 'use client';
 
-import Header from '@/components/header';
-import {
-  EntityPage,
-  DetailRow,
-  HashLink,
-  StatusPill,
-  NotFoundCard,
-  ErrorCard,
-  Loading,
-  RefreshNotice,
-} from '@/components/explorer-ui';
+import { formatInteger, formatUnits, normalizeHash, normalizeTokenId, shortId, toBase58 } from '@bunkercoin/chain-format';
+import { BackLink, CopyValue, Disclosure, Facts, Link, Notice, StatusTag, type Fact } from '@bunkercoin/ui';
+import { Lifecycle } from '@bunkercoin/ui/explorer';
+import { slotLabel } from '@/components/blocks-table';
+import { DetailGate, RefreshState } from '@/components/detail';
 import { useQueryParam } from '@/lib/use-query-param';
-import { useEntity } from '@/lib/use-entity';
+import { useEntity, type EntityState } from '@/lib/use-entity';
 import { api } from '@/lib/api';
-import { normalizeHash, normalizeTokenId, toBase58 } from '@/lib/codec';
-import { formatBunker, formatInteger } from '@/lib/amount';
 import { routes } from '@/lib/routes';
-import { TransactionDetails } from '@/lib/types';
+import { tokenLabel } from '@/lib/token-label';
+import { TX_TYPES } from '@/lib/txs';
+import type { TransactionDetails } from '@/lib/types';
 
 // Until final, keep refreshing; a missing tx may still be propagating over radio.
 const PENDING_POLL_MS = 5000;
@@ -25,87 +19,106 @@ const NOT_FOUND_POLL_MS = 15_000;
 const pollUntilFinal = (tx: TransactionDetails | null) =>
   tx === null ? NOT_FOUND_POLL_MS : tx.status.location !== 'finalized' ? PENDING_POLL_MS : null;
 
-function statusPill(status: TransactionDetails['status']) {
-  if (status.location === 'finalized') {
-    return status.success === false ? (
-      <StatusPill tone="error">failed</StatusPill>
-    ) : (
-      <StatusPill tone="success">finalized</StatusPill>
-    );
-  }
-  if (status.location === 'confirmed') return <StatusPill tone="pending">confirmed</StatusPill>;
-  return <StatusPill tone="pending">pending (mempool)</StatusPill>;
+const LOCATIONS = ['mempool', 'confirmed', 'finalized'] as const;
+
+function AccountValue({ hex }: { hex: string }) {
+  if (!normalizeHash(hex)) return <span className="mono">{hex}</span>;
+  const b58 = toBase58(hex);
+  return <CopyValue value={b58} href={routes.account(hex)} label="address" />;
 }
 
-function AccountLink({ hex }: { hex: string }) {
-  return normalizeHash(hex) ? <HashLink value={toBase58(hex)} href={routes.account(hex)} /> : <HashLink value={hex} />;
+function execution(s: TransactionDetails['status']) {
+  if (s.success === true) return 'succeeded';
+  if (s.success === false) return 'failed';
+  return 'not reported';
+}
+
+function TxView({ tx, entity }: { tx: TransactionDetails; entity: EntityState<TransactionDetails> }) {
+  const body = tx.body;
+  const tokenId = body?.token_id ? normalizeTokenId(body.token_id) : null;
+  const token = useEntity(tokenId, (key, signal) => api.getToken(key, { signal }));
+  const id = normalizeHash(tx.hash) ? toBase58(tx.hash) : tx.hash;
+  const at = LOCATIONS.indexOf(tx.status.location);
+  const slot = tx.status.slot;
+
+  const amount =
+    body?.amount === undefined
+      ? null
+      : tokenId
+        ? (
+            <>
+              {formatInteger(body.amount)} {tokenLabel(tokenId, token.data)}{' '}
+              <span className="bc-s">
+                · <Link className="bc-lnk" href={routes.token(tokenId)}>{tokenId}</Link>
+              </span>
+            </>
+          )
+        : `${formatUnits(body.amount, 6)} BUNKER`;
+
+  const key: Fact[] = [
+    { label: 'type', value: body ? (TX_TYPES[body.type] ?? body.type) : 'not reported' },
+    ...(amount ? [{ label: 'amount', value: amount }] : []),
+    ...(!amount && tokenId ? [{ label: 'token', value: <Link className="bc-lnk" href={routes.token(tokenId)}>{tokenId}</Link> }] : []),
+    ...(body?.ticker !== undefined ? [{ label: 'ticker', value: body.ticker }] : []),
+    ...(body?.max_supply !== undefined ? [{ label: 'max supply', value: formatInteger(body.max_supply) }] : []),
+    ...(body?.metadata_hash ? [{ label: 'metadata hash', value: <CopyValue value={body.metadata_hash} label="metadata hash" /> }] : []),
+    { label: 'from', value: <AccountValue hex={tx.sender} /> },
+    ...(body?.to ? [{ label: 'to', value: <AccountValue hex={body.to} /> }] : []),
+  ];
+  const more: Fact[] = [
+    { label: 'execution', value: execution(tx.status) },
+    { label: 'fee', value: `${formatUnits(tx.fee, 6)} BUNKER` },
+    { label: 'nonce', value: tx.nonce.toString() },
+    ...(slot !== undefined ? [{ label: 'slot', value: <Link className="bc-lnk" href={routes.block(slot)}>{slotLabel(slot)}</Link> }] : []),
+    ...(tx.status.block_hash
+      ? [{ label: 'block', value: <Link className="bc-lnk" href={routes.block(tx.status.block_hash)}>{shortId(tx.status.block_hash)}</Link> }]
+      : []),
+  ];
+
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="bc-t1 m-0">Transaction.</h1>
+        <StatusTag status={tx.status.location} />
+        {tx.status.success === false && <StatusTag status="failed" />}
+        <RefreshState entity={entity} />
+      </div>
+      <CopyValue value={id} mode="full" label="transaction id" />
+      <Lifecycle
+        current={at}
+        steps={[
+          { label: 'mempool' },
+          { label: slot !== undefined ? `confirmed · slot ${slotLabel(slot)}` : 'confirmed' },
+          { label: 'finalized' },
+        ]}
+      />
+      {tx.status.success === false && (
+        <Notice tone="error" title="Execution failed.">
+          {tx.status.error && <span className="mono">{tx.status.error}</span>}
+        </Notice>
+      )}
+      <Facts columns={2} items={key} />
+      <Disclosure summary="details">
+        <Facts columns={3} items={more} />
+      </Disclosure>
+    </>
+  );
 }
 
 export default function TransactionPage() {
   const sig = useQueryParam('sig');
-  const { status, data: tx, error, refreshError, lastSuccess, retry } = useEntity(sig, (id, signal) => api.getTransaction(id, { signal }), pollUntilFinal);
-
-  const body = tx?.body;
-  const tokenId = body?.token_id && normalizeTokenId(body.token_id);
-
+  const entity = useEntity(sig, (id, signal) => api.getTransaction(id, { signal }), pollUntilFinal);
   return (
-    <>
-      <Header />
-      <EntityPage title="Transaction">
-        {status === 'loading' ? (
-          <Loading />
-        ) : status === 'error' ? (
-          <ErrorCard message={error ?? 'Could not load the transaction.'} onRetry={retry} />
-        ) : !tx ? (
-          <NotFoundCard what="transaction" id={sig ?? ''} />
-        ) : (
-          <>
-            <RefreshNotice error={refreshError} lastSuccess={lastSuccess} onRetry={retry} />
-            <div className="rounded-lg border border-border/60 bg-card px-5">
-              <DetailRow label="Signature">
-                <HashLink value={tx.hash} truncateTo={false} />
-              </DetailRow>
-              <DetailRow label="Status">{statusPill(tx.status)}</DetailRow>
-              {tx.status.error ? (
-                <DetailRow label="Error">
-                  <span className="text-red-400">{tx.status.error}</span>
-                </DetailRow>
-              ) : null}
-              {tx.status.slot !== undefined ? (
-                <DetailRow label="Slot">
-                  <HashLink value={String(tx.status.slot)} href={routes.block(tx.status.slot)} truncateTo={false} />
-                </DetailRow>
-              ) : null}
-              {tx.status.block_hash ? (
-                <DetailRow label="Block">
-                  <HashLink value={tx.status.block_hash} href={routes.block(tx.status.block_hash)} />
-                </DetailRow>
-              ) : null}
-              <DetailRow label="Type">{body?.type ?? 'Unknown'}</DetailRow>
-              <DetailRow label="From">
-                <AccountLink hex={tx.sender} />
-              </DetailRow>
-              {body?.to ? (
-                <DetailRow label="To">
-                  <AccountLink hex={body.to} />
-                </DetailRow>
-              ) : null}
-              {body?.amount !== undefined ? (
-                <DetailRow label="Amount">
-                  {body.token_id ? `${formatInteger(body.amount)} tokens` : `${formatBunker(body.amount)} BUNKER`}
-                </DetailRow>
-              ) : null}
-              {body?.token_id ? (
-                <DetailRow label="Token">
-                  <HashLink value={body.token_id} href={tokenId ? routes.token(tokenId) : undefined} truncateTo={false} />
-                </DetailRow>
-              ) : null}
-              <DetailRow label="Fee">{formatBunker(tx.fee)} BUNKER</DetailRow>
-              <DetailRow label="Nonce">{tx.nonce.toString()}</DetailRow>
-            </div>
-          </>
-        )}
-      </EntityPage>
-    </>
+    <DetailGate
+      entity={entity}
+      id={sig}
+      what="transaction"
+      back={<BackLink label="txs" href="/txs" />}
+      missing="Search for a transaction id."
+      unavailable="Transaction unavailable."
+      notFound={{ title: 'No transaction with this id.', message: 'It may still be arriving over radio. Checking every 15s.' }}
+    >
+      {(tx) => <TxView tx={tx} entity={entity} />}
+    </DetailGate>
   );
 }
