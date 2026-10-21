@@ -28,11 +28,10 @@ test('create token, then send it: only the token moves, BUNKER pays fees', async
   await issuer.expectBalance(UNITS_PER_BUNKER - 2 * FEE_UNITS);
   await expect(holder.tokenBalance(ticker)).toHaveText('100', { timeout: FINALITY_MS });
   await holder.expectBalance(0);
-  await issuer.expectFinalized(issuer.historyRow('Sent', '100 tokens'));
+  await issuer.expectFinalized(issuer.historyRow('Sent', `100 ${ticker}`));
 });
 
-// Activity renders a finalized Mint as "↑ Sent 0 to <own address>": HistoryRow only knows Transfer/TokenTransfer.
-test.fixme('activity labels a token creation as a mint, not a 0 BUNKER send', async ({ openWallet, rpc }) => {
+test('activity labels a token creation as a mint, not a 0 BUNKER send', async ({ openWallet, rpc }) => {
   const issuer = await openWallet();
   const { address } = await issuer.createWallet(PASSWORD);
   await rpc.fund(address, UNITS_PER_BUNKER);
@@ -41,6 +40,6 @@ test.fixme('activity labels a token creation as a mint, not a 0 BUNKER send', as
   await issuer.createToken(ticker, 10);
   await expect.poll(() => rpc.tokenAmount(address, ticker), { timeout: FINALITY_MS }).toBe(10);
   await expect(issuer.pendingRow(`Create ${ticker} · 10 supply`)).toHaveCount(0, { timeout: FINALITY_MS });
-  await expect(issuer.historyRow('Sent', '0')).toHaveCount(0);
-  await expect(issuer.card('Activity').getByText(ticker)).toBeVisible();
+  await issuer.expectFinalized(issuer.activityRow(`Created ${ticker} · 10 supply`));
+  await expect(issuer.historyRow('Sent', '0 BUNKER')).toHaveCount(0);
 });
