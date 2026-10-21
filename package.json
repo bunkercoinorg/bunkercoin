@@ -3,7 +3,8 @@
   "private": true,
   "packageManager": "bun@1.4.2",
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
     "dev:explorer": "bun run --filter @bunkercoin/explorer dev",
