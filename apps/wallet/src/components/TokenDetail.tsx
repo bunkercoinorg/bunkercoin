@@ -59,7 +59,7 @@ export default function TokenDetail({
     );
   }
 
-  if (step === 'done' && rejected !== null) return <Rejected title="Not updated." reason={rejected} onRetry={() => setStep('edit')} />;
+  if (step === 'done' && rejected !== null) return <Rejected title="Not updated." reason={rejected} onRetry={() => (setRejected(null), setStep('edit'))} />;
   if (step === 'done' && sent) {
     return (
       <Outcome
