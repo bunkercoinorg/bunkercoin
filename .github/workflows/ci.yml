@@ -3,10 +3,10 @@ name: CI
 on:
   push:
     branches: [main]
-    paths-ignore: ["apps/**", "package.json", "bun.lock"]
+    paths-ignore: ["apps/**", "ledger/**", "package.json", "bun.lock"]
   pull_request:
     branches: [main]
-    paths-ignore: ["apps/**", "package.json", "bun.lock"]
+    paths-ignore: ["apps/**", "ledger/**", "package.json", "bun.lock"]
 
 env:
   CARGO_TERM_COLOR: always

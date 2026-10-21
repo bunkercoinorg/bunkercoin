@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths-ignore:
       - "apps/**"
+      - "ledger/**"
       - "packages/**"
       - "package.json"
       - "bun.lock"
@@ -58,7 +59,7 @@ jobs:
             before=$(git rev-parse "$after^")
           fi
           git diff --binary "$before" "$after" -- . \
-            ':!apps' ':!packages' ':!package.json' ':!bun.lock' ':!README.md' ':!LICENSE' ':!.gitignore' \
+            ':!apps' ':!ledger' ':!packages' ':!package.json' ':!bun.lock' ':!README.md' ':!LICENSE' ':!.gitignore' \
             ':!.github/workflows/apps.yml' ':!.github/workflows/sync-bunker-coin.yml' > "$RUNNER_TEMP/sync.patch"
           if [ ! -s "$RUNNER_TEMP/sync.patch" ]; then
             echo "Nothing outside the apps to sync."

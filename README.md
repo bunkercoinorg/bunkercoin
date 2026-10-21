@@ -47,6 +47,8 @@ The web apps live in a bun workspace under `apps/`:
 - `apps/explorer`: block explorer (Next.js)
 - `apps/wallet`: local-only web wallet (Next.js static export)
 
+The Ledger hardware wallet app (C, Ledger SDK) lives in `ledger/`; see [ledger/README.md](ledger/README.md).
+
 ```bash
 bun install
 bun run dev:explorer
