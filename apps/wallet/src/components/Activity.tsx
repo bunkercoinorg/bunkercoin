@@ -111,6 +111,7 @@ export default function Activity({ addressHex, pending, history, historyError, t
       ))}
       {historyError && <Hint>History could not be loaded: {historyError}</Hint>}
       {trackingLost && <Hint>Tracking could not be saved on this device; open transactions will not be followed after a reload.</Hint>}
+      {history?.end === 'enough' && <Hint>Showing your latest {txs.length} transactions; older ones are not listed.</Hint>}
       {history && truncated && (
         <Hint>
           {txs.length === 0 ? 'No activity for this wallet' : 'Showing your activity'} among the latest{' '}
