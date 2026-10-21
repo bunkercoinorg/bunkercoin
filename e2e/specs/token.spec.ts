@@ -11,24 +11,38 @@ test('create token, then send it: only the token moves, BUNKER pays fees', async
 
   const ticker = uniqueTicker();
   await issuer.createToken(ticker, 1000);
-  await expect(issuer.pendingRow(`Create ${ticker} · 1,000 supply`)).toContainText('confirming…');
+  await issuer.done();
+  await expect(issuer.activityRow('create token', ticker, '1,000')).toContainText('confirming');
   await expect.poll(() => rpc.tokenAmount(from, ticker), { timeout: FINALITY_MS }).toBe(1000);
-  await expect(issuer.tokenBalance(ticker)).toHaveText('1,000', { timeout: FINALITY_MS });
+  await issuer.expectTokenBalance(ticker, '1,000');
   await issuer.expectBalance(UNITS_PER_BUNKER - FEE_UNITS);
 
-  await issuer.send(to, '100', ticker);
-  await expect(issuer.pendingRow(`Send 100 ${ticker} → `)).toContainText('confirming…');
+  await issuer.prepareSend(to, '100', ticker);
+  const identity = new RegExp(`^${ticker} · \\S+$`);
+  const receipt = await issuer.receiptFacts();
+  expect(receipt.token).toMatch(identity);
+  expect(receipt).toMatchObject({
+    to,
+    amount: `100 ${receipt.token}`,
+    'network fee': expect.stringMatching(/^0\.000100 BUNKER · /),
+    from,
+  });
+  expect(receipt.total).toBeUndefined();
+  await issuer.sign();
+  await expect(issuer.outcomeTitle).toHaveText(`Sending 100 ${receipt.token}.`);
+  await issuer.done();
+  await expect(issuer.activityRow('token send', `100 ${receipt.token} to `)).toContainText('confirming');
 
   await expect.poll(() => rpc.tokenAmount(to, ticker), { timeout: FINALITY_MS }).toBe(100);
   expect(await rpc.tokenAmount(from, ticker)).toBe(900);
   expect(await rpc.getBalance(from)).toBe(UNITS_PER_BUNKER - 2 * FEE_UNITS);
   expect(await rpc.getBalance(to)).toBe(0);
 
-  await expect(issuer.tokenBalance(ticker)).toHaveText('900', { timeout: FINALITY_MS });
+  await issuer.expectTokenBalance(ticker, '900');
   await issuer.expectBalance(UNITS_PER_BUNKER - 2 * FEE_UNITS);
-  await expect(holder.tokenBalance(ticker)).toHaveText('100', { timeout: FINALITY_MS });
+  await holder.expectTokenBalance(ticker, '100');
   await holder.expectBalance(0);
-  await issuer.expectFinalized(issuer.historyRow('Sent', `100 ${ticker}`));
+  await issuer.expectFinalized(issuer.activityRow('token send', `100 ${ticker}`, '−100'));
 });
 
 test('activity labels a token creation as a mint, not a 0 BUNKER send', async ({ openWallet, rpc }) => {
@@ -38,8 +52,11 @@ test('activity labels a token creation as a mint, not a 0 BUNKER send', async ({
   await issuer.expectBalance(UNITS_PER_BUNKER);
   const ticker = uniqueTicker();
   await issuer.createToken(ticker, 10);
+  await issuer.done();
   await expect.poll(() => rpc.tokenAmount(address, ticker), { timeout: FINALITY_MS }).toBe(10);
-  await expect(issuer.pendingRow(`Create ${ticker} · 10 supply`)).toHaveCount(0, { timeout: FINALITY_MS });
-  await issuer.expectFinalized(issuer.activityRow(`Created ${ticker} · 10 supply`));
-  await expect(issuer.historyRow('Sent', '0 BUNKER')).toHaveCount(0);
+  const mint = issuer.activityRow('create token', ticker, '10');
+  await issuer.expectFinalized(mint);
+  await expect(mint).not.toContainText('confirming');
+  await expect(issuer.activityRow('send')).toHaveCount(0);
+  await expect(issuer.activityRow('token send')).toHaveCount(0);
 });
