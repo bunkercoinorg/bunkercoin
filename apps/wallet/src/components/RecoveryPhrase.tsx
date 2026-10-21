@@ -16,10 +16,17 @@ export default function RecoveryPhrase({ onBack }: { onBack: () => void }) {
   const [error, setError] = useState('');
   const elapsed = useElapsed(busy);
   const live = useRef(true);
+  const attempt = useRef(0);
   useEffect(() => {
     live.current = true;
+    // Backgrounding cancels a reveal still deriving, so the words never mount into a tab nobody is watching.
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') attempt.current += 1;
+    };
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
       live.current = false;
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 
@@ -30,11 +37,16 @@ export default function RecoveryPhrase({ onBack }: { onBack: () => void }) {
     if (busy || !password) return;
     setBusy(true);
     setError('');
+    const mine = ++attempt.current;
     try {
       const phrase = await decryptMnemonic(requireKeystore(), password);
       if (!live.current) return;
-      setWords(phrase.split(' '));
       setPassword('');
+      if (attempt.current !== mine || document.visibilityState !== 'visible') {
+        setError('Hidden because the tab went to the background. Enter the password again.');
+        return;
+      }
+      setWords(phrase.split(' '));
     } catch (e) {
       if (live.current) setError(unlockErrorCopy(e));
     } finally {
