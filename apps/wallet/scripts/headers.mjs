@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const DEFAULT_RPC_URL = 'https://rpc.bunkercoin.com/';
+export const DEFAULT_METADATA_URL = 'https://metadata.bunkercoin.com';
 
 /** The env Next itself compiled in: same loader (resolved through next), same .env* files, production mode. */
 export function loadBuildEnv(dir) {
@@ -26,15 +27,17 @@ export function inlineScriptHashes(htmls) {
   return [...hashes].sort();
 }
 
-export function buildHeaders({ hashes, rpcUrl }) {
+export function buildHeaders({ hashes, rpcUrl, metadataUrl = DEFAULT_METADATA_URL }) {
+  const metadata = new URL(metadataUrl).origin;
   const csp = [
     "default-src 'self'",
     // hash-wasm compiles its Argon2 WebAssembly at runtime.
     `script-src 'self' 'wasm-unsafe-eval' ${hashes.join(' ')}`.trim(),
     "style-src 'self'",
-    "img-src 'self' data:",
+    // blob: previews a picked token icon before upload.
+    `img-src 'self' data: blob: ${metadata}`,
     "font-src 'self'",
-    `connect-src 'self' ${new URL(rpcUrl).origin}`,
+    `connect-src 'self' ${[...new Set([new URL(rpcUrl).origin, metadata])].join(' ')}`,
     "worker-src 'self'",
     "object-src 'none'",
     "base-uri 'none'",
@@ -61,7 +64,9 @@ function htmlFiles(dir) {
 
 function main(root = fileURLToPath(new URL('..', import.meta.url))) {
   const out = join(root, 'out');
-  const rpcUrl = loadBuildEnv(root).NEXT_PUBLIC_RPC_URL || DEFAULT_RPC_URL;
+  const env = loadBuildEnv(root);
+  const rpcUrl = env.NEXT_PUBLIC_RPC_URL || DEFAULT_RPC_URL;
+  const metadataUrl = env.NEXT_PUBLIC_METADATA_URL || DEFAULT_METADATA_URL;
   const files = htmlFiles(out);
   const htmls = files.map((f) => readFileSync(f, 'utf8'));
   files.forEach((file, i) => {
@@ -76,8 +81,10 @@ function main(root = fileURLToPath(new URL('..', import.meta.url))) {
     console.error(`headers: no inline scripts found in ${out}; refusing to write a CSP that blocks the app`);
     process.exit(1);
   }
-  writeFileSync(join(out, '_headers'), buildHeaders({ hashes, rpcUrl }));
-  console.log(`headers: wrote out/_headers with ${hashes.length} inline script hashes, connect-src ${new URL(rpcUrl).origin}`);
+  writeFileSync(join(out, '_headers'), buildHeaders({ hashes, rpcUrl, metadataUrl }));
+  console.log(
+    `headers: wrote out/_headers with ${hashes.length} inline script hashes, connect-src ${new URL(rpcUrl).origin} ${new URL(metadataUrl).origin}`,
+  );
 }
 
 // Optional argument: the app root (default: this package), whose out/ and .env* files are used.

@@ -20,6 +20,7 @@ function app(html: string, env: Record<string, string>) {
 const cleanEnv = () => {
   const env = { ...process.env };
   delete env.NEXT_PUBLIC_RPC_URL;
+  delete env.NEXT_PUBLIC_METADATA_URL;
   return env;
 };
 
@@ -27,17 +28,26 @@ test('inline scripts are hashed; external and empty ones are not', () => {
   const body = 'self.__next_f.push([1,"x"])';
   const hashes = inlineScriptHashes([`<script src="/a.js"></script><script></script><script>${body}</script><script>${body}</script>`]);
   assert.deepEqual(hashes, [`'sha256-${createHash('sha256').update(body).digest('base64')}'`]);
-  assert.match(buildHeaders({ hashes, rpcUrl: 'https://node.example:8899/rpc' }), /connect-src 'self' https:\/\/node\.example:8899;/);
+  const headers = buildHeaders({ hashes, rpcUrl: 'https://node.example:8899/rpc' });
+  assert.match(headers, /connect-src 'self' https:\/\/node\.example:8899 https:\/\/metadata\.bunkercoin\.com;/);
+  assert.match(headers, /img-src 'self' data: blob: https:\/\/metadata\.bunkercoin\.com;/);
+});
+
+test('the metadata origin is listed once in connect-src and img-src', () => {
+  const headers = buildHeaders({ hashes: ["'sha256-x'"], rpcUrl: 'https://meta.example/rpc', metadataUrl: 'https://meta.example/' });
+  assert.match(headers, /connect-src 'self' https:\/\/meta\.example;/);
+  assert.match(headers, /img-src 'self' data: blob: https:\/\/meta\.example;/);
 });
 
 test('connect-src follows the .env file the build used, in production mode', () => {
   const root = app('<script>boot()</script>', {
-    '.env.local': 'NEXT_PUBLIC_RPC_URL=https://custom.example:8899/\n',
-    '.env.development.local': 'NEXT_PUBLIC_RPC_URL=https://dev-only.example/\n',
+    '.env.local': 'NEXT_PUBLIC_RPC_URL=https://custom.example:8899/\nNEXT_PUBLIC_METADATA_URL=http://localhost:8787\n',
+    '.env.development.local': 'NEXT_PUBLIC_RPC_URL=https://dev-only.example/\nNEXT_PUBLIC_METADATA_URL=https://dev-meta.example\n',
   });
   execFileSync(process.execPath, [SCRIPT, root], { env: cleanEnv(), stdio: 'pipe' });
   const headers = readFileSync(join(root, 'out', '_headers'), 'utf8');
-  assert.match(headers, /connect-src 'self' https:\/\/custom\.example:8899;/);
+  assert.match(headers, /connect-src 'self' https:\/\/custom\.example:8899 http:\/\/localhost:8787;/);
+  assert.match(headers, /img-src 'self' data: blob: http:\/\/localhost:8787;/);
   assert.match(headers, /'sha256-[^']+'/);
 });
 
