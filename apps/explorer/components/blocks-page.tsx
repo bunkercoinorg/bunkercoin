@@ -48,6 +48,7 @@ export default function BlocksPage() {
   const settled = pinnedHead === null ? filtered : filtered.filter((b) => b.slot <= pinnedHead);
   const liveRows = settled.slice(0, Math.min(displayCount, MAX_RENDERED_ROWS));
   const rows = history ? visible(history.blocks) : liveRows;
+  const page = history ? history.blocks : blocks;
   const loading = feed.lastSuccess === null && feed.error === null && blocks.length === 0;
   const action = liveScroll(liveRows.length, settled.length, blocks.length, !hasMore, BLOCK_PAGE_SIZE);
 
@@ -55,25 +56,27 @@ export default function BlocksPage() {
   const grow = () => setDisplayCount((n) => Math.min(n + BLOCK_PAGE_SIZE, MAX_RENDERED_ROWS));
 
   const more = () => {
+    if (historyLoad.loading) return;
     if (history) return pager.older();
     pin();
     if (action === 'grow') grow();
     else if (action === 'fetch') void loadOlder().then((ok) => ok && grow());
     else if (action === 'browse') {
-      const last = liveRows[liveRows.length - 1];
+      // Every settled row is on screen (or the cap is hit), so skipped tails below the last shown row are seen too.
+      const last = liveRows.length < settled.length ? liveRows[liveRows.length - 1] : blocks[blocks.length - 1];
       if (last) pager.open({ cursor: last.slot, estimate: blocks.indexOf(last) + 1 });
     }
   };
 
-  const state: PaginationState = history
-    ? historyLoad.loading
-      ? 'loading'
-      : historyLoad.error
-        ? 'error'
-        : olderAnchor(history)
+  const state: PaginationState = historyLoad.loading
+    ? 'loading'
+    : historyLoad.error
+      ? 'error'
+      : history
+        ? olderAnchor(history)
           ? 'idle'
           : 'end'
-    : isLoadingMore
+        : isLoadingMore
       ? 'loading'
       : loadMoreError
         ? 'error'
@@ -81,8 +84,9 @@ export default function BlocksPage() {
           ? 'end'
           : 'idle';
 
-  const range = rows.length ? `${slotLabel(rows[0].slot)} to ${slotLabel(rows[rows.length - 1].slot)}` : '';
-  const checked = feed.lastSuccess !== null && now !== null ? ` · checked ${relativeAge(feed.lastSuccess, now)} ago` : '';
+  const shown = rows.length ? rows : page;
+  const range = shown.length ? `${slotLabel(shown[0].slot)} to ${slotLabel(shown[shown.length - 1].slot)}` : '';
+  const checked = feed.lastSuccess !== null && now !== null ? `checked ${relativeAge(feed.lastSuccess, now)} ago` : '';
 
   return (
     <div className="flex flex-col gap-6">
@@ -100,11 +104,15 @@ export default function BlocksPage() {
       <Panel
         flush
         footer={
-          rows.length > 0 && <Pagination state={state} onMore={more} note={<span className="bc-hint mono">{range + checked}</span>} labels={LABELS} />
+          page.length > 0 && (
+            <Pagination state={state} onMore={more} note={<span className="bc-hint mono">{[range, checked].filter(Boolean).join(' · ')}</span>} labels={LABELS} />
+          )
         }
       >
         {history ? (
-          <NewRowsBar onShow={pager.close}>older blocks · back to the latest</NewRowsBar>
+          <NewRowsBar onShow={pager.close} action="latest">
+            older blocks · back to the latest
+          </NewRowsBar>
         ) : (
           fresh.length > 0 && (
             <NewRowsBar onShow={() => setPinnedHead(null)}>
@@ -112,7 +120,7 @@ export default function BlocksPage() {
             </NewRowsBar>
           )
         )}
-        <BlocksTable blocks={rows} now={now} loading={loading} />
+        <BlocksTable blocks={rows} now={now} loading={loading} empty={page.length ? 'All rows here are skipped. Tick include skipped to see them.' : undefined} />
       </Panel>
     </div>
   );

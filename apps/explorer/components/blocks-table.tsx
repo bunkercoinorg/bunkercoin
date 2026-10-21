@@ -39,16 +39,19 @@ export default function BlocksTable({
   now,
   caption = 'blocks',
   loading,
+  empty = 'No blocks received yet.',
 }: {
   blocks: Block[];
   now: number | null;
   caption?: string;
   loading?: boolean;
+  empty?: string;
 }) {
-  const seen = useRef<Set<number> | null>(null);
-  const known = seen.current;
+  // Only slots above the highest one seen so far are new head rows; revealed older rows never wash.
+  const top = useRef<number | null>(null);
+  const known = top.current;
   useEffect(() => {
-    seen.current = new Set(blocks.map((b) => b.slot));
+    if (blocks.length) top.current = Math.max(top.current ?? -1, ...blocks.map((b) => b.slot));
   }, [blocks]);
   return (
     <DataTable
@@ -57,7 +60,7 @@ export default function BlocksTable({
       rows={blocks}
       rowKey={(b) => String(b.slot)}
       rowHref={(b) => routes.block(b.slot)}
-      rowState={(b) => ({ isNew: known !== null && known.size > 0 && !known.has(b.slot), dim: b.type === 'skip' })}
+      rowState={(b) => ({ isNew: known !== null && b.slot > known, dim: b.type === 'skip' })}
       phone={(b) => (
         <>
           <span className="flex items-center gap-2.5">
@@ -75,7 +78,7 @@ export default function BlocksTable({
       )}
       state={loading ? 'loading' : 'ready'}
       loadingLabel="listening for blocks…"
-      empty="No blocks received yet."
+      empty={empty}
     />
   );
 }
