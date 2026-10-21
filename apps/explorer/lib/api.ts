@@ -62,11 +62,15 @@ async function request(path: string, { signal }: RequestOptions = {}): Promise<J
   if (res.status === 404) return null;
   if (!res.ok) throw new ApiError('http', `${path} answered ${res.status}`, res.status);
   const text = await res.text();
+  let body: Json;
   try {
-    return parseJson(text);
+    body = parseJson(text);
   } catch {
     throw new ApiError('shape', `${path} returned invalid JSON`);
   }
+  // Absence is a 404; a successful null is a malformed answer.
+  if (body === null) throw new ApiError('shape', `${path} returned null`);
+  return body;
 }
 
 async function expect(path: string, opts?: RequestOptions): Promise<Json> {
