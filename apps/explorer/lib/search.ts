@@ -1,5 +1,5 @@
-import { normalizeHash, normalizeSlot, normalizeTokenId, toBase58 } from '@bunkercoin/chain-format';
-import type { AccountDetails, SearchKind, SearchMatch } from './types.ts';
+import { formatInteger, formatUnits, normalizeHash, normalizeSlot, normalizeTokenId, relativeAge, toBase58 } from '@bunkercoin/chain-format';
+import type { AccountDetails, Block, SearchKind, SearchMatch, TokenSummary, TransactionDetails } from './types.ts';
 
 export interface SearchCandidate {
   kind: SearchKind;
@@ -37,10 +37,10 @@ function classifyShape(raw: string): SearchCandidate[] {
 }
 
 export interface SearchProbes {
-  transaction: (hex: string) => Promise<unknown | null>;
-  block: (id: string) => Promise<unknown | null>;
-  blockBySlot: (slot: string) => Promise<unknown | null>;
-  token: (id: string) => Promise<unknown | null>;
+  transaction: (hex: string) => Promise<TransactionDetails | null>;
+  block: (id: string) => Promise<Block | null>;
+  blockBySlot: (slot: string) => Promise<Block | null>;
+  token: (id: string) => Promise<TokenSummary | null>;
   account: (hex: string) => Promise<AccountDetails | null>;
 }
 
@@ -72,21 +72,47 @@ export async function resolveSearch(raw: string, probes: SearchProbes): Promise<
       switch (c.kind) {
         case 'block': {
           const b = /^\d+$/.test(c.id) ? await probes.blockBySlot(c.id) : await probes.block(c.id);
-          return b === null ? null : match;
+          return b === null ? null : { ...match, block: b };
         }
-        case 'token':
-          return (await probes.token(c.id)) === null ? null : match;
-        case 'transaction':
-          return (await probes.transaction(c.id)) === null ? null : match;
+        case 'token': {
+          const t = await probes.token(c.id);
+          return t === null ? null : { ...match, token: t };
+        }
+        case 'transaction': {
+          const t = await probes.transaction(c.id);
+          return t === null ? null : { ...match, transaction: t };
+        }
         case 'account': {
           const a = await probes.account(c.id);
           if (a === null) return null;
-          return accountHasActivity(a) ? match : { ...match, label: `${match.label} (no activity yet)`, inactive: true };
+          return accountHasActivity(a) ? { ...match, account: a } : { ...match, account: a, label: `${match.label} (no activity yet)`, inactive: true };
         }
       }
     }),
   );
   return hits.filter((m) => m !== null);
+}
+
+// The second line of a result row: ticker · supply for a token, state · age for a block, and so on.
+export function matchContext(m: SearchMatch, now: number | null): string {
+  if (m.block) {
+    const b = m.block;
+    const at = b.finalized_timestamp ?? b.proposed_timestamp;
+    const state = b.type === 'skip' ? 'skipped' : b.status;
+    return at === undefined || now === null ? state : `${state} · ${relativeAge(at, now)} ago`;
+  }
+  if (m.token) return `${m.token.ticker} · supply ${formatInteger(m.token.current_supply)}`;
+  if (m.transaction) {
+    const s = m.transaction.status;
+    const failed = s.success === false ? ' · failed' : '';
+    return s.slot === undefined ? s.location + failed : `${s.location} · slot ${formatInteger(BigInt(s.slot))}${failed}`;
+  }
+  if (m.account) {
+    if (m.inactive) return 'address with no recorded activity';
+    const tokens = Object.keys(m.account.token_balances).length;
+    return `${formatUnits(m.account.native_balance, 6)} BUNKER${tokens ? ` · ${tokens} ${tokens === 1 ? 'token' : 'tokens'}` : ''}`;
+  }
+  return '';
 }
 
 export type SearchOutcome = { kind: 'route'; match: SearchMatch } | { kind: 'choose'; matches: SearchMatch[] } | { kind: 'none' };

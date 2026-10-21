@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyQuery, resolveSearch, searchOutcome, type SearchProbes } from '../lib/search.ts';
+import { classifyQuery, matchContext, resolveSearch, searchOutcome, type SearchProbes } from '../lib/search.ts';
 import { bytesToBase58 as base58Encode, bytesToHex as hexEncode } from '@bunkercoin/chain-format';
-import type { AccountDetails } from '../lib/types.ts';
+import type { AccountDetails, Block } from '../lib/types.ts';
 
 const HASH = 'ab'.repeat(32);
 const account = (over: Partial<AccountDetails> = {}): AccountDetails => ({
@@ -125,4 +125,23 @@ test('a prefix keeps only that kind of candidate', () => {
   assert.deepEqual(classifyQuery('TX: ' + 'ab'.repeat(32)).map((c) => c.kind), ['transaction']);
   assert.deepEqual(classifyQuery('slot:' + 'ab'.repeat(32)), []);
   assert.deepEqual(classifyQuery('account:12'), []);
+});
+
+test('matches carry the probed record and a context line', async () => {
+  const block: Block = { type: 'block', slot: 1, hash: HASH, status: 'finalized', finalized_timestamp: 1_000 };
+  const token = { id: '00000001', ticker: 'RADIO', current_supply: 1_000_000n };
+  const [b, t] = await resolveSearch('00000001', probes({ blockBySlot: block, token }));
+  assert.equal(b.block, block);
+  assert.equal(t.token, token);
+  assert.equal(matchContext(b, 7_000), 'finalized · 6s ago');
+  assert.equal(matchContext(b, null), 'finalized');
+  assert.equal(matchContext(t, null), 'RADIO · supply 1,000,000');
+  const skip = { ...b, block: { ...block, type: 'skip' as const, finalized_timestamp: undefined } };
+  assert.equal(matchContext(skip, 7_000), 'skipped');
+  const [tx] = await resolveSearch('tx:' + HASH, probes({ transaction: { status: { location: 'finalized', slot: 48_219, success: false } } }));
+  assert.equal(matchContext(tx, null), 'finalized · slot 48,219 · failed');
+  const [idle] = await resolveSearch('account:' + HASH, probes({ account: account() }));
+  assert.equal(matchContext(idle, null), 'address with no recorded activity');
+  const [rich] = await resolveSearch('account:' + HASH, probes({ account: account({ native_balance: 2_500_000n, token_balances: { deadbeef: 3n } }) }));
+  assert.equal(matchContext(rich, null), '2.500000 BUNKER · 1 token');
 });

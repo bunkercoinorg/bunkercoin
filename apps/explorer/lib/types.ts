@@ -98,4 +98,9 @@ export interface SearchMatch {
   label: string;
   // An account the node knows nothing about yet: any valid key answers zeroed.
   inactive?: boolean;
+  // The probed record, so a result row can say what it is.
+  block?: Block;
+  token?: TokenSummary;
+  transaction?: TransactionDetails;
+  account?: AccountDetails;
 }

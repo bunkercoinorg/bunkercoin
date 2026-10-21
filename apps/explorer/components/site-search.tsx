@@ -1,13 +1,14 @@
 'use client';
 
-import { useId, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useId, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { atom, useSetAtom } from 'jotai';
 import { Button, TextInput } from '@bunkercoin/ui';
 import { HeaderSearch } from '@bunkercoin/ui/explorer';
 import { api } from '@/lib/api';
 import { classifyQuery, searchOutcome } from '@/lib/search';
 import { routes } from '@/lib/routes';
+import { useQueryParam } from '@/lib/use-query-param';
 import type { SearchMatch } from '@/lib/types';
 
 export const SEARCH_PLACEHOLDER = 'slot, hash, tx id, address or token id';
@@ -27,8 +28,9 @@ export function hrefFor(match: SearchMatch): string {
 
 export const searchPath = (q: string) => `/search?q=${encodeURIComponent(q)}`;
 
-/** The last resolved query, so /search shows it without probing again. */
-export const lastSearchAtom = atom<{ q: string; matches: SearchMatch[] } | null>(null);
+/** The last resolved query, so /search shows it without probing again while it is fresh. */
+export const lastSearchAtom = atom<{ q: string; matches: SearchMatch[]; at: number } | null>(null);
+export const SEARCH_FRESH_MS = 15_000;
 
 // One confirmed match routes; anything else (several, none, invalid, API down) lands on /search.
 function useSiteSearch() {
@@ -49,7 +51,7 @@ function useSiteSearch() {
     try {
       const matches = await api.search(q);
       const outcome = searchOutcome(matches);
-      setLast({ q, matches });
+      setLast({ q, matches, at: Date.now() });
       router.push(outcome.kind === 'route' ? hrefFor(outcome.match) : searchPath(q));
     } catch {
       setLast(null);
@@ -64,6 +66,12 @@ function useSiteSearch() {
 
 export function HeaderSiteSearch() {
   const s = useSiteSearch();
+  const onSearch = usePathname()?.replace(/\/+$/, '') === '/search';
+  const q = useQueryParam('q');
+  const { setQuery } = s;
+  useEffect(() => {
+    if (onSearch && q !== undefined) setQuery(q);
+  }, [onSearch, q, setQuery]);
   return <HeaderSearch value={s.query} onChange={s.setQuery} onSubmit={() => void s.submit()} busy={s.busy} placeholder={SEARCH_PLACEHOLDER} />;
 }
 

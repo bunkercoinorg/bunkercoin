@@ -3,13 +3,13 @@
 import { useEffect, useState } from 'react';
 import { useAtomValue } from 'jotai';
 import { shortId, toBase58 } from '@bunkercoin/chain-format';
-import { Button, Panel, StatePanel, StateLine, Tag } from '@bunkercoin/ui';
+import { Button, Panel, StatePanel, StateLine, Tag, useNow } from '@bunkercoin/ui';
 import { DataTable } from '@bunkercoin/ui/explorer';
 import { slotLabel } from '@/components/blocks-table';
-import { hrefFor, lastSearchAtom } from '@/components/site-search';
+import { hrefFor, lastSearchAtom, SEARCH_FRESH_MS } from '@/components/site-search';
 import { useQueryParam } from '@/lib/use-query-param';
 import { api } from '@/lib/api';
-import { classifyQuery } from '@/lib/search';
+import { classifyQuery, matchContext } from '@/lib/search';
 import type { SearchMatch } from '@/lib/types';
 
 type Result = { q: string; state: 'loading' } | { q: string; state: 'error' } | { q: string; state: 'ready'; matches: SearchMatch[] };
@@ -24,6 +24,7 @@ function title(m: SearchMatch) {
 
 export default function SearchPage() {
   const q = (useQueryParam('q') ?? '').trim();
+  const now = useNow();
   const last = useAtomValue(lastSearchAtom);
   const [result, setResult] = useState<Result | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -31,7 +32,7 @@ export default function SearchPage() {
 
   useEffect(() => {
     if (!q || !valid) return;
-    if (attempt === 0 && last?.q === q) {
+    if (attempt === 0 && last?.q === q && Date.now() - last.at < SEARCH_FRESH_MS) {
       setResult({ q, state: 'ready', matches: last.matches });
       return;
     }
@@ -90,14 +91,21 @@ export default function SearchPage() {
                   </span>
                 ),
               },
-              ...(current.matches.some((m) => m.inactive)
-                ? [{ key: 'note', header: 'note', cell: (m: SearchMatch) => <span className="bc-hint">{m.inactive ? 'address with no recorded activity' : ''}</span> }]
-                : []),
+              { key: 'context', header: 'context', cell: (m) => <span className="bc-hint mono">{matchContext(m, now)}</span> },
               { key: 'go', header: <span className="bc-sr">open</span>, align: 'right', cell: () => <span aria-hidden="true">→</span> },
             ]}
             rows={current.matches}
             rowKey={(m) => `${m.kind}:${m.id}`}
             rowHref={hrefFor}
+            phone={(m) => (
+              <>
+                <span className="bc-row">
+                  <Tag>{KIND[m.kind]}</Tag>
+                  <span className="mono">{title(m)}</span>
+                </span>
+                <span className="bc-hint mono block">{matchContext(m, now)}</span>
+              </>
+            )}
             empty=""
           />
         </Panel>
