@@ -1,9 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { reconcileNonce, withAccountLock } from '../src/lib/submit.ts';
+import { createHash } from 'node:crypto';
+import bs58 from 'bs58';
+import {
+  broadcast,
+  BroadcastUncertainError,
+  isDefiniteRejection,
+  planNonce,
+  reconcileNonce,
+  withAccountLock,
+} from '../src/lib/submit.ts';
 import { Signer, WalletLockedError } from '../src/lib/signer.ts';
-import { addEntry, clearAllPending, loadPending, mutatePending, patchEntry, type PendingTx } from '../src/lib/pending.ts';
-import { keypairFromMnemonic, createMnemonic } from '../src/lib/keys.ts';
+import {
+  addEntry,
+  addReservation,
+  clearAllPending,
+  fromLegacy,
+  loadPending,
+  loadReservations,
+  migrateLegacyPending,
+  mutatePending,
+  mutateReservations,
+  patchEntry,
+  removeEntry,
+  type PendingTx,
+} from '../src/lib/pending.ts';
+import { RpcError, type SignatureStatus } from '../src/lib/connection.ts';
+import { keypairFromMnemonic, createMnemonic, signTransfer, transactionId } from '../src/lib/keys.ts';
 
 test('nonce advances past live outstanding transactions only', () => {
   assert.equal(reconcileNonce(5n, []), 5n);
@@ -65,22 +88,22 @@ const entry = (over: Partial<PendingTx> = {}): PendingTx => ({
   ...over,
 });
 
-test('pending entries are scoped by chain and address and keep bigint amounts', () => {
+test('pending entries are scoped by chain and address and keep bigint amounts', async () => {
   const store = fakeStorage();
-  assert.ok(mutatePending('rpc-a', 'alice', addEntry(entry())));
+  assert.ok(await mutatePending('rpc-a', 'alice', addEntry(entry())));
   assert.deepEqual(loadPending('rpc-a', 'alice'), [entry()]);
   assert.deepEqual(loadPending('rpc-a', 'bob'), [], 'another wallet must not inherit activity');
   assert.deepEqual(loadPending('rpc-b', 'alice'), [], 'another chain must not inherit activity');
-  mutatePending('rpc-a', 'alice', patchEntry('tx1', { state: 'unconfirmed' }));
+  await mutatePending('rpc-a', 'alice', patchEntry('tx1', { state: 'unconfirmed' }));
   assert.equal(loadPending('rpc-a', 'alice')[0].state, 'unconfirmed');
   store.set('bunkercoin.pending.v1', '[]');
   clearAllPending();
   assert.equal(store.size, 0, 'erase clears every wallet, chain and legacy entry');
 });
 
-test('malformed pending entries are dropped, not trusted', () => {
+test('malformed pending entries are dropped, not trusted', async () => {
   const store = fakeStorage();
-  mutatePending('c', 'a', addEntry(entry()));
+  await mutatePending('c', 'a', addEntry(entry()));
   const key = [...store.keys()][0];
   const list = JSON.parse(store.get(key)!);
   list.push({ ...list[0], txId: 'tx2', amount: 1.5 }, { ...list[0], txId: 'tx3', state: 'done' });
@@ -89,4 +112,119 @@ test('malformed pending entries are dropped, not trusted', () => {
     loadPending('c', 'a').map((p) => p.txId),
     ['tx1'],
   );
+});
+
+const live: SignatureStatus = { confirmationStatus: 'processed', err: null };
+
+test('a reservation keeps its nonce after the Activity entry is dismissed or trimmed', async () => {
+  fakeStorage();
+  await mutateReservations('c', 'a', addReservation({ txId: 'tx5', nonce: 5n, at: 1 }));
+  await mutatePending('c', 'a', addEntry(entry({ txId: 'tx5', nonce: 5n, state: 'unconfirmed' })));
+  await mutatePending('c', 'a', removeEntry('tx5'));
+  for (let i = 0; i < 25; i++) await mutatePending('c', 'a', addEntry(entry({ txId: `filler${i}`, nonce: null })));
+  const reserved = loadReservations('c', 'a');
+  assert.deepEqual(reserved, [{ txId: 'tx5', nonce: 5n, at: 1 }]);
+  assert.equal(planNonce(5n, reserved, [live]).nonce, 6n, 'a still-live tx keeps its nonce');
+});
+
+test('reservations are released only once the chain settles them', () => {
+  const reservations = [
+    { txId: 'executed', nonce: 3n },
+    { txId: 'live', nonce: 4n },
+    { txId: 'unknown', nonce: 5n },
+    { txId: 'finalized-failed', nonce: 6n },
+  ];
+  const plan = planNonce(4n, reservations, [live, null, { confirmationStatus: 'finalized', err: { message: 'x' } }]);
+  assert.equal(plan.nonce, 5n, 'an unknown tx is not live, so its nonce is reused rather than skipped');
+  assert.deepEqual(plan.resolved.sort(), ['executed', 'finalized-failed']);
+});
+
+const signed = () => {
+  const { privateKey, publicKey } = keypairFromMnemonic(createMnemonic());
+  const to = bs58.encode(new Uint8Array(32).fill(7));
+  return signTransfer({ privateKey, publicKey, to, amount: 10n, nonce: 2n ** 40n + 3n, fee: 100n });
+};
+
+test('the transaction id is Transaction::hash, computed before sending', () => {
+  const tx = signed();
+  const le = (v: bigint) => {
+    const b = Buffer.alloc(8);
+    b.writeBigUInt64LE(v);
+    return b;
+  };
+  const expected = createHash('sha256')
+    .update(bs58.decode(tx.sender))
+    .update(le(tx.nonce))
+    .update(le(tx.fee))
+    .update(bs58.decode(tx.signature))
+    .digest();
+  assert.equal(transactionId(tx), bs58.encode(expected));
+});
+
+function hooks() {
+  const log: string[] = [];
+  return {
+    log,
+    hooks: {
+      record: async (id: string) => {
+        log.push(`record:${id}`);
+        return true;
+      },
+      rejected: async (id: string) => void log.push(`rejected:${id}`),
+      acknowledged: async (local: string, node: string) => void log.push(`ack:${local}:${node}`),
+    },
+  };
+}
+
+test('a broadcast without an answer stays recorded under its local id', async () => {
+  const tx = signed();
+  const id = transactionId(tx);
+  const { log, hooks: h } = hooks();
+  const conn = {
+    sendTransaction: async () => {
+      log.push('send');
+      throw new RpcError('sendTransaction', 'timeout', 'no response within 10s');
+    },
+  };
+  await assert.rejects(broadcast(conn, tx, h), (e) => e instanceof BroadcastUncertainError && e.txId === id);
+  assert.deepEqual(log, [`record:${id}`, 'send'], 'recorded before sending, never released');
+});
+
+test('a definite rejection releases the record; an acknowledgement confirms it', async () => {
+  const tx = signed();
+  const id = transactionId(tx);
+  const rejected = hooks();
+  const refusing = { sendTransaction: async () => Promise.reject(new RpcError('sendTransaction', 'rpc', 'bad nonce', -32000)) };
+  await assert.rejects(broadcast(refusing, tx, rejected.hooks), /bad nonce/);
+  assert.deepEqual(rejected.log, [`record:${id}`, `rejected:${id}`]);
+  const acked = hooks();
+  assert.deepEqual(await broadcast({ sendTransaction: async () => id }, tx, acked.hooks), { txId: id, tracked: true });
+  assert.deepEqual(acked.log, [`record:${id}`, `ack:${id}:${id}`]);
+  assert.equal(isDefiniteRejection(new RpcError('m', 'http', 'HTTP 502', 502)), false, 'a gateway error proves nothing');
+  assert.equal(isDefiniteRejection(new RpcError('m', 'protocol', 'malformed')), false);
+});
+
+test('legacy pending entries move to the current wallet instead of disappearing', async () => {
+  const store = fakeStorage();
+  store.set(
+    'bunkercoin.pending.v1',
+    JSON.stringify([
+      { txId: 'old1', kind: 'send', amount: 2500000, at: 7, to: 'bob' },
+      { txId: 'old2', kind: 'faucet', amount: 1000000, at: 6, failed: 'insufficient funds' },
+      { nonsense: true },
+    ]),
+  );
+  assert.equal(await migrateLegacyPending('c', 'alice'), 2);
+  assert.equal(store.has('bunkercoin.pending.v1'), false);
+  const moved = loadPending('c', 'alice');
+  assert.deepEqual(
+    moved.map((p) => [p.txId, p.state, p.amount, p.nonce]),
+    [
+      ['old1', 'pending', 2500000n, null],
+      ['old2', 'failed', 1000000n, null],
+    ],
+  );
+  assert.equal(moved[1].error, 'insufficient funds');
+  assert.equal(await migrateLegacyPending('c', 'alice'), 0, 'runs once');
+  assert.equal(fromLegacy({ txId: 'x', kind: 'mint', amount: -1 })?.amount, 0n);
 });

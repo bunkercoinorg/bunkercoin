@@ -183,6 +183,14 @@ export function metadataHash(metadata: unknown): Uint8Array {
   return sha256(new TextEncoder().encode(JSON.stringify(metadata)));
 }
 
+/** Transaction::hash: sha256(sender ‖ nonce ‖ fee ‖ signature), base58 as the RPC returns it. Known before sending. */
+export function transactionId(tx: SignedTransaction): string {
+  const sender = bs58.decode(tx.sender);
+  const signature = bs58.decode(tx.signature);
+  if (sender.length !== 32 || signature.length !== 64) throw new Error('malformed signed transaction');
+  return bs58.encode(sha256(new Uint8Array([...sender, ...u64le(tx.nonce), ...u64le(tx.fee), ...signature])));
+}
+
 export function toHex(bytes: Uint8Array): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }

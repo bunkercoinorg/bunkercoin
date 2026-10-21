@@ -28,15 +28,16 @@ interface ActivityProps {
   history: AccountHistory | null;
   tokens: TokenBalance[];
   trackingLost: boolean;
+  historyError: string | null;
   onDismiss: (txId: string) => void;
 }
 
-export default function Activity({ addressHex, pending, history, tokens, trackingLost, onDismiss }: ActivityProps) {
+export default function Activity({ addressHex, pending, history, historyError, tokens, trackingLost, onDismiss }: ActivityProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const txs = history?.transactions ?? [];
 
   const truncated = history?.end === 'scan-limit';
-  if (pending.length === 0 && txs.length === 0 && !trackingLost && !truncated) return null;
+  if (pending.length === 0 && txs.length === 0 && !trackingLost && !truncated && !historyError) return null;
 
   const tickers = new Map(tokens.map((t) => [t.tokenId, tokenLabel(t)]));
 
@@ -62,9 +63,15 @@ export default function Activity({ addressHex, pending, history, tokens, trackin
             ) : (
               <span
                 className={`${PILL} ${p.state === 'failed' ? 'bg-danger/10 text-danger' : 'bg-amber/10 text-amber'}`}
-                title={p.state === 'failed' ? p.error : 'No confirmation yet. Still checking every minute.'}
+                title={
+                  p.state === 'failed'
+                    ? p.error
+                    : p.state === 'uncertain'
+                      ? 'The node did not acknowledge this broadcast. Still checking whether it arrived.'
+                      : 'No confirmation yet. Still checking every minute.'
+                }
               >
-                {p.state === 'failed' ? 'failed' : 'unconfirmed'}
+                {p.state === 'failed' ? 'failed' : p.state === 'uncertain' ? 'no answer from node' : 'unconfirmed'}
                 <Button
                   variant="ghost"
                   small
@@ -85,6 +92,7 @@ export default function Activity({ addressHex, pending, history, tokens, trackin
                 ['Amount', p.ticker ? `${formatCount(p.amount)} ${p.ticker}` : `${formatUnits(p.amount)} BUNKER`],
                 ['Submitted', new Date(p.at).toLocaleString()],
                 p.state === 'unconfirmed' ? ['Status', 'Not confirmed yet; it may still finalize'] : null,
+                p.state === 'uncertain' ? ['Status', 'Broadcast not acknowledged; it may still have reached the network'] : null,
                 p.error ? ['Error', p.error] : null,
               ]}
             />
@@ -101,6 +109,7 @@ export default function Activity({ addressHex, pending, history, tokens, trackin
           onToggle={() => setExpanded(expanded === t.hash ? null : t.hash)}
         />
       ))}
+      {historyError && <Hint>History could not be loaded: {historyError}</Hint>}
       {trackingLost && <Hint>Tracking could not be saved on this device; open transactions will not be followed after a reload.</Hint>}
       {history && truncated && (
         <Hint>

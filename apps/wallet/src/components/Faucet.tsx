@@ -22,7 +22,7 @@ export default function Faucet({ conn, address, onSubmitted }: FaucetProps) {
     setError('');
     try {
       const txId = await conn.requestAirdrop(address, FAUCET_UNITS);
-      onSubmitted(txId, { kind: 'faucet', amount: FAUCET_UNITS });
+      await onSubmitted(txId, { kind: 'faucet', amount: FAUCET_UNITS });
     } catch (e) {
       setError((e as Error).message);
     } finally {
