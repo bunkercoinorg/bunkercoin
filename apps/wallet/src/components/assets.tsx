@@ -1,10 +1,8 @@
 'use client';
 
-import { useState } from 'react';
 import { BrandMark, Icon, type IconName } from '@bunkercoin/ui';
 import { formatUnits, utcClock } from '@bunkercoin/chain-format';
-import { metadataImageUrl } from '@/lib/metadata';
-import { useVerifiedMetadata } from '@/hooks/useVerifiedMetadata';
+import { useVerifiedImage, useVerifiedMetadata } from '@/hooks/useVerifiedMetadata';
 import type { TokenMeta } from '@/lib/connection';
 
 export const NATIVE = 'BUNKER';
@@ -16,14 +14,12 @@ export { tokenIdentity } from '@/lib/send';
 
 export const registryEntry = (registry: TokenMeta[] | null, tokenId: string) => registry?.find((r) => r.id === tokenId) ?? null;
 
-/** Two-letter ticker mark, or the verified metadata icon when the document checks out. */
+/** Two-letter ticker mark, or the metadata icon once both the document and the image bytes verify. */
 export function TokenMark({ ticker, tokenId, metadataHash }: { ticker: string | null; tokenId: string; metadataHash?: string | null }) {
   const doc = useVerifiedMetadata(metadataHash);
-  const [broken, setBroken] = useState(false);
-  if (doc?.image && !broken) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img className="wl-tm-img" src={metadataImageUrl(doc.image.sha256)} alt="" onError={() => setBroken(true)} />;
-  }
+  const src = useVerifiedImage(doc?.image?.sha256);
+  // eslint-disable-next-line @next/next/no-img-element
+  if (src) return <img className="wl-tm-img" src={src} alt="" />;
   return <>{(ticker ?? tokenId).slice(0, 2)}</>;
 }
 

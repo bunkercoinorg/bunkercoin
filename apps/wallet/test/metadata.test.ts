@@ -14,6 +14,7 @@ const blank = await load('  ', 'blank');
 const {
   clearMetadataCache,
   encodeIcon,
+  fetchVerifiedImage,
   fetchVerifiedMetadata,
   localDocument,
   METADATA_ENABLED,
@@ -177,4 +178,41 @@ test('promoteMetadata issues one GET and swallows failures', async () => {
   await promoteMetadata(VECTOR, (async () => {
     throw new TypeError('offline');
   }) as typeof fetch);
+});
+
+test('fetchVerifiedImage returns the bytes only when they hash to the document', async () => {
+  clearMetadataCache();
+  const bytes = new Uint8Array([137, 80, 78, 71, 1, 2, 3]);
+  const sha = hex(bytes);
+  const good = mockFetch(() => new Response(bytes));
+  const blob = await fetchVerifiedImage(sha, undefined, good.impl);
+  assert.ok(blob);
+  assert.deepEqual(new Uint8Array(await blob.arrayBuffer()), bytes);
+  assert.equal(good.calls[0].url, `https://metadata.bunkercoin.com/v1/images/${sha}`);
+  assert.ok(await fetchVerifiedImage(sha, undefined, good.impl));
+  assert.equal(good.calls.length, 1);
+
+  clearMetadataCache();
+  const spoof = mockFetch(() => new Response(new Uint8Array([9, 9, 9])));
+  assert.equal(await fetchVerifiedImage(sha, undefined, spoof.impl), null);
+  assert.equal(await fetchVerifiedImage(sha, undefined, mockFetch(() => new Response(bytes, { status: 404 })).impl), null);
+  assert.equal(await fetchVerifiedImage('../x', undefined, good.impl), null);
+});
+
+test('one caller aborting never voids another caller of the same hash', async () => {
+  clearMetadataCache();
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const slow = mockFetch(async () => {
+    await gate;
+    return new Response('{"description":"","image":null,"name":"BunkerCoin","v":1}');
+  });
+  const ctrl = new AbortController();
+  const first = fetchVerifiedMetadata(VECTOR, ctrl.signal, slow.impl);
+  const second = fetchVerifiedMetadata(VECTOR, new AbortController().signal, slow.impl);
+  ctrl.abort();
+  release();
+  assert.equal(await first, null);
+  assert.deepEqual(await second, doc);
+  assert.equal(slow.calls.length, 1);
 });

@@ -187,40 +187,86 @@ export async function uploadMetadata(
   return { hash, document: doc };
 }
 
-const cache = new Map<string, Promise<MetadataDocument | null>>();
+const HEX64 = /^[0-9a-f]{64}$/;
 
-async function fetchDocument(hash: string, signal: AbortSignal | undefined, fetchImpl: typeof fetch): Promise<MetadataDocument | null> {
+/** Verified values only; a fetch in flight is shared but bound to no caller, so one caller aborting never voids another's result. */
+function verifiedCache<T>(load: (key: string, fetchImpl: typeof fetch) => Promise<T | null>) {
+  const hits = new Map<string, T>();
+  const inflight = new Map<string, Promise<T | null>>();
+  const get = (key: string, signal: AbortSignal | undefined, fetchImpl: typeof fetch): Promise<T | null> => {
+    const hit = hits.get(key);
+    if (hit !== undefined) return Promise.resolve(hit);
+    let p = inflight.get(key);
+    if (!p) {
+      p = load(key, fetchImpl)
+        .catch(() => null)
+        .then((v) => {
+          if (inflight.get(key) === p) inflight.delete(key);
+          if (v !== null) hits.set(key, v);
+          return v;
+        });
+      inflight.set(key, p);
+    }
+    return signal ? untilAbort(p, signal) : p;
+  };
+  const drop = (key: string) => {
+    hits.delete(key);
+    inflight.delete(key);
+  };
+  const clear = () => {
+    hits.clear();
+    inflight.clear();
+  };
+  return { get, drop, clear };
+}
+
+const untilAbort = <T>(p: Promise<T | null>, signal: AbortSignal): Promise<T | null> =>
+  signal.aborted
+    ? Promise.resolve(null)
+    : new Promise((resolve) => {
+        const onAbort = () => resolve(null);
+        signal.addEventListener('abort', onAbort, { once: true });
+        void p.then((v) => {
+          signal.removeEventListener('abort', onAbort);
+          resolve(v);
+        });
+      });
+
+const documents = verifiedCache<MetadataDocument>(async (hash, fetchImpl) => {
   if (!METADATA_URL) return null;
-  const res = await fetchImpl(`${METADATA_URL}/v1/metadata/${hash}`, { signal, credentials: 'omit' });
+  const res = await fetchImpl(`${METADATA_URL}/v1/metadata/${hash}`, { credentials: 'omit' });
   if (!res.ok) return null;
   const doc = validateMetadata(JSON.parse(await res.text()));
   return (await metadataHash(doc)) === hash ? doc : null;
-}
+});
+
+const images = verifiedCache<Blob>(async (sha256, fetchImpl) => {
+  const res = await fetchImpl(metadataImageUrl(sha256), { credentials: 'omit' });
+  if (!res.ok) return null;
+  const blob = await res.blob();
+  return (await sha256Hex(blob)) === sha256 ? blob : null;
+});
 
 /** A published document whose canonical hash is `hash`, or null on any failure. Verified results are cached. */
-export async function fetchVerifiedMetadata(
-  hash: string,
-  signal?: AbortSignal,
-  fetchImpl: typeof fetch = fetch,
-): Promise<MetadataDocument | null> {
-  if (!METADATA_URL || !/^[0-9a-f]{64}$/.test(hash)) return null;
-  const hit = cache.get(hash);
-  if (hit) return hit;
-  const pending = fetchDocument(hash, signal, fetchImpl).catch(() => null);
-  cache.set(hash, pending);
-  const doc = await pending;
-  // Only verified documents stay cached; misses (pending, offline, aborted) are retried next time.
-  if (!doc && cache.get(hash) === pending) cache.delete(hash);
-  return doc;
+export function fetchVerifiedMetadata(hash: string, signal?: AbortSignal, fetchImpl: typeof fetch = fetch): Promise<MetadataDocument | null> {
+  if (!METADATA_URL || !HEX64.test(hash)) return Promise.resolve(null);
+  return documents.get(hash, signal, fetchImpl);
+}
+
+/** The icon bytes, only when they hash to the document's `image.sha256`; null otherwise. */
+export function fetchVerifiedImage(sha256: string, signal?: AbortSignal, fetchImpl: typeof fetch = fetch): Promise<Blob | null> {
+  if (!METADATA_URL || !HEX64.test(sha256)) return Promise.resolve(null);
+  return images.get(sha256, signal, fetchImpl);
 }
 
 /** After the token is final, one GET makes the service publish the pending document. */
 export async function promoteMetadata(hash: string, fetchImpl: typeof fetch = fetch): Promise<void> {
-  if (!METADATA_URL || !/^[0-9a-f]{64}$/.test(hash)) return;
-  cache.delete(hash);
+  if (!METADATA_URL || !HEX64.test(hash)) return;
+  documents.drop(hash);
   await fetchVerifiedMetadata(hash, undefined, fetchImpl);
 }
 
 export function clearMetadataCache(): void {
-  cache.clear();
+  documents.clear();
+  images.clear();
 }
