@@ -22,6 +22,8 @@ export interface PendingTx {
   /** Null for transactions this wallet did not sign (faucet) or whose nonce is unknown (legacy). */
   nonce: bigint | null;
   state: PendingState;
+  /** Base units; absent on faucet requests and pre-fee entries. */
+  fee?: bigint;
   to?: string;
   ticker?: string;
   error?: string;
@@ -56,6 +58,7 @@ function decode(v: unknown): PendingTx | null {
   if (typeof e.txId !== 'string' || !KINDS.includes(e.kind as PendingKind) || !STATES.includes(e.state as PendingState)) return null;
   if (typeof e.amount !== 'string' || !DIGITS.test(e.amount) || typeof e.at !== 'number') return null;
   if (e.nonce !== null && (typeof e.nonce !== 'string' || !DIGITS.test(e.nonce))) return null;
+  if (e.fee !== undefined && (typeof e.fee !== 'string' || !DIGITS.test(e.fee))) return null;
   return {
     txId: e.txId,
     kind: e.kind as PendingKind,
@@ -63,13 +66,19 @@ function decode(v: unknown): PendingTx | null {
     at: e.at,
     nonce: e.nonce === null ? null : BigInt(e.nonce as string),
     state: e.state as PendingState,
+    ...(typeof e.fee === 'string' ? { fee: BigInt(e.fee) } : {}),
     ...(typeof e.to === 'string' ? { to: e.to } : {}),
     ...(typeof e.ticker === 'string' ? { ticker: e.ticker } : {}),
     ...(typeof e.error === 'string' ? { error: e.error } : {}),
   };
 }
 
-const encode = (p: PendingTx) => ({ ...p, amount: p.amount.toString(), nonce: p.nonce === null ? null : p.nonce.toString() });
+const encode = (p: PendingTx) => ({
+  ...p,
+  amount: p.amount.toString(),
+  nonce: p.nonce === null ? null : p.nonce.toString(),
+  fee: p.fee === undefined ? undefined : p.fee.toString(),
+});
 
 function decodeReservation(v: unknown): Reservation | null {
   if (typeof v !== 'object' || v === null) return null;

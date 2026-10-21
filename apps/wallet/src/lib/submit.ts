@@ -167,7 +167,7 @@ export async function broadcast(
   return { txId: out.nodeId, tracked };
 }
 
-export type Submission = Pick<PendingTx, 'kind' | 'amount' | 'to' | 'ticker'>;
+export type Submission = Pick<PendingTx, 'kind' | 'amount' | 'to' | 'ticker' | 'fee'>;
 
 /** One account's chain access and persisted tracking. Callers hold `withAccountLock` around every use. */
 export interface Account {
