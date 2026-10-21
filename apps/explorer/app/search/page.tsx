@@ -6,7 +6,7 @@ import { shortId, toBase58 } from '@bunkercoin/chain-format';
 import { Button, Panel, StatePanel, StateLine, Tag } from '@bunkercoin/ui';
 import { DataTable } from '@bunkercoin/ui/explorer';
 import { slotLabel } from '@/components/blocks-table';
-import { hrefFor, lastSearchAtom, PageSearch } from '@/components/site-search';
+import { hrefFor, lastSearchAtom } from '@/components/site-search';
 import { useQueryParam } from '@/lib/use-query-param';
 import { api } from '@/lib/api';
 import { classifyQuery } from '@/lib/search';
@@ -90,7 +90,9 @@ export default function SearchPage() {
                   </span>
                 ),
               },
-              { key: 'note', header: 'note', cell: (m) => <span className="bc-hint">{m.inactive ? 'address with no recorded activity' : ''}</span> },
+              ...(current.matches.some((m) => m.inactive)
+                ? [{ key: 'note', header: 'note', cell: (m: SearchMatch) => <span className="bc-hint">{m.inactive ? 'address with no recorded activity' : ''}</span> }]
+                : []),
               { key: 'go', header: <span className="bc-sr">open</span>, align: 'right', cell: () => <span aria-hidden="true">→</span> },
             ]}
             rows={current.matches}
@@ -108,7 +110,6 @@ export default function SearchPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageSearch key={q} initial={q} />
       {body}
     </div>
   );

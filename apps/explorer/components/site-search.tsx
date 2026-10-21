@@ -31,10 +31,10 @@ export const searchPath = (q: string) => `/search?q=${encodeURIComponent(q)}`;
 export const lastSearchAtom = atom<{ q: string; matches: SearchMatch[] } | null>(null);
 
 // One confirmed match routes; anything else (several, none, invalid, API down) lands on /search.
-function useSiteSearch(initial = '') {
+function useSiteSearch() {
   const router = useRouter();
   const setLast = useSetAtom(lastSearchAtom);
-  const [query, setQuery] = useState(initial);
+  const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function submit() {
@@ -67,9 +67,9 @@ export function HeaderSiteSearch() {
   return <HeaderSearch value={s.query} onChange={s.setQuery} onSubmit={() => void s.submit()} busy={s.busy} placeholder={SEARCH_PLACEHOLDER} />;
 }
 
-/** The full-size search beside a page title (overview, /search). */
-export function PageSearch({ initial = '' }: { initial?: string }) {
-  const s = useSiteSearch(initial);
+/** The full-size search beside the overview title. */
+export function PageSearch() {
+  const s = useSiteSearch();
   const id = useId();
   return (
     <form

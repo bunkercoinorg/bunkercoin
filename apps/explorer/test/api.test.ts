@@ -76,3 +76,22 @@ test('malformed ids never reach the network', async () => {
   assert.equal(await api.getTransaction('zz'), null);
   assert.equal(urls.length, 0);
 });
+
+test('the token registry keeps creator and metadata hash', async () => {
+  respond(json(`{"tokens":[{"id":"01000000","ticker":"RADIO","current_supply":5,"max_supply":9,"metadata_hash":"${HASH}","creator":"${HASH}"}]}`));
+  const [t] = await api.getTokens();
+  assert.deepEqual(t, { id: '01000000', ticker: 'RADIO', current_supply: 5n, max_supply: 9n, creator: HASH, metadata_hash: HASH });
+  assert.ok(urls[0].endsWith('/tokens'));
+  respond(json('{"tokens":[{"id":"01000000"}]}'));
+  await rejectsWith(api.getTokens(), 'shape');
+});
+
+test('a mint body carries ticker, max supply and metadata hash', async () => {
+  respond(
+    json(
+      `{"hash":"${HASH}","sender":"${HASH}","nonce":1,"fee":100,"body":{"type":"Mint","ticker":"RADIO","max_supply":18446744073709551615,"metadata_hash":"${HASH}"},"status":{"location":"mempool"}}`,
+    ),
+  );
+  const tx = await api.getTransaction(HASH);
+  assert.deepEqual(tx?.body, { type: 'Mint', to: undefined, amount: undefined, token_id: undefined, ticker: 'RADIO', max_supply: 18446744073709551615n, metadata_hash: HASH });
+});
