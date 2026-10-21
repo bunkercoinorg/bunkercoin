@@ -4,3 +4,6 @@ out
 *.tsbuildinfo
 .env*
 .next-dev
+
+# wrangler local state
+.wrangler

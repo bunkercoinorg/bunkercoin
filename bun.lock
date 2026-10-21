@@ -64,6 +64,7 @@
         "eslint-config-next": "15.3.4",
         "tailwindcss": "^4",
         "typescript": "^5",
+        "wrangler": "4.148.0",
       },
     },
     "apps/homepage": {
@@ -133,6 +134,7 @@
         "bs58": "^6.0.0",
         "tailwindcss": "^4.3.3",
         "typescript": "^5.9.3",
+        "wrangler": "4.148.0",
       },
     },
     "packages/bunker-ui": {

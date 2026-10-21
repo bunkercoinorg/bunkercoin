@@ -7,7 +7,8 @@
     "build": "next build && node scripts/headers.mjs",
     "test": "node --test 'test/*.test.ts'",
     "typecheck": "tsc --noEmit",
-    "postbuild": "test -f out/index.html && test -f out/_headers || (echo 'export missing: out/ or out/_headers was not generated' && exit 1)"
+    "postbuild": "test -f out/index.html && test -f out/_headers || (echo 'export missing: out/ or out/_headers was not generated' && exit 1)",
+    "deploy": "bun run build && wrangler deploy"
   },
   "dependencies": {
     "@bunkercoin/chain-format": "workspace:*",
@@ -28,6 +29,7 @@
     "@types/react-dom": "^19.2.4",
     "bs58": "^6.0.0",
     "tailwindcss": "^4.3.3",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "wrangler": "4.148.0"
   }
 }

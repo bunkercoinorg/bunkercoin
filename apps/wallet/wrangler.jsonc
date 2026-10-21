@@ -1,11 +1,14 @@
 // Static-assets deploy: the wallet is a pure client-side export (no server,
-// no OpenNext) — keys and crypto live in the browser, RPC goes straight to
-// rpc.bunkercoin.com.
+// no OpenNext). Keys and crypto live in the browser; RPC goes straight to the node.
 {
-  "name": "bunkercoin-wallet",
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "wallet",
   "compatibility_date": "2026-08-01",
   "assets": {
     "directory": "./out",
     "not_found_handling": "single-page-application"
-  }
+  },
+  "routes": [{ "pattern": "wallet.bunkercoin.com", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": false
 }
