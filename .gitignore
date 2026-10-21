@@ -17,3 +17,4 @@ TODO.md
 /data-backup
 # JS workspace
 node_modules
+.dev.vars
