@@ -39,6 +39,12 @@ export class Rpc {
     return (await this.call<{ value: number }>('getBalance', [address])).value;
   }
 
+  /** Executed nonce: how many of the account's transactions the chain has applied. */
+  async getNonce(address: string): Promise<number> {
+    const { value } = await this.call<{ value: { data: { nonce: number } } | null }>('getAccountInfo', [address]);
+    return value?.data.nonce ?? 0;
+  }
+
   async getTokens(address: string): Promise<TokenHolding[]> {
     const { value } = await this.call<{ value: { tokens?: TokenHolding[] } | TokenHolding[] }>(
       'getTokenAccountsByOwner',
