@@ -1,0 +1,63 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { gate, withBypass } from '../src/lib/gate.ts';
+
+const ORIGIN = 'https://bunkercoin.com';
+const req = (path: string, country: string | null, referer: string | null = null, method = 'GET') =>
+  gate({ url: `${ORIGIN}${path}`, method, country, referer });
+
+test('DE is rewritten to /blocked', () => {
+  assert.deepEqual(req('/', 'DE'), { action: 'rewrite', pathname: '/blocked' });
+  assert.deepEqual(req('/legal/imprint', 'DE'), { action: 'rewrite', pathname: '/blocked' });
+  assert.deepEqual(req('/our-bunker', 'DE'), { action: 'rewrite', pathname: '/blocked' });
+});
+
+test('DE with bnkr passes, with or without a value', () => {
+  assert.deepEqual(req('/?bnkr', 'DE'), { action: 'next' });
+  assert.deepEqual(req('/?bnkr=1', 'DE'), { action: 'next' });
+  assert.deepEqual(req('/legal/imprint?x=2&bnkr=', 'DE'), { action: 'next' });
+});
+
+test('other EU countries and unknown countries pass', () => {
+  for (const c of ['AT', 'FR', 'NL', 'US', 'XX', 'T1', null]) {
+    assert.deepEqual(req('/', c), { action: 'next' }, String(c));
+  }
+});
+
+test('whitepaper and view stay reachable from DE', () => {
+  assert.deepEqual(req('/whitepaper', 'DE'), { action: 'next' });
+  assert.deepEqual(req('/whitepaper/bunker_coin.pdf', 'DE'), { action: 'next' });
+  assert.deepEqual(req('/view?file=land-registry', 'DE'), { action: 'next' });
+  assert.deepEqual(req('/whitepaperx', 'DE'), { action: 'rewrite', pathname: '/blocked' });
+  assert.deepEqual(req('/blocked', 'DE'), { action: 'next' });
+});
+
+test('same-origin referer with bnkr redirects to the same URL with bnkr', () => {
+  assert.deepEqual(req('/legal/imprint', 'DE', `${ORIGIN}/?bnkr`), {
+    action: 'redirect',
+    url: `${ORIGIN}/legal/imprint?bnkr`,
+  });
+  assert.deepEqual(req('/view?file=land-registry', 'US', `${ORIGIN}/whitepaper?bnkr=abc`), {
+    action: 'redirect',
+    url: `${ORIGIN}/view?file=land-registry&bnkr=abc`,
+  });
+});
+
+test('referer propagation needs same origin, a bnkr param and a safe method', () => {
+  assert.deepEqual(req('/', 'DE', 'https://evil.example/?bnkr'), { action: 'rewrite', pathname: '/blocked' });
+  assert.deepEqual(req('/', 'DE', `${ORIGIN}/whitepaper`), { action: 'rewrite', pathname: '/blocked' });
+  assert.deepEqual(req('/', 'DE', 'not a url'), { action: 'rewrite', pathname: '/blocked' });
+  assert.deepEqual(req('/', 'US', `${ORIGIN}/?bnkr`, 'POST'), { action: 'next' });
+  assert.deepEqual(req('/?bnkr=2', 'DE', `${ORIGIN}/?bnkr=1`), { action: 'next' });
+});
+
+test('withBypass keeps bnkr on internal hrefs only', () => {
+  assert.equal(withBypass('/', null), '/');
+  assert.equal(withBypass('/', ''), '/?bnkr');
+  assert.equal(withBypass('/whitepaper', '1'), '/whitepaper?bnkr=1');
+  assert.equal(withBypass('/view?file=land-registry', 'a b'), '/view?file=land-registry&bnkr=a%20b');
+  assert.equal(withBypass('/#token', ''), '/?bnkr#token');
+  assert.equal(withBypass('/?bnkr=x', 'y'), '/?bnkr=x');
+  assert.equal(withBypass('https://explorer.bunkercoin.com/', ''), 'https://explorer.bunkercoin.com/');
+  assert.equal(withBypass('//evil.example/', ''), '//evil.example/');
+});

@@ -1,89 +1,30 @@
-"use client"
+import type { Metadata } from "next";
+import { Link } from "@/components/bc/link";
+import { Shell } from "@/components/bc/shell";
+import { SITE } from "@/lib/site";
 
-import React from 'react';
-import Link from "next/link";
-import {Button} from "@/components/ui/button";
-import {ArrowLeft, AlertTriangle} from "lucide-react";
-import PDFViewer from "@/components/sections/pdf-viewer"
-import {  Suspense } from "react"
+export const metadata: Metadata = { title: "Whitepaper · BunkerCoin" };
 
-interface PDFFile {
-    url: string
-    title: string
-}
-
-const selectedPDF: PDFFile = {
-    url: 'https://raw.githubusercontent.com/TheBunkerCoin/bunker_coin/main/bunker_coin.pdf',
-    title: 'BunkerCoin Technical Whitepaper'
-}
-
-const PDFViewContent = () => {
-    if (!selectedPDF) {
-        return (
-            <div className="min-h-screen bg-neutral-900 flex items-center justify-center p-4">
-                <div className="max-w-md w-full bg-neutral-800 rounded-lg p-6 text-center">
-                    <AlertTriangle className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
-                    <h1 className="text-xl font-medium text-neutral-100 mb-2">
-                        Invalid Document Request
-                    </h1>
-                    <p className="text-neutral-400 mb-4">
-                        No document available.
-                    </p>
+export default function Whitepaper() {
+    return (
+        <Shell current="whitepaper">
+            <div className="bc-col-form bc-stack bc-gap24">
+                <Link className="bc-mini" href="/">← home</Link>
+                <div>
+                    <span className="bc-lbl">technical paper · pdf</span>
+                    <h1 className="bc-t1">The BunkerCoin whitepaper.</h1>
+                    <p className="bc-lead">How the chain reaches consensus over HF radio: the radio link, Alpenglow on a slow channel, and what it costs.</p>
+                </div>
+                <dl className="bc-fx">
+                    <div><dt>format</dt><dd>pdf <span className="bc-s">· opens in the browser</span></dd></div>
+                    <div><dt>source</dt><dd><a className="bc-lnk" href={SITE.github}>github.com/bunkercoinorg</a></dd></div>
+                </dl>
+                <div className="bc-acts">
+                    <a className="bc-btn" href={SITE.paper}>open the pdf ↗</a>
+                    <a className="bc-btn" data-variant="ghost" href={SITE.paper} download="bunker_coin.pdf">download</a>
+                    <a className="bc-btn" data-variant="quiet" href={SITE.explorer}>explorer ↗</a>
                 </div>
             </div>
-        )
-    }
-
-    return (
-        <>
-            <div className="fixed top-4 left-4 z-50">
-                <Link href="/">
-                    <Button className="">
-                        <ArrowLeft className="mr-0 md:mr-2 h-4 w-4"/> <span className={"hidden md:flex"}>Back to Home</span>
-                    </Button>
-                </Link>
-            </div>
-            <PDFViewer pdfUrl={selectedPDF.url} title={selectedPDF.title} />
-        </>
-    )
-}
-
-const LoadingState = () => (
-    <div className="min-h-screen bg-neutral-900 flex items-center justify-center">
-        <div className="text-neutral-100">Loading...</div>
-    </div>
-)
-
-const PDFViewPage = () => {
-    return (
-        <Suspense fallback={<LoadingState />}>
-            <PDFViewContent />
-        </Suspense>
-    )
-}
-
-export default PDFViewPage
-
-/*
-const WhitePaper = () => {
-    return (
-        <>
-            <div className="fixed top-4 left-4 z-50">
-                <Link href="/">
-                    <Button className="">
-                        <ArrowLeft className="mr-0 md:mr-2 h-4 w-4"/> <span className={"hidden md:flex"}>Back to Home</span>
-                    </Button>
-                </Link>
-            </div>
-
-            <iframe
-                src="https://gamma.app/embed/k2y90w3ne3rilxy"
-                className="w-screen h-screen border-0"
-                title="BunkerCoin Whitepaper"
-            />
-        </>
+        </Shell>
     );
-};
-
-export default WhitePaper;
-*/
+}

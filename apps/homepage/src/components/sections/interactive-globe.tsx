@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { GlobeMethods } from 'react-globe.gl';
+import { LAND_BITS, LAND_STEP } from '@/lib/land';
 
 // Dynamically import Globe to avoid SSR issues
 const Globe = React.lazy(() => import('react-globe.gl'));
@@ -64,11 +65,38 @@ const neighborMap = nodes.map((n,i)=>{
   return dists.slice(0,3).map(d=>d.j);
 });
 
-const InteractiveGlobe = () => {
+// Equirectangular texture: dark sphere with a faint dot per land cell.
+const landTexture = () => {
+    const cols = 360 / LAND_STEP, rows = 180 / LAND_STEP, cell = 12;
+    const canvas = document.createElement('canvas');
+    canvas.width = cols * cell;
+    canvas.height = rows * cell;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return undefined;
+    ctx.fillStyle = '#0c0c0c';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'rgba(242, 242, 240, 0.22)';
+    const bits = atob(LAND_BITS);
+    for (let i = 0; i < cols * rows; i++) {
+        if (!(bits.charCodeAt(i >> 3) & (1 << (i & 7)))) continue;
+        ctx.beginPath();
+        ctx.arc((i % cols + 0.5) * cell, (Math.floor(i / cols) + 0.5) * cell, cell * 0.28, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    return canvas.toDataURL('image/png');
+};
+
+type Arc = { startLat: number; startLng: number; endLat: number; endLng: number; color: string; t: number };
+
+const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const InteractiveGlobe = ({ onReady }: { onReady?: () => void }) => {
     const globeRef = useRef<GlobeMethods | undefined>(undefined);
     const containerRef = useRef<HTMLDivElement>(null);
     const [dims, setDims] = useState({ width: 0, height: 0 });
-    const [arcsData, setArcsData] = useState<any[]>([]);
+    const [arcsData, setArcsData] = useState<Arc[]>([]);
+    const [still] = useState(prefersReducedMotion);
+    const texture = useMemo(landTexture, []);
 
     useEffect(() => {
         const handleResize = () => {
@@ -89,7 +117,7 @@ const InteractiveGlobe = () => {
         // Apply settings only once when component mounts
         const applyGlobeSettings = () => {
             if (globeRef.current) {
-                globeRef.current.controls().autoRotate = true;
+                globeRef.current.controls().autoRotate = !still;
                 globeRef.current.controls().autoRotateSpeed = 1;
                 globeRef.current.controls().enableZoom = false;
                 globeRef.current.controls().enablePan = true;
@@ -102,7 +130,7 @@ const InteractiveGlobe = () => {
         const timer = setTimeout(applyGlobeSettings, 500);
         
         return () => clearTimeout(timer);
-    }, []); // Empty dependency array - only run once
+    }, [still]);
 
     useEffect(() => {
           const KEEP = 12000;
@@ -116,7 +144,7 @@ const InteractiveGlobe = () => {
               const activeCount = Math.floor(Math.random() * 2) + 4; // 4-5 nodes
               const activeNodes = [...Array(nodes.length).keys()].sort(()=>Math.random()-0.5).slice(0,activeCount);
               
-              const newA:any[] = [];
+              const newA: Arc[] = [];
               activeNodes.forEach(srcIdx => {
                   const src = nodes[srcIdx];
                   const viable = nodes.map((n,i)=>({i,d:distance(src,n)})).filter(o=>o.d>1500 && o.d<8000 && o.i!==srcIdx);
@@ -152,22 +180,22 @@ const InteractiveGlobe = () => {
           }, 500);
           
           // Then continue with interval
-          const interval = setInterval(generateArcs, 3000);
+          const interval = still ? undefined : setInterval(generateArcs, 3000);
 
         return () => {
             clearTimeout(timeout);
             clearInterval(interval);
         };
-    },[]);
+    },[still]);
 
 
     return (
         <div ref={containerRef} className="absolute inset-0 overflow-hidden">
-             {dims.width && <Globe
+             {dims.width > 0 && <Suspense fallback={null}><Globe
                 ref={globeRef}
                 width={dims.width}
                 height={dims.height}
-                globeImageUrl="https://unpkg.com/three-globe/example/img/earth-dark.jpg"
+                globeImageUrl={texture}
                 backgroundColor="rgba(0,0,0,0)"
                 atmosphereColor={'#006a55'}
                 atmosphereAltitude={0.3}
@@ -177,10 +205,10 @@ const InteractiveGlobe = () => {
                 arcColor={'color'}
                 arcDashLength={0.4}
                 arcDashGap={0.2}
-                arcDashAnimateTime={3000}
+                arcDashAnimateTime={still ? 0 : 3000}
                 arcStroke={0.3}
 
-                ringsData={nodes}
+                ringsData={still ? [] : nodes}
                 ringColor={() => ['rgba(0, 255, 178, 0.6)', 'rgba(0, 255, 178, 0)']}
                 ringMaxRadius={3}
                 ringPropagationSpeed={2}
@@ -188,15 +216,16 @@ const InteractiveGlobe = () => {
                 
                 onGlobeReady={() => {
                     if (globeRef.current) {
-                        globeRef.current.controls().autoRotate = true;
+                        globeRef.current.controls().autoRotate = !still;
                         globeRef.current.controls().autoRotateSpeed = 1;
                         globeRef.current.controls().enableZoom = false;
                         globeRef.current.controls().enablePan = true;
                         globeRef.current.controls().enableRotate = true;
                         globeRef.current.pointOfView({ lat: 20, lng: 0, altitude: 2 });
                     }
+                    onReady?.();
                 }}
-             />}
+             /></Suspense>}
         </div>
     );
 };
