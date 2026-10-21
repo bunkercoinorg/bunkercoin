@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildHeaders, inlineScriptHashes } from '../scripts/headers.mjs';
+import { buildHeaders, inlineScriptHashes, inlineStyleFindings } from '../scripts/headers.mjs';
 
 const SCRIPT = new URL('../scripts/headers.mjs', import.meta.url).pathname;
 
@@ -68,4 +68,23 @@ test('a build with no inline script hashes fails instead of shipping a blocking 
   const run = spawnSync(process.execPath, [SCRIPT, root], { env: cleanEnv(), encoding: 'utf8' });
   assert.notEqual(run.status, 0);
   assert.match(run.stderr, /no inline scripts/);
+});
+
+test('inline style emission paths in the export are found; framework-owned ones are not', () => {
+  const chunk = (path: string, text: string) => ({ path: `out/_next/static/chunks/${path}`, text });
+  const found = inlineStyleFindings([
+    { path: 'out/index.html', text: '<div style="min-width:80px"></div>' },
+    { path: 'out/404.html', text: '<style>body{}</style>' },
+    chunk('app/page-1.js', '(0,r.jsx)("button",{type:l,"aria-busy":o||void 0,style:o&&c.current?{minWidth:c.current}:d,'),
+    chunk('app/page-2.js', '(0,r.jsx)("p",{style:{color:"red"},children:t})'),
+    chunk('12-3.js', 'e.setAttribute("style","color:red")'),
+    chunk('app/layout-4.js', 'e.exports={style:{fontFamily:"\'GeistSans\'"},className:"__className_8adcd2"}'),
+    chunk('main-5.js', '(0,o.jsx)("p",{id:"__next-route-announcer__",style:l,children:t})'),
+    chunk('6-7.js', '"Application error: a ",r?"server":"client",(0,o.jsx)("h2",{style:c.text,children:[]})'),
+    chunk('app/page-8.js', '(0,r.jsx)("button",{className:"bc-btn","aria-busy":o||void 0,children:t})'),
+  ]);
+  assert.deepEqual(
+    found.map((f) => f.split(':')[0]),
+    ['out/index.html', 'out/_next/static/chunks/app/page-1.js', 'out/_next/static/chunks/app/page-2.js', 'out/_next/static/chunks/12-3.js'],
+  );
 });
