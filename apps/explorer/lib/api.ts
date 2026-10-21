@@ -12,6 +12,7 @@ import {
   asToken,
   asTokens,
   asTransaction,
+  asTransactionPage,
   ShapeError,
 } from './guards.ts';
 import type {
@@ -22,6 +23,7 @@ import type {
   SearchMatch,
   TokenSummary,
   TransactionDetails,
+  TransactionPage,
 } from './types.ts';
 
 export class ApiError extends Error {
@@ -120,6 +122,11 @@ export const api = {
   // A pure integer id is a slot; anything else is a block hash.
   getBlockById: (id: string, opts?: RequestOptions): Promise<Block | null> =>
     /^\d+$/.test(id) ? api.getBlockBySlot(id, opts) : api.getBlock(id, opts),
+
+  getTransactions: async (offset: number, limit: number, opts?: RequestOptions): Promise<TransactionPage> => {
+    const body = await expect(nodePaths.transactions(offset, limit), opts);
+    return guard(() => asTransactionPage(body));
+  },
 
   getTransaction: async (hash: string, opts?: RequestOptions): Promise<TransactionDetails | null> => {
     const key = normalizeHash(hash);

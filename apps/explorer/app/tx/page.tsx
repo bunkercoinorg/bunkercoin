@@ -10,6 +10,7 @@ import { useEntity, type EntityState } from '@/lib/use-entity';
 import { api } from '@/lib/api';
 import { routes } from '@/lib/routes';
 import { tokenLabel } from '@/lib/token-label';
+import { TX_TYPES } from '@/lib/txs';
 import type { TransactionDetails } from '@/lib/types';
 
 // Until final, keep refreshing; a missing tx may still be propagating over radio.
@@ -19,11 +20,6 @@ const pollUntilFinal = (tx: TransactionDetails | null) =>
   tx === null ? NOT_FOUND_POLL_MS : tx.status.location !== 'finalized' ? PENDING_POLL_MS : null;
 
 const LOCATIONS = ['mempool', 'confirmed', 'finalized'] as const;
-const TYPES: Record<string, string> = {
-  Transfer: 'transfer',
-  TokenTransfer: 'token transfer',
-  Mint: 'create token',
-};
 
 function AccountValue({ hex }: { hex: string }) {
   if (!normalizeHash(hex)) return <span className="mono">{hex}</span>;
@@ -60,7 +56,7 @@ function TxView({ tx, entity }: { tx: TransactionDetails; entity: EntityState<Tr
         : `${formatUnits(body.amount, 6)} BUNKER`;
 
   const key: Fact[] = [
-    { label: 'type', value: body ? (TYPES[body.type] ?? body.type) : 'not reported' },
+    { label: 'type', value: body ? (TX_TYPES[body.type] ?? body.type) : 'not reported' },
     ...(amount ? [{ label: 'amount', value: amount }] : []),
     ...(!amount && tokenId ? [{ label: 'token', value: <Link className="bc-lnk" href={routes.token(tokenId)}>{tokenId}</Link> }] : []),
     ...(body?.ticker !== undefined ? [{ label: 'ticker', value: body.ticker }] : []),
@@ -117,7 +113,7 @@ export default function TransactionPage() {
       entity={entity}
       id={sig}
       what="transaction"
-      back={<BackLink label="blocks" href="/blocks" />}
+      back={<BackLink label="txs" href="/txs" />}
       missing="Search for a transaction id."
       unavailable="Transaction unavailable."
       notFound={{ title: 'No transaction with this id.', message: 'It may still be arriving over radio. Checking every 15s.' }}

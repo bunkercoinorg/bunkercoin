@@ -95,3 +95,22 @@ test('a mint body carries ticker, max supply and metadata hash', async () => {
   const tx = await api.getTransaction(HASH);
   assert.deepEqual(tx?.body, { type: 'Mint', to: undefined, amount: undefined, token_id: undefined, ticker: 'RADIO', max_supply: 18446744073709551615n, metadata_hash: HASH });
 });
+
+test('the transaction feed is paged by offset and guarded', async () => {
+  respond(
+    json(
+      `{"transactions":[{"hash":"${HASH}","sender":"${HASH}","nonce":3,"fee":100,"slot":48219,"block_hash":"${HASH}","body":{"type":"Transfer","to":"${HASH}","amount":18446744073709551615},"status":{"location":"finalized","slot":48219,"block_hash":"${HASH}","success":true,"error":null}}],"total":1,"limit":50,"offset":0}`,
+    ),
+  );
+  const page = await api.getTransactions(0, 50);
+  assert.match(urls[0], /\/transactions\?offset=0&limit=50$/);
+  assert.equal(page.total, 1);
+  assert.equal(page.transactions[0].body?.amount, 18446744073709551615n);
+  assert.deepEqual(page.transactions[0].status, { location: 'finalized', slot: 48219, block_hash: HASH, executed: undefined, success: true, error: undefined });
+  respond(json('{"transactions":[{"hash":"x"}],"total":1,"limit":50,"offset":0}'));
+  await rejectsWith(api.getTransactions(0, 50), 'shape');
+  respond(json('{"transactions":[],"limit":50,"offset":0}'));
+  await rejectsWith(api.getTransactions(0, 50), 'shape');
+  respond(json('', 404));
+  await rejectsWith(api.getTransactions(0, 50), 'http', 404);
+});

@@ -47,6 +47,13 @@ export interface TransactionDetails {
   status: TransactionStatus;
 }
 
+export interface TransactionPage {
+  transactions: TransactionDetails[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
 export interface AccountDetails {
   pubkey: string;
   native_balance: bigint;

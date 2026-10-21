@@ -9,6 +9,7 @@ import type {
   TokenSummary,
   TransactionBody,
   TransactionDetails,
+  TransactionPage,
   TransactionStatus,
 } from './types.ts';
 
@@ -137,6 +138,16 @@ export function asTransaction(v: unknown): TransactionDetails {
     fee: u64(o.fee, 'tx.fee'),
     body: opt(o.body, asBody),
     status: asTxStatus(o.status),
+  };
+}
+
+export function asTransactionPage(v: unknown): TransactionPage {
+  const o = obj(v, 'transactions');
+  return {
+    transactions: arr(o.transactions, 'transactions.transactions').map((t, i) => asTransaction(obj(t, `transactions[${i}]`))),
+    total: int(o.total, 'transactions.total'),
+    offset: int(o.offset, 'transactions.offset'),
+    limit: int(o.limit, 'transactions.limit'),
   };
 }
 

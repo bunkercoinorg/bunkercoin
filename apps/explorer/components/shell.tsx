@@ -11,13 +11,14 @@ import { HeaderSiteSearch } from './site-search';
 const NAV = [
   { label: 'overview', href: '/' },
   { label: 'blocks', href: '/blocks' },
+  { label: 'txs', href: '/txs' },
   { label: 'tokens', href: '/tokens' },
   { label: 'network', href: '/network' },
   { label: 'stream', href: '/stream' },
 ];
 
 // Detail pages belong to the list they came from.
-const SECTION: Record<string, string> = { '/block': '/blocks', '/tx': '/blocks', '/token': '/tokens' };
+const SECTION: Record<string, string> = { '/block': '/blocks', '/tx': '/txs', '/token': '/tokens' };
 
 function ExplorerTheme() {
   const [theme, setTheme] = useState<Theme>('dark');
