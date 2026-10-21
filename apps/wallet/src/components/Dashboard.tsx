@@ -8,12 +8,12 @@ import {
   RpcError,
   TxFailedError,
   type AccountHistory,
+  type SignatureStatus,
   type TokenBalance,
 } from '@/lib/connection';
 import { addressToHex, type SignedTransaction } from '@/lib/keys';
 import {
   addEntry,
-  addReservation,
   loadPending,
   loadReservations,
   migrateLegacyPending,
@@ -22,10 +22,11 @@ import {
   patchEntry,
   releaseReservations,
   removeEntry,
+  transitionEntry,
   type PendingTx,
   type Reservation,
 } from '@/lib/pending';
-import { broadcast, nextNonce, withAccountLock, type Outstanding } from '@/lib/submit';
+import { resendUncertain, submitTransaction, withAccountLock, type Account, type Submission } from '@/lib/submit';
 import { connectionStatus, initialFreshness, type Freshness, type FreshnessMap, type Resource } from '@/lib/freshness';
 import { elapsedLabel } from '@/lib/format';
 import type { Signer } from '@/lib/signer';
@@ -42,7 +43,7 @@ const BALANCE_POLL_MS = 20_000;
 // After the confirmation window an answer can still come; keep asking, just less often.
 const SLOW_POLL_MS = 60_000;
 
-export type Submission = Pick<PendingTx, 'kind' | 'amount' | 'to' | 'ticker'>;
+export type { Submission };
 
 export interface SubmitResult {
   txId: string;
@@ -50,7 +51,7 @@ export interface SubmitResult {
   tracked: boolean;
 }
 
-/** Signs with the next reconciled nonce and broadcasts, one submission per account at a time. */
+/** Signs with the next reconciled nonce and broadcasts, one per account at a time; refuses while one is unacknowledged. */
 export type SubmitSigned = (build: (nonce: bigint) => SignedTransaction, info: Submission) => Promise<SubmitResult>;
 
 export type RecordSubmitted = (txId: string, info: Submission) => Promise<SubmitResult>;
@@ -60,6 +61,9 @@ interface DashboardProps {
   onLock: () => void;
   onWalletRemoved: () => void;
 }
+
+const noteUncertain = (txId: string, error: string) => (list: PendingTx[]) =>
+  list.map((p) => (p.txId === txId && p.state === 'uncertain' ? { ...p, error } : p));
 
 export default function Dashboard({ signer, onLock, onWalletRemoved }: DashboardProps) {
   const conn = useRef(new BunkerConnection()).current;
@@ -150,10 +154,20 @@ export default function Dashboard({ signer, onLock, onWalletRemoved }: Dashboard
   const track = useCallback(
     async (entry: PendingTx, signal: AbortSignal) => {
       let slow = entry.state === 'unconfirmed';
+      let seen = false;
       const release = () => void reserve(releaseReservations([entry.txId]));
+      // Seen by the node: no longer "no answer". Its reservation stays uncertain until it settles.
+      const onStatus = (status: SignatureStatus | null) => {
+        if (seen || status === null || status.err !== null) return;
+        seen = true;
+        void apply(transitionEntry(entry.txId, 'uncertain', 'pending'));
+      };
       for (;;) {
         try {
-          await conn.confirm(entry.txId, slow ? { signal, pollMs: SLOW_POLL_MS, timeoutMs: Infinity } : { signal });
+          await conn.confirm(
+            entry.txId,
+            slow ? { signal, onStatus, pollMs: SLOW_POLL_MS, timeoutMs: Infinity } : { signal, onStatus },
+          );
           void apply(removeEntry(entry.txId));
           release();
           void refresh();
@@ -161,7 +175,7 @@ export default function Dashboard({ signer, onLock, onWalletRemoved }: Dashboard
         } catch (e) {
           if (e instanceof ConfirmCancelledError) return;
           if (e instanceof ConfirmTimeoutError) {
-            void apply(patchEntry(entry.txId, { state: 'unconfirmed' }));
+            void apply(transitionEntry(entry.txId, 'pending', 'unconfirmed'));
             slow = true;
             continue;
           }
@@ -229,46 +243,43 @@ export default function Dashboard({ signer, onLock, onWalletRemoved }: Dashboard
     [apply, startTracking],
   );
 
+  const account: Account = useMemo(
+    () => ({
+      conn,
+      address,
+      reservations: () => [...loadReservations(chain, address), ...unsavedReservations.current],
+      entries: () => loadPending(chain, address),
+      reserve,
+      apply,
+      track: startTracking,
+      untrack: stopTracking,
+    }),
+    [conn, address, chain, reserve, apply, startTracking, stopTracking],
+  );
+
   const submitSigned: SubmitSigned = useCallback(
     (build, info) =>
-      withAccountLock(address, async () => {
+      withAccountLock(address, () => {
         signer.assertActive();
-        const known = new Map<string, Outstanding>();
-        for (const r of [...loadReservations(chain, address), ...unsavedReservations.current]) known.set(r.txId, r);
-        for (const p of loadPending(chain, address)) {
-          if (p.nonce !== null && p.state !== 'failed') known.set(p.txId, { txId: p.txId, nonce: p.nonce });
-        }
-        const { nonce, resolved } = await nextNonce(conn, address, [...known.values()]);
-        if (resolved.length > 0) await reserve(releaseReservations(resolved));
-        signer.assertActive();
-        const tx = build(nonce);
-        const entry = (txId: string): PendingTx => ({ ...info, txId, nonce, at: Date.now(), state: 'uncertain' });
-        return broadcast(conn, tx, {
-          record: async (txId) => {
-            const reserved = await reserve(addReservation({ txId, nonce, at: Date.now() }));
-            const tracked = await apply(addEntry(entry(txId)));
-            startTracking(entry(txId));
-            return reserved && tracked;
+        return submitTransaction(
+          account,
+          (nonce) => {
+            signer.assertActive();
+            return build(nonce);
           },
-          rejected: async (txId) => {
-            stopTracking(txId);
-            await apply(removeEntry(txId));
-            await reserve(releaseReservations([txId]));
-          },
-          acknowledged: async (localId, nodeId) => {
-            if (nodeId === localId) {
-              await apply(patchEntry(localId, { state: 'pending' }));
-              return;
-            }
-            // The node is authoritative for the id; keep the nonce reserved under both until one resolves.
-            stopTracking(localId);
-            await apply((list) => addEntry({ ...entry(nodeId), state: 'pending' })(removeEntry(localId)(list)));
-            await reserve(addReservation({ txId: nodeId, nonce, at: Date.now() }));
-            startTracking({ ...entry(nodeId), state: 'pending' });
-          },
-        });
+          info,
+        );
       }),
-    [address, chain, conn, signer, apply, reserve, startTracking, stopTracking],
+    [address, signer, account],
+  );
+
+  const resend = useCallback(
+    (txId: string) =>
+      void withAccountLock(address, () => resendUncertain(account, txId)).then(
+        (note) => (note === null ? undefined : apply(noteUncertain(txId, note))),
+        (e: Error) => apply(noteUncertain(txId, e.message)),
+      ),
+    [address, account, apply],
   );
 
   const dismiss = useCallback(
@@ -327,6 +338,7 @@ export default function Dashboard({ signer, onLock, onWalletRemoved }: Dashboard
         tokens={tokens}
         trackingLost={trackingLost}
         onDismiss={dismiss}
+        onResend={resend}
       />
       <RecoveryPhrase />
       <DangerZone onWalletRemoved={onWalletRemoved} />

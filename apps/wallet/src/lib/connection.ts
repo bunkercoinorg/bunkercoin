@@ -224,6 +224,18 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+export interface TransactionLookup {
+  sender: string;
+  nonce: bigint;
+  /** 'mempool' | 'confirmed' | 'finalized'. */
+  location: string;
+}
+
+/** The node takes base64-encoded JSON; these exact bytes are what a rebroadcast resends. */
+export function encodeTransaction(tx: SignedTransaction): string {
+  return btoa(stringifyJson(tx));
+}
+
 export function touchesAccount(tx: ChainTransaction, addressHex: string): boolean {
   if (tx.sender === addressHex) return true;
   return (tx.body.type === 'Transfer' || tx.body.type === 'TokenTransfer') && tx.body.to === addressHex;
@@ -365,10 +377,25 @@ export class BunkerConnection {
     return { transactions: found, scanned, end: 'scan-limit' };
   }
 
-  /** tx object -> base58 id. Node accepts base64-encoded JSON. */
+  /** tx object -> base58 id. */
   async sendTransaction(tx: SignedTransaction, opts?: RequestOptions): Promise<string> {
-    const b64 = btoa(stringifyJson(tx));
-    return str('sendTransaction', await this.rpc('sendTransaction', [b64], opts), 'transaction id');
+    return this.sendRawTransaction(encodeTransaction(tx), opts);
+  }
+
+  async sendRawTransaction(wire: string, opts?: RequestOptions): Promise<string> {
+    return str('sendTransaction', await this.rpc('sendTransaction', [wire], opts), 'transaction id');
+  }
+
+  /** Lookup by hex hash. The mempool reports the sender as submitted (base58), blocks as hex. */
+  async getTransaction(hashHex: string, opts?: RequestOptions): Promise<TransactionLookup> {
+    const m = 'getTransaction';
+    const t = obj(m, await this.rpc(m, [hashHex], opts), 'transaction');
+    const status = obj(m, t.status, 'transaction status');
+    return {
+      sender: str(m, t.sender, 'sender'),
+      nonce: u64(m, t.nonce, 'nonce'),
+      location: str(m, status.location, 'transaction location'),
+    };
   }
 
   async requestAirdrop(address: string, amount: bigint, opts?: RequestOptions): Promise<string> {

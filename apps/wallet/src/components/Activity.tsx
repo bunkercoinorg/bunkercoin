@@ -30,9 +30,19 @@ interface ActivityProps {
   trackingLost: boolean;
   historyError: string | null;
   onDismiss: (txId: string) => void;
+  onResend: (txId: string) => void;
 }
 
-export default function Activity({ addressHex, pending, history, historyError, tokens, trackingLost, onDismiss }: ActivityProps) {
+export default function Activity({
+  addressHex,
+  pending,
+  history,
+  historyError,
+  tokens,
+  trackingLost,
+  onDismiss,
+  onResend,
+}: ActivityProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const txs = history?.transactions ?? [];
 
@@ -72,15 +82,21 @@ export default function Activity({ addressHex, pending, history, historyError, t
                 }
               >
                 {p.state === 'failed' ? 'failed' : p.state === 'uncertain' ? 'no answer from node' : 'unconfirmed'}
-                <Button
-                  variant="ghost"
-                  small
-                  className="ml-1.5"
-                  aria-label="Dismiss"
-                  onClick={() => onDismiss(p.txId)}
-                >
-                  ✕
-                </Button>
+                {p.state === 'uncertain' ? (
+                  <Button variant="ghost" small className="ml-1.5" onClick={() => onResend(p.txId)}>
+                    Resend
+                  </Button>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    small
+                    className="ml-1.5"
+                    aria-label="Dismiss"
+                    onClick={() => onDismiss(p.txId)}
+                  >
+                    ✕
+                  </Button>
+                )}
               </span>
             )}
           </div>

@@ -32,6 +32,10 @@ export interface Reservation {
   txId: string;
   nonce: bigint;
   at: number;
+  /** The node never acknowledged the broadcast: its outcome is unknown and nothing new is signed until it settles. */
+  uncertain: boolean;
+  /** The exact broadcast payload, kept while uncertain so a rebroadcast resends the same transaction. */
+  wire?: string;
 }
 
 const KINDS: PendingKind[] = ['faucet', 'send', 'mint', 'token-send'];
@@ -71,7 +75,13 @@ function decodeReservation(v: unknown): Reservation | null {
   if (typeof v !== 'object' || v === null) return null;
   const r = v as Record<string, unknown>;
   if (typeof r.txId !== 'string' || typeof r.nonce !== 'string' || !DIGITS.test(r.nonce) || typeof r.at !== 'number') return null;
-  return { txId: r.txId, nonce: BigInt(r.nonce), at: r.at };
+  return {
+    txId: r.txId,
+    nonce: BigInt(r.nonce),
+    at: r.at,
+    uncertain: r.uncertain === true,
+    ...(typeof r.wire === 'string' ? { wire: r.wire } : {}),
+  };
 }
 
 const encodeReservation = (r: Reservation) => ({ ...r, nonce: r.nonce.toString() });
@@ -100,8 +110,22 @@ function mutateList<T>(key: string, dec: (v: unknown) => T | null, enc: (v: T) =
 
 export const loadPending = (chain: string, address: string): PendingTx[] => readList(pendingKey(chain, address), decode);
 
-export const mutatePending = (chain: string, address: string, op: (list: PendingTx[]) => PendingTx[]): Promise<boolean> =>
-  mutateList(pendingKey(chain, address), decode, encode, (list) => op(list).slice(0, MAX_ENTRIES));
+/** Over the cap the oldest failed entries go; open ones still need tracking and are never dropped. */
+export function capEntries(list: PendingTx[]): PendingTx[] {
+  const out = [...list];
+  for (let i = out.length - 1; i >= 0 && out.length > MAX_ENTRIES; i--) {
+    if (out[i].state === 'failed') out.splice(i, 1);
+  }
+  return out;
+}
+
+export const mutatePending = (
+  chain: string,
+  address: string,
+  op: (list: PendingTx[]) => PendingTx[],
+  capped = true,
+): Promise<boolean> =>
+  mutateList(pendingKey(chain, address), decode, encode, (list) => (capped ? capEntries(op(list)) : op(list)));
 
 export const loadReservations = (chain: string, address: string): Reservation[] =>
   readList(reservationKey(chain, address), decodeReservation);
@@ -117,11 +141,21 @@ export const addEntry = (entry: PendingTx) => (list: PendingTx[]) => [entry, ...
 export const patchEntry = (txId: string, patch: Partial<PendingTx>) => (list: PendingTx[]) =>
   list.map((p) => (p.txId === txId ? { ...p, ...patch } : p));
 
+/** Moves an entry on only from the state it was observed in, so a newer write is never undone. */
+export const transitionEntry = (txId: string, from: PendingState, to: PendingState) => (list: PendingTx[]) =>
+  list.map((p) => (p.txId === txId && p.state === from ? { ...p, state: to } : p));
+
 export const removeEntry = (txId: string) => (list: PendingTx[]) => list.filter((p) => p.txId !== txId);
 
 export const addReservation = (r: Reservation) => (list: Reservation[]) => [r, ...list.filter((x) => x.txId !== r.txId)];
 
+export const patchReservation = (txId: string, patch: Partial<Reservation>) => (list: Reservation[]) =>
+  list.map((r) => (r.txId === txId ? { ...r, ...patch } : r));
+
 export const releaseReservations = (txIds: string[]) => (list: Reservation[]) => list.filter((r) => !txIds.includes(r.txId));
+
+/** A signed v1 send whose nonce is not known yet; it may collide with a new one until it resolves. */
+export const isUnresolvedLegacy = (p: PendingTx) => p.nonce === null && p.kind !== 'faucet' && p.state !== 'failed';
 
 /** A pre-v2 entry: no chain, address or nonce; `failed` carried the error. */
 export function fromLegacy(v: unknown): PendingTx | null {
@@ -143,8 +177,8 @@ export function fromLegacy(v: unknown): PendingTx | null {
 }
 
 /**
- * The single-wallet v1 list moves to this wallet's chain+address key; the trackers then reconcile each entry
- * against the node. The legacy key is removed only once its entries are persisted under the new one.
+ * The single-wallet v1 list moves to this wallet's chain+address key, uncapped; the trackers then reconcile each
+ * entry against the node. The legacy key is removed only once every entry is read back under the new one.
  */
 export function migrateLegacyPending(chain: string, address: string): Promise<number> {
   return withLock(LEGACY_KEY, async () => {
@@ -163,11 +197,14 @@ export function migrateLegacyPending(chain: string, address: string): Promise<nu
     }
     const legacy = (Array.isArray(list) ? list : []).map(fromLegacy).filter((p): p is PendingTx => p !== null);
     const known = (current: PendingTx[]) => new Set(current.map((p) => p.txId));
-    const saved = await mutatePending(chain, address, (current) => [
-      ...current,
-      ...legacy.filter((p) => !known(current).has(p.txId)),
-    ]);
-    if (!saved) return 0;
+    const saved = await mutatePending(
+      chain,
+      address,
+      (current) => [...current, ...legacy.filter((p) => !known(current).has(p.txId))],
+      false,
+    );
+    const stored = known(loadPending(chain, address));
+    if (!saved || !legacy.every((p) => stored.has(p.txId))) return 0;
     try {
       localStorage.removeItem(LEGACY_KEY);
     } catch {
