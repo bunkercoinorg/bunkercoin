@@ -70,7 +70,7 @@ function BlockView({ block, entity }: { block: Block; entity: Parameters<typeof 
     ...(block.parent_slot !== undefined
       ? [{ label: 'parent', value: <Link className="bc-lnk" href={routes.block(block.parent_slot)}>{slotLabel(block.parent_slot)}</Link> }]
       : []),
-    { label: 'checked', value: <RefreshState entity={entity} /> },
+    ...(entity.refreshError ? [] : [{ label: 'checked', value: <RefreshState entity={entity} /> }]),
     ...(block.parent_hash ? [{ label: 'parent hash', value: <CopyValue value={block.parent_hash} mode="full" label="parent hash" />, wide: true }] : []),
   ];
   return (
@@ -79,6 +79,7 @@ function BlockView({ block, entity }: { block: Block; entity: Parameters<typeof 
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="bc-t1 m-0">Block {slotLabel(block.slot)}.</h1>
           <StatusTag status={blockStatus(block)} />
+          {entity.refreshError && <RefreshState entity={entity} />}
         </div>
         {nav}
       </div>
