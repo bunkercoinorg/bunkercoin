@@ -3,7 +3,8 @@
 @import '@bunkercoin/ui/components.css';
 
 /* wallet-only pieces the shared package does not carry: big amount input, asset pick row, stacks */
-.wl-stack > * + * { margin-top: var(--gap, 20px); }
+.wl-stack { display: flex; flex-direction: column; gap: var(--gap, 20px); }
+.wl-stack > * { min-width: 0; margin-block: 0; }
 .wl-gap12 { --gap: 12px; } .wl-gap16 { --gap: 16px; } .wl-gap24 { --gap: 24px; } .wl-gap32 { --gap: 32px; } .wl-gap40 { --gap: 40px; }
 .wl-bi { display: grid; justify-items: center; gap: 10px; padding: 28px 0 22px; border-bottom: 1px solid var(--line); }
 .wl-bi-row { display: flex; justify-content: center; gap: 10px; align-items: baseline; max-width: 100%; }
@@ -24,3 +25,4 @@
 .wl-file { font: 400 13px/1.4 var(--mono); color: var(--ink); }
 .wl-file::file-selector-button { height: 32px; margin-right: 12px; padding: 0 12px; border: 1px solid var(--fg); background: transparent; color: var(--fg); font: 500 var(--t-ui)/1 var(--mono); cursor: pointer; }
 .wl-hero-sub { display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.bc-dlg { margin: auto; }
