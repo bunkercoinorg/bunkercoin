@@ -1,0 +1,685 @@
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"/><title>Statement bzgl. aktueller Berichterstattung</title><style>
+/* cspell:disable-file */
+/* webkit printing magic: print all background colors */
+html {
+	-webkit-print-color-adjust: exact;
+}
+* {
+	box-sizing: border-box;
+	-webkit-print-color-adjust: exact;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+}
+@media only screen {
+	body {
+		margin: 2em auto;
+		max-width: 900px;
+		color: rgb(55, 53, 47);
+	}
+}
+
+body {
+	line-height: 1.5;
+	white-space: pre-wrap;
+}
+
+a,
+a.visited {
+	color: inherit;
+	text-decoration: underline;
+}
+
+.pdf-relative-link-path {
+	font-size: 80%;
+	color: #444;
+}
+
+h1,
+h2,
+h3 {
+	letter-spacing: -0.01em;
+	line-height: 1.2;
+	font-weight: 600;
+	margin-bottom: 0;
+}
+
+.page-title {
+	font-size: 2.5rem;
+	font-weight: 700;
+	margin-top: 0;
+	margin-bottom: 0.75em;
+}
+
+h1 {
+	font-size: 1.875rem;
+	margin-top: 1.875rem;
+}
+
+h2 {
+	font-size: 1.5rem;
+	margin-top: 1.5rem;
+}
+
+h3 {
+	font-size: 1.25rem;
+	margin-top: 1.25rem;
+}
+
+.source {
+	border: 1px solid #ddd;
+	border-radius: 3px;
+	padding: 1.5em;
+	word-break: break-all;
+}
+
+.callout {
+	border-radius: 3px;
+	padding: 1rem;
+}
+
+figure {
+	margin: 1.25em 0;
+	page-break-inside: avoid;
+}
+
+figcaption {
+	opacity: 0.5;
+	font-size: 85%;
+	margin-top: 0.5em;
+}
+
+mark {
+	background-color: transparent;
+}
+
+.indented {
+	padding-left: 1.5em;
+}
+
+hr {
+	background: transparent;
+	display: block;
+	width: 100%;
+	height: 1px;
+	visibility: visible;
+	border: none;
+	border-bottom: 1px solid rgba(55, 53, 47, 0.09);
+}
+
+img {
+	max-width: 100%;
+}
+
+@media only print {
+	img {
+		max-height: 100vh;
+		object-fit: contain;
+	}
+}
+
+@page {
+	margin: 1in;
+}
+
+.collection-content {
+	font-size: 0.875rem;
+}
+
+.column-list {
+	display: flex;
+	justify-content: space-between;
+}
+
+.column {
+	padding: 0 1em;
+}
+
+.column:first-child {
+	padding-left: 0;
+}
+
+.column:last-child {
+	padding-right: 0;
+}
+
+.table_of_contents-item {
+	display: block;
+	font-size: 0.875rem;
+	line-height: 1.3;
+	padding: 0.125rem;
+}
+
+.table_of_contents-indent-1 {
+	margin-left: 1.5rem;
+}
+
+.table_of_contents-indent-2 {
+	margin-left: 3rem;
+}
+
+.table_of_contents-indent-3 {
+	margin-left: 4.5rem;
+}
+
+.table_of_contents-link {
+	text-decoration: none;
+	opacity: 0.7;
+	border-bottom: 1px solid rgba(55, 53, 47, 0.18);
+}
+
+table,
+th,
+td {
+	border: 1px solid rgba(55, 53, 47, 0.09);
+	border-collapse: collapse;
+}
+
+table {
+	border-left: none;
+	border-right: none;
+}
+
+th,
+td {
+	font-weight: normal;
+	padding: 0.25em 0.5em;
+	line-height: 1.5;
+	min-height: 1.5em;
+	text-align: left;
+}
+
+th {
+	color: rgba(55, 53, 47, 0.6);
+}
+
+ol,
+ul {
+	margin: 0;
+	margin-block-start: 0.6em;
+	margin-block-end: 0.6em;
+}
+
+li > ol:first-child,
+li > ul:first-child {
+	margin-block-start: 0.6em;
+}
+
+ul > li {
+	list-style: disc;
+}
+
+ul.to-do-list {
+	padding-inline-start: 0;
+}
+
+ul.to-do-list > li {
+	list-style: none;
+}
+
+.to-do-children-checked {
+	text-decoration: line-through;
+	opacity: 0.375;
+}
+
+ul.toggle > li {
+	list-style: none;
+}
+
+ul {
+	padding-inline-start: 1.7em;
+}
+
+ul > li {
+	padding-left: 0.1em;
+}
+
+ol {
+	padding-inline-start: 1.6em;
+}
+
+ol > li {
+	padding-left: 0.2em;
+}
+
+.mono ol {
+	padding-inline-start: 2em;
+}
+
+.mono ol > li {
+	text-indent: -0.4em;
+}
+
+.toggle {
+	padding-inline-start: 0em;
+	list-style-type: none;
+}
+
+/* Indent toggle children */
+.toggle > li > details {
+	padding-left: 1.7em;
+}
+
+.toggle > li > details > summary {
+	margin-left: -1.1em;
+}
+
+.selected-value {
+	display: inline-block;
+	padding: 0 0.5em;
+	background: rgba(206, 205, 202, 0.5);
+	border-radius: 3px;
+	margin-right: 0.5em;
+	margin-top: 0.3em;
+	margin-bottom: 0.3em;
+	white-space: nowrap;
+}
+
+.collection-title {
+	display: inline-block;
+	margin-right: 1em;
+}
+
+.page-description {
+	margin-bottom: 2em;
+}
+
+.simple-table {
+	margin-top: 1em;
+	font-size: 0.875rem;
+	empty-cells: show;
+}
+.simple-table td {
+	height: 29px;
+	min-width: 120px;
+}
+
+.simple-table th {
+	height: 29px;
+	min-width: 120px;
+}
+
+.simple-table-header-color {
+	background: rgb(247, 246, 243);
+	color: black;
+}
+.simple-table-header {
+	font-weight: 500;
+}
+
+time {
+	opacity: 0.5;
+}
+
+.icon {
+	display: inline-block;
+	max-width: 1.2em;
+	max-height: 1.2em;
+	text-decoration: none;
+	vertical-align: text-bottom;
+	margin-right: 0.5em;
+}
+
+img.icon {
+	border-radius: 3px;
+}
+
+.user-icon {
+	width: 1.5em;
+	height: 1.5em;
+	border-radius: 100%;
+	margin-right: 0.5rem;
+}
+
+.user-icon-inner {
+	font-size: 0.8em;
+}
+
+.text-icon {
+	border: 1px solid #000;
+	text-align: center;
+}
+
+.page-cover-image {
+	display: block;
+	object-fit: cover;
+	width: 100%;
+	max-height: 30vh;
+}
+
+.page-header-icon {
+	font-size: 3rem;
+	margin-bottom: 1rem;
+}
+
+.page-header-icon-with-cover {
+	margin-top: -0.72em;
+	margin-left: 0.07em;
+}
+
+.page-header-icon img {
+	border-radius: 3px;
+}
+
+.link-to-page {
+	margin: 1em 0;
+	padding: 0;
+	border: none;
+	font-weight: 500;
+}
+
+p > .user {
+	opacity: 0.5;
+}
+
+td > .user,
+td > time {
+	white-space: nowrap;
+}
+
+input[type="checkbox"] {
+	transform: scale(1.5);
+	margin-right: 0.6em;
+	vertical-align: middle;
+}
+
+p {
+	margin-top: 0.5em;
+	margin-bottom: 0.5em;
+}
+
+.image {
+	border: none;
+	margin: 1.5em 0;
+	padding: 0;
+	border-radius: 0;
+	text-align: center;
+}
+
+.code,
+code {
+	background: rgba(135, 131, 120, 0.15);
+	border-radius: 3px;
+	padding: 0.2em 0.4em;
+	border-radius: 3px;
+	font-size: 85%;
+	tab-size: 2;
+}
+
+code {
+	color: #eb5757;
+}
+
+.code {
+	padding: 1.5em 1em;
+}
+
+.code-wrap {
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+
+.code > code {
+	background: none;
+	padding: 0;
+	font-size: 100%;
+	color: inherit;
+}
+
+blockquote {
+	font-size: 1.25em;
+	margin: 1em 0;
+	padding-left: 1em;
+	border-left: 3px solid rgb(55, 53, 47);
+}
+
+.bookmark {
+	text-decoration: none;
+	max-height: 8em;
+	padding: 0;
+	display: flex;
+	width: 100%;
+	align-items: stretch;
+}
+
+.bookmark-title {
+	font-size: 0.85em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	height: 1.75em;
+	white-space: nowrap;
+}
+
+.bookmark-text {
+	display: flex;
+	flex-direction: column;
+}
+
+.bookmark-info {
+	flex: 4 1 180px;
+	padding: 12px 14px 14px;
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+}
+
+.bookmark-image {
+	width: 33%;
+	flex: 1 1 180px;
+	display: block;
+	position: relative;
+	object-fit: cover;
+	border-radius: 1px;
+}
+
+.bookmark-description {
+	color: rgba(55, 53, 47, 0.6);
+	font-size: 0.75em;
+	overflow: hidden;
+	max-height: 4.5em;
+	word-break: break-word;
+}
+
+.bookmark-href {
+	font-size: 0.75em;
+	margin-top: 0.25em;
+}
+
+.sans { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol"; }
+.code { font-family: "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace; }
+.serif { font-family: Lyon-Text, Georgia, ui-serif, serif; }
+.mono { font-family: iawriter-mono, Nitti, Menlo, Courier, monospace; }
+.pdf .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK JP'; }
+.pdf:lang(zh-CN) .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK SC'; }
+.pdf:lang(zh-TW) .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK TC'; }
+.pdf:lang(ko-KR) .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK KR'; }
+.pdf .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK JP'; }
+.pdf:lang(zh-CN) .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK SC'; }
+.pdf:lang(zh-TW) .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK TC'; }
+.pdf:lang(ko-KR) .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK KR'; }
+.pdf .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK JP'; }
+.pdf:lang(zh-CN) .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK SC'; }
+.pdf:lang(zh-TW) .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK TC'; }
+.pdf:lang(ko-KR) .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK KR'; }
+.pdf .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK JP'; }
+.pdf:lang(zh-CN) .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK SC'; }
+.pdf:lang(zh-TW) .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK TC'; }
+.pdf:lang(ko-KR) .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK KR'; }
+.highlight-default {
+	color: rgba(55, 53, 47, 1);
+}
+.highlight-gray {
+	color: rgba(120, 119, 116, 1);
+	fill: rgba(120, 119, 116, 1);
+}
+.highlight-brown {
+	color: rgba(159, 107, 83, 1);
+	fill: rgba(159, 107, 83, 1);
+}
+.highlight-orange {
+	color: rgba(217, 115, 13, 1);
+	fill: rgba(217, 115, 13, 1);
+}
+.highlight-yellow {
+	color: rgba(203, 145, 47, 1);
+	fill: rgba(203, 145, 47, 1);
+}
+.highlight-teal {
+	color: rgba(68, 131, 97, 1);
+	fill: rgba(68, 131, 97, 1);
+}
+.highlight-blue {
+	color: rgba(51, 126, 169, 1);
+	fill: rgba(51, 126, 169, 1);
+}
+.highlight-purple {
+	color: rgba(144, 101, 176, 1);
+	fill: rgba(144, 101, 176, 1);
+}
+.highlight-pink {
+	color: rgba(193, 76, 138, 1);
+	fill: rgba(193, 76, 138, 1);
+}
+.highlight-red {
+	color: rgba(212, 76, 71, 1);
+	fill: rgba(212, 76, 71, 1);
+}
+.highlight-default_background {
+	color: rgba(55, 53, 47, 1);
+}
+.highlight-gray_background {
+	background: rgba(241, 241, 239, 1);
+}
+.highlight-brown_background {
+	background: rgba(244, 238, 238, 1);
+}
+.highlight-orange_background {
+	background: rgba(251, 236, 221, 1);
+}
+.highlight-yellow_background {
+	background: rgba(251, 243, 219, 1);
+}
+.highlight-teal_background {
+	background: rgba(237, 243, 236, 1);
+}
+.highlight-blue_background {
+	background: rgba(231, 243, 248, 1);
+}
+.highlight-purple_background {
+	background: rgba(244, 240, 247, 0.8);
+}
+.highlight-pink_background {
+	background: rgba(249, 238, 243, 0.8);
+}
+.highlight-red_background {
+	background: rgba(253, 235, 236, 1);
+}
+.block-color-default {
+	color: inherit;
+	fill: inherit;
+}
+.block-color-gray {
+	color: rgba(120, 119, 116, 1);
+	fill: rgba(120, 119, 116, 1);
+}
+.block-color-brown {
+	color: rgba(159, 107, 83, 1);
+	fill: rgba(159, 107, 83, 1);
+}
+.block-color-orange {
+	color: rgba(217, 115, 13, 1);
+	fill: rgba(217, 115, 13, 1);
+}
+.block-color-yellow {
+	color: rgba(203, 145, 47, 1);
+	fill: rgba(203, 145, 47, 1);
+}
+.block-color-teal {
+	color: rgba(68, 131, 97, 1);
+	fill: rgba(68, 131, 97, 1);
+}
+.block-color-blue {
+	color: rgba(51, 126, 169, 1);
+	fill: rgba(51, 126, 169, 1);
+}
+.block-color-purple {
+	color: rgba(144, 101, 176, 1);
+	fill: rgba(144, 101, 176, 1);
+}
+.block-color-pink {
+	color: rgba(193, 76, 138, 1);
+	fill: rgba(193, 76, 138, 1);
+}
+.block-color-red {
+	color: rgba(212, 76, 71, 1);
+	fill: rgba(212, 76, 71, 1);
+}
+.block-color-default_background {
+	color: inherit;
+	fill: inherit;
+}
+.block-color-gray_background {
+	background: rgba(241, 241, 239, 1);
+}
+.block-color-brown_background {
+	background: rgba(244, 238, 238, 1);
+}
+.block-color-orange_background {
+	background: rgba(251, 236, 221, 1);
+}
+.block-color-yellow_background {
+	background: rgba(251, 243, 219, 1);
+}
+.block-color-teal_background {
+	background: rgba(237, 243, 236, 1);
+}
+.block-color-blue_background {
+	background: rgba(231, 243, 248, 1);
+}
+.block-color-purple_background {
+	background: rgba(244, 240, 247, 0.8);
+}
+.block-color-pink_background {
+	background: rgba(249, 238, 243, 0.8);
+}
+.block-color-red_background {
+	background: rgba(253, 235, 236, 1);
+}
+.select-value-color-uiBlue { background-color: rgba(35, 131, 226, .07); }
+.select-value-color-pink { background-color: rgba(245, 224, 233, 1); }
+.select-value-color-purple { background-color: rgba(232, 222, 238, 1); }
+.select-value-color-green { background-color: rgba(219, 237, 219, 1); }
+.select-value-color-gray { background-color: rgba(227, 226, 224, 1); }
+.select-value-color-transparentGray { background-color: rgba(227, 226, 224, 0); }
+.select-value-color-translucentGray { background-color: rgba(0, 0, 0, 0.06); }
+.select-value-color-orange { background-color: rgba(250, 222, 201, 1); }
+.select-value-color-brown { background-color: rgba(238, 224, 218, 1); }
+.select-value-color-red { background-color: rgba(255, 226, 221, 1); }
+.select-value-color-yellow { background-color: rgba(253, 236, 200, 1); }
+.select-value-color-blue { background-color: rgba(211, 229, 239, 1); }
+.select-value-color-pageGlass { background-color: undefined; }
+.select-value-color-washGlass { background-color: undefined; }
+
+.checkbox {
+	display: inline-flex;
+	vertical-align: text-bottom;
+	width: 16;
+	height: 16;
+	background-size: 16px;
+	margin-left: 2px;
+	margin-right: 5px;
+}
+
+.checkbox-on {
+	background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%3Crect%20width%3D%2216%22%20height%3D%2216%22%20fill%3D%22%2358A9D7%22%2F%3E%0A%3Cpath%20d%3D%22M6.71429%2012.2852L14%204.9995L12.7143%203.71436L6.71429%209.71378L3.28571%206.2831L2%207.57092L6.71429%2012.2852Z%22%20fill%3D%22white%22%2F%3E%0A%3C%2Fsvg%3E");
+}
+
+.checkbox-off {
+	background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%3Crect%20x%3D%220.75%22%20y%3D%220.75%22%20width%3D%2214.5%22%20height%3D%2214.5%22%20fill%3D%22white%22%20stroke%3D%22%2336352F%22%20stroke-width%3D%221.5%22%2F%3E%0A%3C%2Fsvg%3E");
+}
+	
+</style></head><body><article id="18f01f69-a470-80a2-89b3-c3bec1fbce35" class="page sans"><header><h1 class="page-title">Statement bzgl. aktueller Berichterstattung</h1><p class="page-description"></p></header><div class="page-body"><p id="18f01f69-a470-8014-a09d-de6e16d4cb8f" class="">Es gibt mehrere Aspekte, in denen die Presse irreführend oder falsch über unsere Bunkeranlage bei Langenstein-Zwieberge berichtet. Diese Punkte betreffen sowohl die geographische Lage als auch die Historie des Ortes, ebenso wie die Details der aktuellen Nutzung und Planung. Hier sind die wichtigsten Missverständnisse und falschen Darstellungen zusammengefasst:</p><p id="18f01f69-a470-8095-81c5-f40a02b40bcd" class=""><strong>1. Geographische Falschdarstellung:</strong> In den Medien wird fälschlicherweise behauptet, die Bunkeranlage befinde sich auf dem Gelände des ehemaligen Konzentrationslagers (KZ) Langenstein-Zwieberge. Tatsächlich liegt die Stollenanlage rund zwei Kilometer vom ehemaligen KZ-Gelände entfernt. Ebenso befinden sich die eigentliche Gedenkstätte und Grabstätte in gleicher Entfernung. Die Darstellung, dass aus dem ehemaligen KZ-Gelände ein Luxusbunker für Reiche gebaut werde, ist demnach nicht nur irreführend, sondern eine gezielte Sensationsmache. Begriffe wie „KZ-Stollen“ oder „Nazi-Bunker“ werden verwendet, um die Berichterstattung emotional aufzuladen und die tatsächliche Lage und Nutzung der Bunkeranlage zu verzerren.</p><div id="18f01f69-a470-8011-8469-dbad1483621e" class="column-list"><div id="18f01f69-a470-80b7-9a9f-cd5dccd9fbc4" style="width:50%" class="column"><figure id="18f01f69-a470-80bf-96f0-f0d80e3faeea" class="image"><a href="2nIpcCJZMR3y92VdcRjHtegHUvJ_Karte_1.png"><img style="width:336px" src="2nIpcCJZMR3y92VdcRjHtegHUvJ_Karte_1.png"/></a></figure><p id="18f01f69-a470-80ee-9c33-c28e5ff7ab7f" class="">
+</p></div><div id="18f01f69-a470-8027-8974-ff94cb2b1bc6" style="width:50%" class="column"><figure id="18f01f69-a470-80aa-b143-fe1f90c27848" class="image"><a href="WhatsApp_Bild_2024-10-11_um_16.08.16_f129873b.jpg"><img style="width:288px" src="WhatsApp_Bild_2024-10-11_um_16.08.16_f129873b.jpg"/></a></figure></div></div><p id="18f01f69-a470-806a-ad5f-e035910085b5" class="">Obige Karte wird am Verwaltungsgebäude der Stiftung der Gedenkstätte ausgestellt (links mit Annotationen v. uns) Sie zeigt, dass das ehem. KZ-Gelände örtlich von der Bunkeranlage differiert (ca. 2km Abstand).</p><p id="18f01f69-a470-80c8-897d-e8dbb04dea41" class=""><strong>2. Historischer Zusammenhang:</strong> Die Bunkeranlage befindet sich auf einem Gelände, das ursprünglich den Junkers-Werken zugeteilt werden sollte. Später wurde es von der Nationalen Volksarmee (NVA) und der Bundeswehr genutzt, bevor es 1995 privatisiert wurde. Dieses Gelände hat historisch nie zu der eigentlichen Gedenkstätte gehört, die wie erwähnt etwa zwei Kilometer entfernt liegt. Daher ist der Versuch, die eigentliche Gedenkstätte mit der aktuellen Entwicklung des Bunkers zu verbinden, ebenfalls falsch.</p><p id="18f01f69-a470-80f2-9c9c-e99424d25e04" class=""><strong>3. Baulicher Zustand und Schutzwert:</strong> Die Stollenanlage war 1945 lediglich in einem rohbauähnlichem Zustand und wurde erst später von der NVA zu einem Atomschutzbunker und Munitionslager umgebaut. Auch die Bundeswehr investierte weitere Mittel in die Anlage. Es gibt kaum Überreste des ursprünglichen Zustands von 1945, sodass der umgebaute Teil heute keinen so hohen historischen Wert mehr hat. Trotzdem wird in den Medien oft suggeriert, es handle sich um ein besonders schützenswertes historisches Bauwerk, was nicht ganz der Realität entspricht. Besonders schützenswert ist lediglich der im Original erhaltene Teil.</p><p id="18f01f69-a470-8020-a7e8-f8e9f21cd2f8" class=""><strong>4. Bauzustand und Genehmigungen:</strong> Es wird oft behauptet, dass die Bunkeranlage erst gebaut werden müsse und es keine Baugenehmigungen gäbe. Das ist falsch. Der Bunker existiert bereits, und aufgrund des bestehenden Nutzens als Schutzraum sollte unserer Meinung nach ein Bestandsschutz gelten. Diese Tatsache wird in der Berichterstattung jedoch oft ignoriert oder verzerrt dargestellt, um die Rechtmäßigkeit des Projekts infrage zu stellen.</p><p id="18f01f69-a470-80b5-9d83-f178729626f6" class=""><strong>5. Falsche Darstellung der Zielgruppe:</strong> Die Behauptung, dass der Bunker nur für Superreiche vorgesehen sei, ist eine Verzerrung der Tatsachen. Tatsächlich haben wir darauf hingewiesen, dass die Superreichen bereits Zugang zu Schutzräumen haben. Wir bieten hier auch Normalverdienern eine Möglichkeit, sich durch den BunkerCoin Schutzräume leisten zu können. Diese wichtige Information wird jedoch in den Medien nicht erwähnt. Stattdessen wird das Bild eines exklusiven „Bunkers für Superreiche“ gezeichnet, das die Öffentlichkeit gegen das Projekt einnimmt. Es wird völlig verschwiegen, dass in den Planungen sowohl kleine, erschwingliche Schlafkabinen als auch größere Schutzräume vorgesehen sind, um verschiedenen Bedürfnissen gerecht zu werden. Bei denen von uns verwendeten KI-Bildern handelt es sich lediglich um sogenannte Mood-Boards (wie auch als solche betitelt), die nur eine Möglichkeit des Ambiente der Ausgestaltung beschreiben sollten - unserer Meinung nach dürfte die Ausstattung von höherer Qualität sein - man müsste sich im Ernstfall ja auch längere Zeit in den Räumlichkeiten (den Umständen entsprechend) wohlfühlen können. Wie im Whitepaper erwähnt, wird die konkrete Ausgestaltung im Endeffekt aber sowieso von der BunkerCoin-Community mitbestimmt.</p><p id="18f01f69-a470-805e-a72b-dc4ebc44e870" class=""><strong>6. Falsche Darstellung der Zusammenarbeit mit der Stiftung der Gedenkstätte Langenstein-Zwieberge:</strong> Es wird behauptet, dass die Arbeit der Stiftung der Gedenkstätte beeinträchtigt werde und diese gerne den Rundgang erweitern würde, aber nur 120 Meter der 13 Kilometer langen Anlage betreten könne. Diese Darstellung ist falsch. Die Stiftung wünscht sich eine Erweiterung des Rundgangs in dem Teil der Anlage, der noch im Originalzustand von 1945 ist. Allerdings ist dieser Teil teilweise gesprengt und verschüttet und daher aktuell nicht zugänglich. Der Streitpunkt besteht darin, dass die Stiftung für dieses Teilstück im Grundbuch ein Nießbrauchrecht eingetragen haben möchte, was einem Eigentum gleichkäme. Um diesen Anspruch zu erzwingen, wird derzeit medialer Druck aufgebaut. Die BunkerCoin Community hat kein Problem damit, dass die Stiftung Teile der Anlage begehen darf, allerdings nicht im Ernstfall, wenn die Schutzräume tatsächlich gebraucht werden. Genau dann, etwa bei Kriegen oder Naturkatastrophen, muss das Sicherheitskonzept greifen, und Besichtigungen wären nicht möglich – zudem würde sich wohl niemand das Stollensystem in einer solchen Situation ansehen wollen. Dies sieht die Gedenkstättenstiftung jedoch nicht ein. Ein weiterer Streitpunkt ist, wer die Bauarbeiten ausführen wird, um den fraglichen Teil begehbar zu machen. Die Eigentümer werden diese Arbeiten selbstverständlich nicht in fremde Hände geben. Die Eigentümer bestimmen über den Ablauf der Bauarbeiten, welche jedoch die Wünsche der Stiftung berücksichtigen werden. Auch das Whitepaper der BunkerCoin Community sieht vor, finanzielle Mittel für den Erhalt des historischen Teils bereitzustellen. Es wurde der Stiftung vorgeschlagen, ein Gesamtkonzept auszuarbeiten, doch auch hier wird zunächst gefordert, das Nießbrauchrecht einzutragen, bevor man über ein solches Konzept sprechen möchte. Es wird nur gefordert, aber nichts angeboten - wir möchten einfach eine gemeinsame Lösung zu finden.</p><p id="18f01f69-a470-8089-805b-ca7c3d406864" class=""><strong>7. Mehrfache Verkaufsangebote und Unklarheit der Behörden:</strong> Seit 1995 stand die Anlage mehrfach zum Verkauf – zunächst über die Treuhand, später in mehreren Zwangsversteigerungen und zuletzt durch den Insolvenzverwalter. Niemand, weder staatlich noch privat, hatte ein Konzept oder Interesse am Kauf. Jetzt, wo es wieder Diskussionen gibt, wie das Land diese Anlage nicht erwerben konnte, haben wir bis Ende Oktober noch einmal eine Chance des Erwerbs gegeben. Die erste Reaktion war, dass man den Zustand der Anlage nicht kenne und daher keine Entscheidung treffen könne. Das wirft die Frage auf: Wieso wollte das Land ursprünglich ein angebliches Vorkaufsrecht beanspruchen, wenn es den Zustand der Anlage gar nicht kannte? Das Gericht hat jedenfalls bestätigt, dass es bei einem Verkauf aus der Insolvenz kein Vorkaufsrecht gibt. Es scheint, als hätten die Behörden dies gewusst und nur medienwirksam den Anschein erweckt, als ob sie das Vorkaufsrecht ausüben wollten, wohlwissend, dass sie es nicht tun konnten. Jetzt, da der Bunker temporär zum Verkauf steht, behauptet das Land, den Zustand nicht zu kennen – vorher hätte er jedoch angeblich das Vorkaufsrecht nutzen wollen. Diese Widersprüche werfen ein merkwürdiges Licht auf die Situation.</p><p id="18f01f69-a470-8054-b752-ec500fa7ab90" class=""><strong>8. Moralische Bedenken gegen Schutzräume:</strong> Es wird behauptet, dass es moralisch nicht vertretbar sei, Schutzräume an diesem Ort bereitzustellen. Was um alles in der Welt geht diesen Leuten durch den Kopf, wenn sie es verwerflich finden, Menschen in Katastrophenfällen in Sicherheit zu bringen? Es handelt sich um eine ehemalige NVA- und Bundeswehranlage, die als Atomschutzbunker diente. Was ist daran falsch, der Zivilbevölkerung Schutzräume anzubieten? Noch dazu wird die Finanzierung durch die private BunkerCoin Community angestrebt, nicht durch staatliche Mittel.<br/>Hier als Einschub zwei Referenzen bzgl. der Dringlichkeit von Bunkerplätzen:<br/></p><p id="18f01f69-a470-805f-a7f8-e079c0d54571" class="">→ <a href="https://www.spiegel.de/politik/deutschland/bundesinnenministerium-zahl-der-bunkerplaetze-in-deutschland-niedriger-als-gedacht-a-1b447c3c-4274-4a01-b01d-7490b351e271">https://www.spiegel.de/politik/deutschland/bundesinnenministerium-zahl-der-bunkerplaetze-in-deutschland-niedriger-als-gedacht-a-1b447c3c-4274-4a01-b01d-7490b351e271</a></p><p id="18f01f69-a470-8065-9434-c26f467315cb" class="">→ <a href="https://youtu.be/iZMO7hvK01k?si=X7978ni1NNyEV2h1">https://youtu.be/iZMO7hvK01k?si=X7978ni1NNyEV2h1</a></p><p id="18f01f69-a470-80fd-98ef-c5df864b06b4" class="">Auch das Anliegen der Stiftung der Gedenkstätte, Teile der Anlage begehbar zu machen, wird mit in das Projekt eingebunden. Statt Lob und Unterstützung wird jedoch das gesamte Vorhaben negativ dargestellt, als ob man die bestehenden Schutzräume nicht mehr nutzen dürfte, weil der Ursprungsbau initial durch Zwangsarbeit entstanden ist. Doch in Deutschland wurden nach Schätzungen rund 13 Millionen Zwangsarbeiter eingesetzt, um verschiedenste Bauwerke zu errichten, so teilte es uns der Leiter der Gedenkstätte mit. Selbstverständlich ist das schrecklich, bedeutet das jetzt allerdings, dass man all diese Schutzräume, Bunkeranlagen, Gebäude, Häuser, Brücken und Straßen nicht mehr nutzen darf? Darf man keine Volkswagen mehr fahren, weil Zwangsarbeiter in den Volkswagen Werken arbeiten mussten? Diese Argumentation ist grotesk und nicht zielführend.</p><p id="18f01f69-a470-80b1-b1cf-e5ce12a45bc1" class="">Anbei zwei Artikel hierzu:</p><p id="18f01f69-a470-803d-8dec-ef06d80d15a0" class=""><a href="https://www.ndr.de/geschichte/chronologie/Gruendung-des-Volkswagenwerks-Nazis-bauen-sich-eine-Autofabrik,vwwerk2.html">https://www.ndr.de/geschichte/chronologie/Gruendung-des-Volkswagenwerks-Nazis-bauen-sich-eine-Autofabrik,vwwerk2.html</a></p><p id="18f01f69-a470-800b-85e0-db74e044c983" class=""><a href="https://www.tagesschau.de/wirtschaft/unternehmen/vw-china-zwangsarbeiter-100.html">https://www.tagesschau.de/wirtschaft/unternehmen/vw-china-zwangsarbeiter-100.html</a></p><p id="18f01f69-a470-80d4-91b2-cd346342436c" class=""><strong>9. Angebliche Profite durch die Toten:</strong> Es wird behauptet, dass mit den Toten Geld verdient werden soll. Diese Aussage ist vollkommen unsinnig. Es geht hier nicht darum, Geld mit Toten zu verdienen, sondern darum, Leben zu retten. Das Geld, das durch den BunkerCoin generiert werden soll, kann großartige Projekte wie diese Realität werden lassen. Ohne finanzielle Mittel wäre dies schlichtweg unmöglich. Da die Regierung offenbar keinen Plan für den Ernstfall hat, müssen sich die Bürger selbst organisieren. Es sind private Bunker und Schutzräume in Privathäusern geplant. Aber was passiert nach mehreren Wochen in solchen engen Räumen? Die Menschen würden psychisch stark belastet werden. Deshalb ist geplant, sie in den Großraumbunker zu evakuieren. Sollte es aus irgendeinem Grund nicht mehr möglich sein, in Europa zu leben, gibt es zudem das Projekt einer Notfallstadt in Afrika. Diese Projekte benötigen immense finanzielle Mittel zur Umsetzung. Daher appellieren wir an die Medien, diese Vorhaben zu unterstützen statt sie schlechtzumachen. Was gewinnt man durch das Verhindern von Schutzräumen? Und was spricht dagegen, in Afrika eine Zufluchtsstadt mit sozialen Aspekten zu errichten, wenn Europa unbewohnbar würde? Solche Projekte mögen für manche unrealistisch erscheinen, doch viele großartige Ideen wirkten anfangs verrückt.<br/><br/>Zusammenfassend lässt sich sagen, dass die mediale Berichterstattung in diesem Fall durch Übertreibungen und Sensationalismus geprägt ist. Wichtige Fakten über die tatsächliche Lage und den Zweck der Bunkeranlage werden entweder verfälscht oder ganz verschwiegen, um eine negative Stimmung zu erzeugen. Wir fragen uns, warum?<br/></p></div></article><span class="sans" style="font-size:14px;padding-top:2em"></span></body></html>
