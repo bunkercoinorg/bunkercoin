@@ -1,57 +1,26 @@
 @import 'tailwindcss';
+@import '@bunkercoin/ui/tokens.css';
+@import '@bunkercoin/ui/components.css';
 
-@theme inline {
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-plex), ui-monospace, 'SF Mono', Menlo, monospace;
-}
-
-@theme {
-  --color-bg: #0a0a0a;
-  --color-panel: #0f120f;
-  --color-panel-2: #151a16;
-  --color-line: #212823;
-  --color-line-strong: #2e372f;
-  --color-ink: #f2f4f1;
-  --color-muted: #98a29b;
-  --color-faint: #5d6660;
-  --color-accent: #00ffb2;
-  --color-amber: #fbbf24;
-  --color-danger: #ff7a76;
-
-  --animate-kdf-sweep: kdf-sweep 1.1s ease-in-out infinite alternate;
-  --animate-gate-in: gate-in 0.35s ease both;
-}
-
-@keyframes kdf-sweep {
-  from {
-    transform: translateX(-40%);
-  }
-  to {
-    transform: translateX(240%);
-  }
-}
-
-@keyframes gate-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@layer base {
-  body {
-    @apply min-h-screen bg-bg font-sans text-ink;
-  }
-  button {
-    @apply cursor-pointer;
-  }
-  button:focus-visible,
-  input:focus-visible,
-  textarea:focus-visible {
-    @apply outline-2 outline-offset-2 outline-accent;
-  }
-}
+/* wallet-only pieces the shared package does not carry: big amount input, asset pick row, stacks */
+.wl-stack > * + * { margin-top: var(--gap, 20px); }
+.wl-gap12 { --gap: 12px; } .wl-gap16 { --gap: 16px; } .wl-gap24 { --gap: 24px; } .wl-gap32 { --gap: 32px; } .wl-gap40 { --gap: 40px; }
+.wl-bi { display: grid; justify-items: center; gap: 10px; padding: 28px 0 22px; border-bottom: 1px solid var(--line); }
+.wl-bi-row { display: flex; justify-content: center; gap: 10px; align-items: baseline; max-width: 100%; }
+.wl-bi input { width: 6.2ch; min-width: 2ch; max-width: 100%; border: 0; background: none; text-align: right; font: 580 60px/1 var(--sans); letter-spacing: -.045em; font-variant-numeric: tabular-nums; color: var(--fg); padding: 0; }
+.wl-bi input:focus-visible { outline: none; }
+.wl-bi:focus-within { border-bottom-color: var(--fg); }
+.wl-bi .wl-u { font: 400 13px/1 var(--mono); letter-spacing: .1em; color: var(--dim); }
+@media (max-width: 40rem) { .wl-bi input { font-size: 46px; } }
+.wl-pick { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 62px; border: 1px solid var(--line); padding: 12px 14px; background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+.wl-pick:hover { border-color: var(--control); }
+.wl-pick[aria-expanded="true"] { border-color: var(--fg); }
+.wl-pick .bc-ic { color: var(--dim); }
+.wl-pick-list { border: 1px solid var(--line); border-top: 0; }
+.wl-pick-list .bc-tl > li:last-child > .bc-lr { border-bottom: 0; }
+.wl-pick-list .bc-lr { padding-inline: 14px; }
+.wl-tm-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.wl-icon-preview { width: 64px; height: 64px; border: 1px solid var(--line); object-fit: cover; }
+.wl-file { font: 400 13px/1.4 var(--mono); color: var(--ink); }
+.wl-file::file-selector-button { height: 32px; margin-right: 12px; padding: 0 12px; border: 1px solid var(--fg); background: transparent; color: var(--fg); font: 500 var(--t-ui)/1 var(--mono); cursor: pointer; }
+.wl-hero-sub { display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; }

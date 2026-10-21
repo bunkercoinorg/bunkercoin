@@ -1,59 +1,99 @@
 'use client';
 
-import { useState } from 'react';
-import { copyText } from '@/lib/clipboard';
-import { shortAddress } from '@/lib/format';
+import { Actions, Amount, Button, ButtonLink, CopyValue, Disclosure, Facts, FlowBar, StatePanel, StatusTag, type Fact } from '@bunkercoin/ui';
+import { relativeAge, utcClock } from '@bunkercoin/chain-format';
+import { viewHref } from '@/hooks/useHashView';
+import { useActivity, itemTag } from '@/components/Activity';
+import { isOpen } from '@/components/activity-model';
+import { bunker } from '@/components/assets';
+import { explorerTx } from '@/components/Outcome';
+import type { WalletActions, WalletState } from '@/components/Dashboard';
 
-const EXPLORER_URL = process.env.NEXT_PUBLIC_EXPLORER_URL || 'https://explorer.bunkercoin.com';
-
-interface TxDetailsProps {
-  rows: ([string, string] | null)[];
-  explorerHash?: string;
-}
-
-export default function TxDetails({ rows, explorerHash }: TxDetailsProps) {
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  // Long values (hashes, addresses) get a copy affordance; short ones don't need it.
+export default function TxDetails({ txId, state, actions }: { txId: string; state: WalletState; actions: WalletActions }) {
+  const item = useActivity(state).find((i) => i.id === txId);
+  const back = () => actions.go(viewHref('activity'));
+  const now = Date.now();
+  if (!item) {
+    const done = state.finalized.has(txId);
+    return (
+      <div className="wl-stack wl-gap24">
+        <FlowBar title="transaction" onBack={back} />
+        <StatePanel
+          state={done ? 'empty' : 'notfound'}
+          heading="h1"
+          title={done ? 'Finalized.' : 'Transaction not in this wallet.'}
+          message={done ? 'It is no longer in the recent scan.' : 'Not among open transactions or the latest network scan.'}
+          id={txId}
+          actions={
+            <ButtonLink variant="ghost" href={explorerTx(txId)} external>
+              explorer ↗
+            </ButtonLink>
+          }
+        />
+      </div>
+    );
+  }
+  const open = isOpen(item.status);
+  const checked = item.pending ? state.checkedAt.get(item.id) : state.fresh.history.okAt;
+  const execution =
+    item.status === 'final' || item.status === 'final-unknown'
+      ? item.status === 'final'
+        ? 'succeeded'
+        : 'not reported yet'
+      : item.status === 'final-failed' || item.status === 'failed'
+        ? `failed: ${item.error ?? 'unknown reason'}`
+        : 'not reported yet';
+  const key: Fact[] = [];
+  if (item.counterparty) key.push({ label: item.counterparty.label, value: <CopyValue value={item.counterparty.address} label={item.counterparty.label === 'to' ? 'recipient' : 'sender'} /> });
+  const fee = item.fee ?? item.pending?.fee ?? null;
+  if (fee !== null) key.push({ label: 'fee', value: `${bunker(fee)} BUNKER` });
+  key.push({ label: 'transaction', value: <CopyValue value={item.id} label="transaction" /> });
+  const details: Fact[] = [];
+  if (item.nonce !== null) details.push({ label: 'nonce', value: item.nonce.toString() });
+  if (item.at !== null) details.push({ label: 'submitted', value: utcClock(item.at) });
+  if (checked != null) details.push({ label: 'checked', value: `${relativeAge(checked, now)} ago` });
+  if (item.slot !== null) details.push({ label: 'slot', value: item.slot.toString() });
+  details.push({ label: 'execution', value: execution });
+  if (item.pending?.error && item.status === 'uncertain') details.push({ label: 'last check', value: item.pending.error });
   return (
-    <div className="mt-1 mb-3 divide-y divide-line rounded-lg border border-line bg-panel-2 px-3.5 py-1.5">
-      {rows
-        .filter((r): r is [string, string] => r !== null)
-        .map(([label, value]) => (
-          <div className="flex justify-between gap-4 py-[7px] text-[12.5px]" key={label}>
-            <span className="flex-none pt-0.5 font-mono text-[10.5px] tracking-[0.12em] uppercase text-faint">
-              {label}
-            </span>
-            {value.length > 20 ? (
-              <button
-                type="button"
-                className="cursor-pointer bg-transparent p-0 text-right font-mono text-inherit"
-                title="Click to copy"
-                aria-label={`Copy ${label}`}
-                onClick={async () => {
-                  await copyText(value);
-                  setCopiedKey(label);
-                  setTimeout(() => setCopiedKey(null), 1200);
-                }}
-              >
-                {copiedKey === label ? 'Copied' : value.length > 28 ? shortAddress(value, 10) : value}
-              </button>
-            ) : (
-              <span className="font-mono">{value}</span>
-            )}
-          </div>
-        ))}
-      {explorerHash && (
-        <div className="flex justify-between gap-4 py-[7px] text-[12.5px]">
-          <a
-            className="text-[12.5px] font-medium text-accent hover:underline hover:underline-offset-3"
-            href={`${EXPLORER_URL}/tx?sig=${explorerHash}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            View in explorer ↗
-          </a>
-        </div>
-      )}
+    <div className="wl-stack wl-gap24">
+      <FlowBar title={item.kind} onBack={back} />
+      <div className="bc-ctr">
+        {item.status === 'final-failed' ? (
+          <span className="bc-row justify-center">
+            <StatusTag status="finalized" />
+            <StatusTag status="failed" />
+          </span>
+        ) : (
+          itemTag(item, now)
+        )}
+        <h1 className="m-0">
+          {item.amount ? (
+            <Amount units={item.amount.units} scale={item.amount.scale} sign={item.amount.sign} symbol={item.amount.unit} size="balance" />
+          ) : (
+            <span className="bc-t2">{item.sub}</span>
+          )}
+        </h1>
+      </div>
+      <Facts variant="rows" items={key} />
+      <Disclosure summary="details">
+        <Facts variant="rows" items={details} />
+      </Disclosure>
+      <Actions align="end">
+        <ButtonLink variant="quiet" href={explorerTx(item.id)} external>
+          explorer ↗
+        </ButtonLink>
+        {item.status === 'failed' && (
+          <Button variant="ghost" onClick={() => (actions.dismiss(item.id), back())}>
+            dismiss
+          </Button>
+        )}
+        {open && (
+          <Button variant="ghost" onClick={() => actions.recheck(item.id)}>
+            check status
+          </Button>
+        )}
+      </Actions>
     </div>
   );
 }
