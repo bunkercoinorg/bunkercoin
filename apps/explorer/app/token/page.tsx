@@ -96,6 +96,17 @@ function Holders({ id, token }: { id: string; token: TokenSummary }) {
           ]}
           rows={holders}
           rowKey={(h) => h.pubkey}
+          phone={(h) => (
+            <>
+              <span className="flex items-center gap-2.5">
+                <span className="bc-hint mono">{pad2(rank.get(h.pubkey) ?? 0)}</span>
+                {account(h.pubkey)}
+              </span>
+              <span className="bc-hint mono block">
+                {formatInteger(h.balance)} · {share(h.balance, token.current_supply).label}
+              </span>
+            </>
+          )}
           empty="No holders yet."
         />
       )}

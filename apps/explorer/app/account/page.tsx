@@ -42,6 +42,14 @@ function AccountView({ account, entity }: { account: AccountDetails; entity: Ent
               rows={held}
               rowKey={(h) => h.id}
               rowHref={(h) => routes.token(h.id)}
+              phone={(h) => (
+                <>
+                  <span className="block">{tokenLabel(h.id, byId.get(h.id))}</span>
+                  <span className="bc-hint mono block">
+                    {h.id} · {formatInteger(h.balance)}
+                  </span>
+                </>
+              )}
               empty="No token balances."
             />
           </Panel>
