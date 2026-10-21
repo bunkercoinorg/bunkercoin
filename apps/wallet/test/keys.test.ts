@@ -16,6 +16,8 @@ import {
   signTokenTransfer,
   mintSigningHash,
   metadataHash,
+  signUpdateMetadata,
+  updateMetadataSigningHash,
   isValidTicker,
   tokenIdBytes,
   isTokenId,
@@ -220,6 +222,40 @@ test('signed mint verifies and carries a hex metadata hash', () => {
   assert.ok(ed25519.verify(bs58.decode(tx.signature), digest, publicKey));
 });
 
+test('update metadata signing hash matches the node byte layout', () => {
+  // sender ‖ nonce_le ‖ fee_le ‖ 0x09 ‖ token_id(4, raw) ‖ metadata_hash(32)
+  const sender = new Uint8Array(32).fill(1);
+  const metadata = new Uint8Array(32).fill(0xcd);
+  const hash = updateMetadataSigningHash({ sender, nonce: 7, fee: 100, tokenId: tokenIdBytes('01000000'), metadataHash: metadata });
+  const expected = new Uint8Array([
+    ...sender,
+    7, 0, 0, 0, 0, 0, 0, 0,
+    100, 0, 0, 0, 0, 0, 0, 0,
+    0x09,
+    1, 0, 0, 0,
+    ...metadata,
+  ]);
+  assert.deepEqual(Buffer.from(hash), createHash('sha256').update(expected).digest());
+  assert.throws(() => updateMetadataSigningHash({ sender, nonce: 0, fee: 0, tokenId: new Uint8Array(3), metadataHash: metadata }));
+  assert.throws(() => updateMetadataSigningHash({ sender, nonce: 0, fee: 0, tokenId: new Uint8Array(4), metadataHash: new Uint8Array(31) }));
+});
+
+test('signed metadata update verifies and carries hex token id and hash', () => {
+  const { privateKey, publicKey, address } = keypairFromMnemonic(createMnemonic());
+  const tokenId = tokenIdBytes('0a000000');
+  const hash = new Uint8Array(32).fill(0xab);
+  const tx = signUpdateMetadata({ privateKey, publicKey, tokenId, metadataHash: hash, nonce: 3n, fee: 100n });
+  assert.equal(tx.sender, address);
+  assert.deepEqual(tx.body, { UpdateMetadata: { token_id: '0a000000', metadata_hash: 'ab'.repeat(32) } });
+  const digest = updateMetadataSigningHash({ sender: publicKey, nonce: 3n, fee: 100n, tokenId, metadataHash: hash });
+  assert.ok(ed25519.verify(bs58.decode(tx.signature), digest, publicKey));
+});
+
+test('the pre-service metadataHash stays sha256 of JSON.stringify', () => {
+  const metadata = { name: 'Bunker Token', description: 'demo' };
+  assert.equal(Buffer.from(metadataHash(metadata)).toString('hex'), createHash('sha256').update(JSON.stringify(metadata)).digest('hex'));
+});
+
 test('metadata hash is stable and content-dependent', () => {
   const a = metadataHash({ name: 'A', description: 'x' });
   assert.deepEqual(a, metadataHash({ name: 'A', description: 'x' }));
@@ -278,4 +314,20 @@ test('asset identity never lets a token named like the native asset select nativ
   const bunkerToken = { kind: 'token' as const, tokenId: '02000000' };
   assert.notEqual(assetKey(bunkerToken), assetKey(NATIVE_ASSET));
   assert.notEqual(assetKey(bunkerToken), assetKey({ kind: 'token', tokenId: '03000000' }));
+});
+
+test('checkPhrase counts words, names the first unknown finished word and checks the checksum', async () => {
+  const { checkPhrase } = await import('../src/lib/keys.ts');
+  const phrase = createMnemonic();
+  const words = phrase.split(' ');
+  assert.deepEqual(checkPhrase(` ${phrase.toUpperCase()}\n`), { count: 24, unknown: null, valid: true });
+  assert.deepEqual(checkPhrase(words.slice(0, 18).join(' ')), { count: 18, unknown: null, valid: false });
+  assert.deepEqual(checkPhrase('abandon ab'), { count: 2, unknown: null, valid: false }, 'the word being typed is not judged');
+  assert.deepEqual(checkPhrase('abandon ab '), { count: 2, unknown: { position: 2, word: 'ab' }, valid: false });
+  const bad = [...words];
+  bad[8] = 'hazrd';
+  assert.deepEqual(checkPhrase(bad.join(' ')).unknown, { position: 9, word: 'hazrd' });
+  assert.deepEqual(checkPhrase(Array(24).fill('abandon').join(' ')), { count: 24, unknown: null, valid: false }, 'checksum fails');
+  assert.equal(checkPhrase(`${Array(23).fill('abandon').join(' ')} art`).valid, true);
+  assert.equal(checkPhrase(`${words.slice(0, 23).join(' ')} zzzz`).unknown?.position, 24, 'the 24th word is judged');
 });

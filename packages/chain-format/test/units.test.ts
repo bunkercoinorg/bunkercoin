@@ -25,6 +25,12 @@ test('parseJson handles the full grammar and refuses prototype pollution', () =>
   assert.deepEqual(parseJson('{"type":"a","type":"b"}', { bigints: 'unsafe' }), { type: 'b' });
 });
 
+test('parseJson rejects malformed input', () => {
+  for (const bad of ['', '{', '[1,]', '{"a":1,}', '01', '1 2', '"\\x"', 'nul', '{"a" 1}', '"a\nb"']) {
+    assert.throws(() => parseJson(bad), SyntaxError, bad);
+  }
+});
+
 test('parseJson bounds nesting depth', () => {
   assert.doesNotThrow(() => parseJson('['.repeat(65) + ']'.repeat(65)));
   assert.throws(() => parseJson('['.repeat(66) + ']'.repeat(66)), SyntaxError);

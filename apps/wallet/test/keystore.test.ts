@@ -8,6 +8,11 @@ import {
   loadKeystore,
   saveKeystore,
   keystoreFingerprint,
+  replaceKeystore,
+  describeRecord,
+  rememberAddress,
+  rememberedAddress,
+  clearKeystore,
   type KeystoreRecord,
 } from '../src/lib/keystore.ts';
 import { withLock } from '../src/lib/locks.ts';
@@ -181,4 +186,34 @@ test('a setup cancelled while waiting for the keystore lock saves nothing', asyn
     await assert.rejects(save, /cancelled/);
   });
   assert.equal(store.size, 0, 'an erased or abandoned setup must not recreate a wallet');
+});
+
+test('replacing overwrites only the record the user saw', async () => {
+  const seen = '{not json';
+  const store = new Map([['bunkercoin.keystore.v1', seen]]);
+  await withStorage(store, async () => {
+    await assert.rejects(replaceKeystore(LEGACY_RECORD, '{other'), /changed meanwhile/);
+    assert.equal(store.get('bunkercoin.keystore.v1'), seen);
+    await assert.rejects(replaceKeystore(LEGACY_RECORD, seen, () => false), /cancelled/);
+    assert.equal(store.get('bunkercoin.keystore.v1'), seen);
+    await replaceKeystore(LEGACY_RECORD, seen);
+    assert.equal(loadKeystore().status, 'ok');
+  });
+});
+
+test('describeRecord names the size and why it cannot be read', () => {
+  assert.equal(describeRecord('{not json'), '9 bytes · not JSON');
+  assert.match(describeRecord(JSON.stringify({ ...LEGACY_RECORD, version: 3 })), /^\d+ bytes · version 3, expected 1$/);
+  assert.match(describeRecord(JSON.stringify({ ...LEGACY_RECORD, iv: 'AA==' })), /bytes · iv has the wrong length$/);
+});
+
+test('the remembered address belongs to one record and goes with an erase', async () => {
+  const store = new Map([['bunkercoin.keystore.v1', JSON.stringify(LEGACY_RECORD)]]);
+  await withStorage(store, async () => {
+    rememberAddress('fp1', 'Addr1');
+    assert.equal(rememberedAddress('fp1'), 'Addr1');
+    assert.equal(rememberedAddress('fp2'), null);
+    await clearKeystore();
+    assert.equal(rememberedAddress('fp1'), null);
+  });
 });

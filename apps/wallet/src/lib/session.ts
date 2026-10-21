@@ -1,5 +1,5 @@
 import { ed25519 } from '@noble/curves/ed25519.js';
-import bs58 from 'bs58';
+import { bytesToBase58 } from '@bunkercoin/chain-format';
 import type { Keypair } from './keys.ts';
 import type { Signer } from './signer.ts';
 
@@ -12,6 +12,34 @@ const LEGACY_KEYS = ['bunkercoin.session.v1'];
 const LEGACY_WRAP_ID = 'wrap-key';
 const ORPHAN_AFTER_MS = 24 * 60 * 60_000;
 export const SESSION_IDLE_MS = 15 * 60_000;
+
+export const AUTO_LOCK_OPTIONS = [1, 5, 15, 60] as const;
+export type AutoLockMinutes = (typeof AUTO_LOCK_OPTIONS)[number];
+const AUTO_LOCK_KEY = 'bunkercoin.autolock.v1';
+const DEFAULT_AUTO_LOCK: AutoLockMinutes = 15;
+
+export const isAutoLockMinutes = (v: unknown): v is AutoLockMinutes => AUTO_LOCK_OPTIONS.includes(v as AutoLockMinutes);
+
+/** The chosen idle timeout; 15 min when unset, unreadable or not one of the options. */
+export function loadAutoLockMinutes(): AutoLockMinutes {
+  try {
+    const v = Number(localStorage.getItem(AUTO_LOCK_KEY));
+    return isAutoLockMinutes(v) ? v : DEFAULT_AUTO_LOCK;
+  } catch {
+    return DEFAULT_AUTO_LOCK;
+  }
+}
+
+export function saveAutoLockMinutes(minutes: AutoLockMinutes): void {
+  if (!isAutoLockMinutes(minutes)) throw new RangeError('unsupported auto-lock');
+  try {
+    localStorage.setItem(AUTO_LOCK_KEY, String(minutes));
+  } catch {
+    // Storage denied: the choice lasts for this page only.
+  }
+}
+
+export const autoLockMs = (minutes: AutoLockMinutes = loadAutoLockMinutes()) => minutes * 60_000;
 
 const toB64 = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes));
 const fromB64 = (text: string): Uint8Array<ArrayBuffer> => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
@@ -150,7 +178,7 @@ export async function loadSession(fingerprint: string): Promise<RestoredSession 
   const gen = generation;
   const blob = readBlob();
   if (!blob) return null;
-  if (blob.fp !== fingerprint || Date.now() - blob.at > SESSION_IDLE_MS) {
+  if (blob.fp !== fingerprint || Date.now() - blob.at > autoLockMs()) {
     await revokeSession();
     return null;
   }
@@ -165,7 +193,7 @@ export async function loadSession(fingerprint: string): Promise<RestoredSession 
       return null;
     }
     const publicKey = ed25519.getPublicKey(privateKey);
-    return { keypair: { privateKey, publicKey, address: bs58.encode(publicKey) }, lastActivity: blob.at };
+    return { keypair: { privateKey, publicKey, address: bytesToBase58(publicKey) }, lastActivity: blob.at };
   } catch {
     await revokeSession();
     return null;

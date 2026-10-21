@@ -1,6 +1,5 @@
-import { isObject, parseJson, stringifyJson, type Json } from './json.ts';
-import { isTokenId, type SignedTransaction } from './keys.ts';
-import { U64_MAX } from './format.ts';
+import { isObject, parseJson, stringifyJson, U64_MAX, type Json } from '@bunkercoin/chain-format';
+import { hexToBase58, isTokenId, type SignedTransaction } from './keys.ts';
 
 export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc.bunkercoin.com/';
 
@@ -49,6 +48,10 @@ export interface TokenBalance {
   tokenId: string;
   ticker: string | null;
   balance: bigint;
+  /** 64 lowercase hex; null when the node sent no token record. */
+  metadataHash: string | null;
+  /** Base58 address, comparable with the wallet's own; null as above. */
+  creator: string | null;
 }
 
 export const NATIVE_TICKER = 'BUNKER';
@@ -62,6 +65,12 @@ export function tokenLabel(t: { tokenId: string; ticker: string | null }): strin
 export interface TokenMeta {
   id: string;
   ticker: string;
+  maxSupply: bigint;
+  currentSupply: bigint;
+  /** 64 lowercase hex. */
+  metadataHash: string;
+  /** Base58 address. */
+  creator: string;
 }
 
 export interface SignatureStatus {
@@ -72,7 +81,8 @@ export interface SignatureStatus {
 export type TxBody =
   | { type: 'Transfer'; to: string; amount: bigint }
   | { type: 'TokenTransfer'; to: string; tokenId: string; amount: bigint }
-  | { type: 'Mint'; ticker: string; maxSupply: bigint }
+  | { type: 'Mint'; ticker: string; maxSupply: bigint; metadataHash: string }
+  | { type: 'UpdateMetadata'; tokenId: string; metadataHash: string }
   | { type: 'Burn'; tokenId: string; amount: bigint }
   | { type: 'Other'; name: string };
 
@@ -169,12 +179,31 @@ function decodeBody(method: string, v: Json | undefined): TxBody {
         amount: u64(method, b.amount, 'amount'),
       };
     case 'Mint':
-      return { type, ticker: str(method, b.ticker, 'ticker'), maxSupply: u64(method, b.max_supply, 'supply') };
+      return {
+        type,
+        ticker: str(method, b.ticker, 'ticker'),
+        maxSupply: u64(method, b.max_supply, 'supply'),
+        metadataHash: hex32(method, b.metadata_hash, 'metadata hash'),
+      };
+    case 'UpdateMetadata':
+      return { type, tokenId: tokenId(method, b.token_id), metadataHash: hex32(method, b.metadata_hash, 'metadata hash') };
     case 'Burn':
       return { type, tokenId: tokenId(method, b.token_id), amount: u64(method, b.amount, 'amount') };
     default:
       return { type: 'Other', name: type };
   }
+}
+
+function decodeTokenMeta(method: string, v: Json | undefined): TokenMeta {
+  const t = obj(method, v, 'token');
+  return {
+    id: tokenId(method, t.id),
+    ticker: str(method, t.ticker, 'ticker'),
+    maxSupply: u64(method, t.max_supply, 'max supply'),
+    currentSupply: u64(method, t.current_supply, 'supply'),
+    metadataHash: hex32(method, t.metadata_hash, 'metadata hash'),
+    creator: hexToBase58(hex32(method, t.creator, 'creator')),
+  };
 }
 
 function decodeOutcome(method: string, v: Json | undefined): TxOutcome {
@@ -325,6 +354,8 @@ export class BunkerConnection {
         tokenId: tokenId(m, entry.token_id),
         ticker: entry.ticker || null,
         balance: u64(m, entry.balance, 'token balance'),
+        metadataHash: entry.metadata_hash === undefined ? null : hex32(m, entry.metadata_hash, 'metadata hash'),
+        creator: entry.creator === undefined ? null : hexToBase58(hex32(m, entry.creator, 'creator')),
       };
     });
   }
@@ -334,10 +365,18 @@ export class BunkerConnection {
     const m = 'getTokens';
     const list = obj(m, await this.rpc(m, [], opts), 'token list').tokens;
     if (!Array.isArray(list)) throw bad(m, 'token list');
-    return list.map((t) => {
-      const entry = obj(m, t, 'token');
-      return { id: tokenId(m, entry.id), ticker: str(m, entry.ticker, 'ticker') };
-    });
+    return list.map((t) => decodeTokenMeta(m, t));
+  }
+
+  /** null when the node has no such token. */
+  async getToken(id: string, opts?: RequestOptions): Promise<TokenMeta | null> {
+    const m = 'getToken';
+    try {
+      return decodeTokenMeta(m, await this.rpc(m, [id], opts));
+    } catch (e) {
+      if (e instanceof RpcError && e.kind === 'rpc' && /token not found/.test(e.message)) return null;
+      throw e;
+    }
   }
 
   /** Recommended fee, refused when above MAX_FEE_UNITS. */

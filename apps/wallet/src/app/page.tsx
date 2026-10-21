@@ -1,9 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppShell, Footer, Tag } from '@bunkercoin/ui';
 import Onboarding from '@/components/Onboarding';
 import Unlock from '@/components/Unlock';
-import Dashboard from '@/components/Dashboard';
+import Dashboard, { EXPLORER_URL } from '@/components/Dashboard';
+import { Gate } from '@/components/Gate';
 import {
   clearKeystore,
   KEYSTORE_KEY,
@@ -14,31 +16,57 @@ import {
 } from '@/lib/keystore';
 import type { Keypair } from '@/lib/keys';
 import {
+  autoLockMs,
+  loadAutoLockMinutes,
   loadSession,
   removeLegacySession,
   revokeSession,
+  saveAutoLockMinutes,
   saveSession,
   touchSession,
-  SESSION_IDLE_MS,
+  type AutoLockMinutes,
 } from '@/lib/session';
 import { clearAllPending } from '@/lib/pending';
 import { Signer } from '@/lib/signer';
 import { settleUnlock, UnlockGate, type FinishUnlock } from '@/lib/unlock';
-import { Button } from '@/components/ui';
 
-const AUTO_LOCK_MS = SESSION_IDLE_MS;
+type Phase =
+  | 'loading'
+  | 'insecure'
+  | 'nocrypto'
+  | 'unavailable'
+  | 'corrupt'
+  | 'import'
+  | 'onboarding'
+  | 'locked'
+  | 'unlocked';
 
-type Phase = 'loading' | 'insecure' | 'unavailable' | 'corrupt' | 'onboarding' | 'locked' | 'unlocked';
+const CHECKING_AFTER_MS = 300;
 
 const fingerprintOf = (state: KeystoreState) => (state.status === 'ok' ? keystoreFingerprint(state.record) : null);
+
+const FOOTER = (
+  <Footer
+    links={[
+      { label: 'explorer', href: EXPLORER_URL, external: true },
+      { label: 'source', href: 'https://github.com/bunkercoin', external: true },
+    ]}
+  >
+    keys stay in this browser.
+  </Footer>
+);
 
 export default function Wallet() {
   // 'loading' avoids hydration mismatch: localStorage exists only client-side.
   const [phase, setPhase] = useState<Phase>('loading');
+  const [slow, setSlow] = useState(false);
   const [storageError, setStorageError] = useState('');
-  const [confirmErase, setConfirmErase] = useState(false);
+  const [lockReason, setLockReason] = useState<'idle' | 'signing' | null>(null);
+  const [autoLock, setAutoLock] = useState<AutoLockMinutes>(15);
   const signerRef = useRef<Signer | null>(null);
   const deadline = useRef(0);
+  const autoLockRef = useRef(autoLock);
+  autoLockRef.current = autoLock;
   const gate = useRef(new UnlockGate()).current;
   // The keystore record the current phase was derived from; another tab replacing it invalidates everything.
   const fingerprint = useRef<string | null>(null);
@@ -61,11 +89,22 @@ export default function Wallet() {
   }, []);
 
   useEffect(() => {
+    const t = setTimeout(() => setSlow(true), CHECKING_AFTER_MS);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
     // WebCrypto needs a secure context; without it nothing can be decrypted.
-    if (!window.crypto?.subtle) {
+    if (!window.isSecureContext) {
       setPhase('insecure');
       return;
     }
+    if (!window.crypto?.subtle) {
+      setPhase('nocrypto');
+      return;
+    }
+    const minutes = loadAutoLockMinutes();
+    setAutoLock(minutes);
     let cancelled = false;
     const legacy = removeLegacySession();
     const stored = loadKeystore();
@@ -81,9 +120,9 @@ export default function Wallet() {
             session?.keypair.privateKey.fill(0);
             return;
           }
-          if (session && Date.now() < session.lastActivity + AUTO_LOCK_MS) {
+          if (session && Date.now() < session.lastActivity + autoLockMs(minutes)) {
             signerRef.current = new Signer(session.keypair);
-            deadline.current = session.lastActivity + AUTO_LOCK_MS;
+            deadline.current = session.lastActivity + autoLockMs(minutes);
             setPhase('unlocked');
           } else {
             session?.keypair.privateKey.fill(0);
@@ -97,7 +136,6 @@ export default function Wallet() {
       const state = loadKeystore();
       if (state.status === 'ok' && fingerprintOf(state) === fingerprint.current) return;
       void forgetKey();
-      setConfirmErase(false);
       route(state);
     };
     window.addEventListener('storage', onStorage);
@@ -108,10 +146,14 @@ export default function Wallet() {
     };
   }, [gate, forgetKey, route]);
 
-  const lock = useCallback(() => {
-    void forgetKey();
-    setPhase('locked');
-  }, [forgetKey]);
+  const lock = useCallback(
+    (reason: 'idle' | 'signing' | null = null) => {
+      void forgetKey();
+      setLockReason(reason);
+      setPhase('locked');
+    },
+    [forgetKey],
+  );
 
   const erase = useCallback(async () => {
     await forgetKey();
@@ -124,22 +166,30 @@ export default function Wallet() {
     }
     clearAllPending();
     fingerprint.current = null;
-    setConfirmErase(false);
+    window.history.replaceState(null, '', window.location.pathname);
     setPhase('onboarding');
   }, [forgetKey]);
+
+  const changeAutoLock = useCallback((m: AutoLockMinutes) => {
+    saveAutoLockMinutes(m);
+    setAutoLock(m);
+    deadline.current = Date.now() + autoLockMs(m);
+    touchSession();
+  }, []);
 
   // Idle auto-lock from persisted activity; timers stall in hidden tabs, so the wall clock is rechecked on return.
   useEffect(() => {
     if (phase !== 'unlocked') return;
+    const idleMs = autoLockMs(autoLock);
     let timer: ReturnType<typeof setTimeout>;
     const check = () => {
       clearTimeout(timer);
-      if (Date.now() >= deadline.current) lock();
+      if (Date.now() >= deadline.current) lock('idle');
       else timer = setTimeout(check, deadline.current - Date.now());
     };
     const activity = () => {
-      if (Date.now() >= deadline.current) return lock();
-      deadline.current = Date.now() + AUTO_LOCK_MS;
+      if (Date.now() >= deadline.current) return lock('idle');
+      deadline.current = Date.now() + idleMs;
       touchSession();
       check();
     };
@@ -157,7 +207,7 @@ export default function Wallet() {
       window.removeEventListener('focus', check);
       window.removeEventListener('pageshow', check);
     };
-  }, [phase, lock]);
+  }, [phase, lock, autoLock]);
 
   // Captured when the attempt starts, so an erase or replacement while Argon2id runs voids it.
   const beginUnlock = useCallback((): FinishUnlock => {
@@ -170,76 +220,53 @@ export default function Wallet() {
         const signer = new Signer(k);
         signerRef.current = signer;
         fingerprint.current = fp;
-        deadline.current = Date.now() + AUTO_LOCK_MS;
+        deadline.current = Date.now() + autoLockMs(autoLockRef.current);
         void saveSession(signer, fp);
+        setLockReason(null);
         setPhase('unlocked');
       });
     };
     return Object.assign(finish, { current });
   }, [gate]);
 
-  return (
-    <main className="mx-auto flex min-h-screen max-w-155 flex-col px-6 pb-18">
-      <div className="mb-7 flex items-center gap-2.5 border-b border-line py-5.5">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/bunker-favicon.png" alt="" width={22} height={22} className="block rounded-[5px]" />
-        <h1 className="text-[15px] font-semibold tracking-[0.01em]">
-          Bunker<span className="text-accent">Coin</span> Wallet
-        </h1>
-        <span className="ml-auto rounded-full border border-line px-2.5 py-[3px] font-mono text-[10.5px] tracking-[0.14em] uppercase text-muted">
-          testnet
-        </span>
-      </div>
+  if (phase === 'unlocked' && signerRef.current) {
+    return (
+      <Dashboard
+        signer={signerRef.current}
+        onLock={() => lock(null)}
+        onWalletRemoved={erase}
+        autoLockMinutes={autoLock}
+        onAutoLockChange={changeAutoLock}
+      />
+    );
+  }
 
-      {phase === 'insecure' && (
-        <div className="flex flex-1 flex-col justify-center pb-[9vh]">
-          <div className="mx-auto w-full max-w-105 text-center">
-            <h2 className="mb-2 text-[21px] font-semibold tracking-tight">
-              Open the wallet over a secure connection
-            </h2>
-            <p className="text-[13.5px] leading-relaxed text-muted">
-              Your browser disables encryption on plain http addresses, so the wallet cannot
-              protect your keys here. Use the https address (or localhost during development).
-            </p>
-          </div>
-        </div>
+  const gateKind =
+    phase === 'insecure'
+      ? 'insecure'
+      : phase === 'nocrypto'
+        ? 'nocrypto'
+        : phase === 'unavailable'
+          ? 'storage'
+          : phase === 'corrupt'
+            ? 'unreadable'
+            : phase === 'loading'
+              ? 'checking'
+              : null;
+
+  return (
+    <AppShell app="wallet" status={<Tag>testnet</Tag>} flow={gateKind === null} footer={FOOTER}>
+      {gateKind === 'checking' ? (
+        slow && <Gate kind="checking" />
+      ) : gateKind ? (
+        <Gate kind={gateKind} detail={storageError || undefined} onImport={gateKind === 'unreadable' ? () => setPhase('import') : undefined} />
+      ) : phase === 'import' ? (
+        <Onboarding beginUnlock={beginUnlock} mode="import" onCancel={() => setPhase('corrupt')} />
+      ) : phase === 'onboarding' ? (
+        <Onboarding beginUnlock={beginUnlock} />
+      ) : (
+        <Unlock beginUnlock={beginUnlock} lockReason={lockReason} />
       )}
-      {(phase === 'unavailable' || phase === 'corrupt') && (
-        <div className="flex flex-1 flex-col justify-center pb-[9vh]">
-          <div className="mx-auto w-full max-w-105 text-center">
-            <h2 className="mb-2 text-[21px] font-semibold tracking-tight">
-              {phase === 'corrupt' ? 'The stored wallet cannot be read' : 'Browser storage is unavailable'}
-            </h2>
-            <p className="mb-4 text-[13.5px] leading-relaxed text-muted">
-              {phase === 'corrupt'
-                ? 'The encrypted wallet record on this device is damaged or from an unsupported version. It has not been changed. Erasing it is only safe if you have your 24-word recovery phrase.'
-                : 'The wallet cannot read its storage, for example in a private window or with site data blocked. Nothing was changed.'}
-            </p>
-            <p className="mb-4 font-mono text-[12px] text-faint">{storageError}</p>
-            {phase === 'corrupt' &&
-              (confirmErase ? (
-                <Button variant="danger" small onClick={() => void erase()}>
-                  Really erase this wallet from the device
-                </Button>
-              ) : (
-                <Button variant="link" onClick={() => setConfirmErase(true)}>
-                  Erase and recover
-                </Button>
-              ))}
-          </div>
-        </div>
-      )}
-      {(phase === 'onboarding' || phase === 'locked') && (
-        <div className="flex flex-1 animate-gate-in flex-col justify-center pb-[9vh] motion-reduce:animate-none">
-          {phase === 'onboarding' && <Onboarding beginUnlock={beginUnlock} />}
-          {phase === 'locked' && (
-            <Unlock beginUnlock={beginUnlock} onReset={() => void erase()} />
-          )}
-        </div>
-      )}
-      {phase === 'unlocked' && signerRef.current && (
-        <Dashboard signer={signerRef.current} onLock={lock} onWalletRemoved={() => void erase()} />
-      )}
-    </main>
+    </AppShell>
   );
 }

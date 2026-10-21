@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import bs58 from 'bs58';
 import * as next from '../src/index.ts';
-import * as walletJson from '../../../apps/wallet/src/lib/json.ts';
 import * as walletFormat from '../../../apps/wallet/src/lib/format.ts';
 import * as walletKeys from '../../../apps/wallet/src/lib/keys.ts';
 import * as explorerJson from './legacy/explorer-json.ts';
@@ -55,21 +54,10 @@ const JSON_DOCS = [
   '',
 ];
 
-test('parseJson(all) is the wallet parser', () => {
-  for (const doc of JSON_DOCS) {
-    assert.deepStrictEqual(outcome(() => next.parseJson(doc)), outcome(() => walletJson.parseJson(doc)), doc);
-  }
-});
-
 test('parseJson(unsafe) is the explorer parser', () => {
   for (const doc of JSON_DOCS) {
     assert.deepStrictEqual(outcome(() => next.parseJson(doc, { bigints: 'unsafe' })), outcome(() => explorerJson.parseJson(doc)), doc);
   }
-});
-
-test('stringifyJson is the wallet serializer', () => {
-  const docs = [{ a: 1n, b: [undefined, 'x', null], c: undefined, d: { e: -2.5 } }, [next.U64_MAX], 'é"', 0, true, null];
-  for (const doc of docs) assert.equal(next.stringifyJson(doc), walletJson.stringifyJson(doc));
 });
 
 test('formatUnits(trim) equals both legacy formatters; grouping equals formatCount/formatInteger', () => {

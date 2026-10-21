@@ -10,10 +10,11 @@
     "postbuild": "test -f out/index.html && test -f out/_headers || (echo 'export missing: out/ or out/_headers was not generated' && exit 1)"
   },
   "dependencies": {
+    "@bunkercoin/chain-format": "workspace:*",
+    "@bunkercoin/ui": "workspace:*",
     "@noble/curves": "^1.9.0",
     "@noble/hashes": "^1.8.0",
     "@scure/bip39": "^1.5.0",
-    "bs58": "^6.0.0",
     "hash-wasm": "^4.12.0",
     "next": "15.3.4",
     "react": "^19.0.0",
@@ -25,6 +26,7 @@
     "@types/node": "^26.1.2",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
+    "bs58": "^6.0.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3"
   }
