@@ -9,6 +9,7 @@ import {
   NotFoundCard,
   ErrorCard,
   Loading,
+  RefreshNotice,
 } from '@/components/explorer-ui';
 import { useQueryParam } from '@/lib/use-query-param';
 import { useEntity } from '@/lib/use-entity';
@@ -42,7 +43,7 @@ function AccountLink({ hex }: { hex: string }) {
 
 export default function TransactionPage() {
   const sig = useQueryParam('sig');
-  const { status, data: tx, error, retry } = useEntity(sig, (id, signal) => api.getTransaction(id, { signal }), pollUntilFinal);
+  const { status, data: tx, error, refreshError, lastSuccess, retry } = useEntity(sig, (id, signal) => api.getTransaction(id, { signal }), pollUntilFinal);
 
   const body = tx?.body;
   const tokenId = body?.token_id && normalizeTokenId(body.token_id);
@@ -58,48 +59,51 @@ export default function TransactionPage() {
         ) : !tx ? (
           <NotFoundCard what="transaction" id={sig ?? ''} />
         ) : (
-          <div className="rounded-lg border border-border/60 bg-card px-5">
-            <DetailRow label="Signature">
-              <HashLink value={tx.hash} truncateTo={false} />
-            </DetailRow>
-            <DetailRow label="Status">{statusPill(tx.status)}</DetailRow>
-            {tx.status.error ? (
-              <DetailRow label="Error">
-                <span className="text-red-400">{tx.status.error}</span>
+          <>
+            <RefreshNotice error={refreshError} lastSuccess={lastSuccess} onRetry={retry} />
+            <div className="rounded-lg border border-border/60 bg-card px-5">
+              <DetailRow label="Signature">
+                <HashLink value={tx.hash} truncateTo={false} />
               </DetailRow>
-            ) : null}
-            {tx.status.slot !== undefined ? (
-              <DetailRow label="Slot">
-                <HashLink value={String(tx.status.slot)} href={routes.block(tx.status.slot)} truncateTo={false} />
+              <DetailRow label="Status">{statusPill(tx.status)}</DetailRow>
+              {tx.status.error ? (
+                <DetailRow label="Error">
+                  <span className="text-red-400">{tx.status.error}</span>
+                </DetailRow>
+              ) : null}
+              {tx.status.slot !== undefined ? (
+                <DetailRow label="Slot">
+                  <HashLink value={String(tx.status.slot)} href={routes.block(tx.status.slot)} truncateTo={false} />
+                </DetailRow>
+              ) : null}
+              {tx.status.block_hash ? (
+                <DetailRow label="Block">
+                  <HashLink value={tx.status.block_hash} href={routes.block(tx.status.block_hash)} />
+                </DetailRow>
+              ) : null}
+              <DetailRow label="Type">{body?.type ?? 'Unknown'}</DetailRow>
+              <DetailRow label="From">
+                <AccountLink hex={tx.sender} />
               </DetailRow>
-            ) : null}
-            {tx.status.block_hash ? (
-              <DetailRow label="Block">
-                <HashLink value={tx.status.block_hash} href={routes.block(tx.status.block_hash)} />
-              </DetailRow>
-            ) : null}
-            <DetailRow label="Type">{body?.type ?? 'Unknown'}</DetailRow>
-            <DetailRow label="From">
-              <AccountLink hex={tx.sender} />
-            </DetailRow>
-            {body?.to ? (
-              <DetailRow label="To">
-                <AccountLink hex={body.to} />
-              </DetailRow>
-            ) : null}
-            {body?.amount !== undefined ? (
-              <DetailRow label="Amount">
-                {body.token_id ? `${formatInteger(body.amount)} tokens` : `${formatBunker(body.amount)} BUNKER`}
-              </DetailRow>
-            ) : null}
-            {body?.token_id ? (
-              <DetailRow label="Token">
-                <HashLink value={body.token_id} href={tokenId ? routes.token(tokenId) : undefined} truncateTo={false} />
-              </DetailRow>
-            ) : null}
-            <DetailRow label="Fee">{formatBunker(tx.fee)} BUNKER</DetailRow>
-            <DetailRow label="Nonce">{tx.nonce.toString()}</DetailRow>
-          </div>
+              {body?.to ? (
+                <DetailRow label="To">
+                  <AccountLink hex={body.to} />
+                </DetailRow>
+              ) : null}
+              {body?.amount !== undefined ? (
+                <DetailRow label="Amount">
+                  {body.token_id ? `${formatInteger(body.amount)} tokens` : `${formatBunker(body.amount)} BUNKER`}
+                </DetailRow>
+              ) : null}
+              {body?.token_id ? (
+                <DetailRow label="Token">
+                  <HashLink value={body.token_id} href={tokenId ? routes.token(tokenId) : undefined} truncateTo={false} />
+                </DetailRow>
+              ) : null}
+              <DetailRow label="Fee">{formatBunker(tx.fee)} BUNKER</DetailRow>
+              <DetailRow label="Nonce">{tx.nonce.toString()}</DetailRow>
+            </div>
+          </>
         )}
       </EntityPage>
     </>

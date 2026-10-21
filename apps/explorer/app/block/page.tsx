@@ -2,7 +2,7 @@
 
 import { formatDistanceToNow } from 'date-fns';
 import Header from '@/components/header';
-import { EntityPage, DetailRow, HashLink, StatusPill, NotFoundCard, ErrorCard, Loading } from '@/components/explorer-ui';
+import { EntityPage, DetailRow, HashLink, StatusPill, NotFoundCard, ErrorCard, Loading, RefreshNotice } from '@/components/explorer-ui';
 import { useQueryParam } from '@/lib/use-query-param';
 import { useEntity } from '@/lib/use-entity';
 import { api } from '@/lib/api';
@@ -14,7 +14,7 @@ const pollUntilFinal = (b: Block | null) => (b && b.status !== 'finalized' ? PEN
 
 export default function BlockPage() {
   const id = useQueryParam('id');
-  const { status, data: block, error, retry } = useEntity(id, (key, signal) => api.getBlockById(key, { signal }), pollUntilFinal);
+  const { status, data: block, error, refreshError, lastSuccess, retry } = useEntity(id, (key, signal) => api.getBlockById(key, { signal }), pollUntilFinal);
 
   const ts = block?.finalized_timestamp ?? block?.proposed_timestamp;
 
@@ -29,38 +29,41 @@ export default function BlockPage() {
         ) : !block ? (
           <NotFoundCard what="block" id={id ?? ''} />
         ) : (
-          <div className="rounded-lg border border-border/60 bg-card px-5">
-            <DetailRow label="Slot">{block.slot}</DetailRow>
-            <DetailRow label="Status">
-              {block.status === 'finalized' ? (
-                <StatusPill tone="success">finalized</StatusPill>
-              ) : (
-                <StatusPill tone="pending">{block.status}</StatusPill>
-              )}
-            </DetailRow>
-            <DetailRow label="Hash">
-              <HashLink value={block.hash} truncateTo={false} />
-            </DetailRow>
-            {block.producer !== undefined ? (
-              <DetailRow label="Producer">Node {block.producer}</DetailRow>
-            ) : null}
-            {block.parent_slot !== undefined ? (
-              <DetailRow label="Parent">
-                <HashLink value={`slot ${block.parent_slot}`} href={routes.block(block.parent_slot)} truncateTo={false} />
+          <>
+            <RefreshNotice error={refreshError} lastSuccess={lastSuccess} onRetry={retry} />
+            <div className="rounded-lg border border-border/60 bg-card px-5">
+              <DetailRow label="Slot">{block.slot}</DetailRow>
+              <DetailRow label="Status">
+                {block.status === 'finalized' ? (
+                  <StatusPill tone="success">finalized</StatusPill>
+                ) : (
+                  <StatusPill tone="pending">{block.status}</StatusPill>
+                )}
               </DetailRow>
-            ) : null}
-            {block.parent_hash ? (
-              <DetailRow label="Parent hash">
-                <HashLink value={block.parent_hash} href={routes.block(block.parent_hash)} />
+              <DetailRow label="Hash">
+                <HashLink value={block.hash} truncateTo={false} />
               </DetailRow>
-            ) : null}
-            {ts ? (
-              <DetailRow label="Time">
-                {new Date(ts).toLocaleString()}{' '}
-                <span className="text-muted-foreground">({formatDistanceToNow(ts, { addSuffix: true })})</span>
-              </DetailRow>
-            ) : null}
-          </div>
+              {block.producer !== undefined ? (
+                <DetailRow label="Producer">Node {block.producer}</DetailRow>
+              ) : null}
+              {block.parent_slot !== undefined ? (
+                <DetailRow label="Parent">
+                  <HashLink value={`slot ${block.parent_slot}`} href={routes.block(block.parent_slot)} truncateTo={false} />
+                </DetailRow>
+              ) : null}
+              {block.parent_hash ? (
+                <DetailRow label="Parent hash">
+                  <HashLink value={block.parent_hash} href={routes.block(block.parent_hash)} />
+                </DetailRow>
+              ) : null}
+              {ts ? (
+                <DetailRow label="Time">
+                  {new Date(ts).toLocaleString()}{' '}
+                  <span className="text-muted-foreground">({formatDistanceToNow(ts, { addSuffix: true })})</span>
+                </DetailRow>
+              ) : null}
+            </div>
+          </>
         )}
       </EntityPage>
     </>

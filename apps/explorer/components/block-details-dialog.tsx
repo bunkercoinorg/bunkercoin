@@ -4,6 +4,7 @@ import { useAtom } from 'jotai';
 import { selectedBlockHashAtom } from '@/lib/atoms';
 import { api } from '@/lib/api';
 import { useEntity } from '@/lib/use-entity';
+import { RefreshNotice } from '@/components/explorer-ui';
 import {
   Dialog,
   DialogContent,
@@ -85,6 +86,7 @@ export default function BlockDetailsDialog() {
           </div>
         ) : blockDetails ? (
           <div className="space-y-3 py-2 text-sm">
+            <RefreshNotice error={entity.refreshError} lastSuccess={entity.lastSuccess} onRetry={entity.retry} />
             <div className="flex items-start gap-2">
               <span className="w-[110px] text-muted-foreground">Hash</span>
               <span className="font-mono break-all flex-1">{blockDetails.hash}</span>

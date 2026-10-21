@@ -1,23 +1,21 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { errorMessage, isAbort } from './api';
+import { nextDelay, settle, type EntityStatus, type Outcome, type Settled } from './entity-state';
 
-export type EntityStatus = 'loading' | 'ready' | 'not-found' | 'error' | 'idle';
+export type { EntityStatus } from './entity-state';
 
 export interface EntityState<T> {
   status: EntityStatus;
   data: T | null;
   error: string | null;
+  refreshError: string | null;
+  lastSuccess: number | null;
   retry: () => void;
 }
 
-interface Stored<T> {
-  key: string;
-  status: EntityStatus;
-  data: T | null;
-  error: string | null;
-}
+const empty = { data: null, error: null, refreshError: null, lastSuccess: null };
 
 // Loads one entity per id. State from a previous id is never shown, 404 is
 // distinct from failure, and `pollMs` keeps refreshing while it returns a delay.
@@ -26,10 +24,10 @@ export function useEntity<T>(
   fetcher: (id: string, signal: AbortSignal) => Promise<T | null>,
   pollMs?: (data: T | null) => number | null,
 ): EntityState<T> {
-  const [stored, setStored] = useState<Stored<T> | null>(null);
-  const [nonce, setNonce] = useState(0);
+  const [stored, setStored] = useState<(Settled<T> & { key: string }) | null>(null);
   const fetcherRef = useRef(fetcher);
   const pollRef = useRef(pollMs);
+  const pokeRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     fetcherRef.current = fetcher;
@@ -39,42 +37,51 @@ export function useEntity<T>(
   useEffect(() => {
     if (!id) return;
     let disposed = false;
+    let inFlight = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let ctrl: AbortController | null = null;
-    const key = `${id}#${nonce}`;
-    let last: T | null = null;
-
-    const schedule = (data: T | null) => {
-      const delay = pollRef.current?.(data) ?? null;
-      if (delay !== null && !disposed) timer = setTimeout(run, delay);
-    };
+    let last: Settled<T> | null = null;
 
     async function run() {
+      clearTimeout(timer);
+      if (disposed || inFlight) return;
+      inFlight = true;
       ctrl = new AbortController();
+      let outcome: Outcome<T>;
       try {
-        const data = await fetcherRef.current(id as string, ctrl.signal);
-        if (disposed) return;
-        last = data;
-        setStored({ key, status: data === null ? 'not-found' : 'ready', data, error: null });
-        schedule(data);
+        outcome = { ok: true, data: await fetcherRef.current(id as string, ctrl.signal) };
       } catch (e) {
-        if (disposed || isAbort(e)) return;
-        setStored({ key, status: last === null ? 'error' : 'ready', data: last, error: errorMessage(e) });
-        if (last !== null) schedule(last);
+        if (isAbort(e)) return;
+        outcome = { ok: false, error: errorMessage(e) };
+      } finally {
+        inFlight = false;
       }
+      if (disposed) return;
+      last = settle(last, outcome, Date.now());
+      setStored({ key: id as string, ...last });
+      const delay = nextDelay(last, pollRef.current);
+      if (delay !== null) timer = setTimeout(run, delay);
     }
 
+    pokeRef.current = () => void run();
     void run();
     return () => {
       disposed = true;
+      pokeRef.current = () => {};
       clearTimeout(timer);
       ctrl?.abort();
     };
-  }, [id, nonce]);
+  }, [id]);
 
-  const retry = () => setNonce((n) => n + 1);
-  if (id === undefined) return { status: 'loading', data: null, error: null, retry };
-  if (!id) return { status: 'idle', data: null, error: null, retry };
-  if (!stored || stored.key !== `${id}#${nonce}`) return { status: 'loading', data: null, error: null, retry };
-  return { status: stored.status, data: stored.data, error: stored.error, retry };
+  // A failed load shows the spinner again; a failed refresh keeps its data.
+  const retry = useCallback(() => {
+    setStored((s) => (s?.status === 'error' ? null : s));
+    pokeRef.current();
+  }, []);
+
+  if (id === undefined) return { status: 'loading', ...empty, retry };
+  if (!id) return { status: 'idle', ...empty, retry };
+  if (!stored || stored.key !== id) return { status: 'loading', ...empty, retry };
+  const { status, data, error, refreshError, lastSuccess } = stored;
+  return { status, data, error, refreshError, lastSuccess, retry };
 }

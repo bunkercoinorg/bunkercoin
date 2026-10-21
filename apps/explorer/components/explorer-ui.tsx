@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import { formatDistanceToNow } from 'date-fns';
 import { Check, Copy, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -159,6 +160,30 @@ export function ErrorCard({ message, onRetry }: { message: string; onRetry: () =
         onClick={onRetry}
         className="mt-3 rounded-md bg-red-500/20 px-3 py-1 text-xs font-medium text-red-300 hover:bg-red-500/30"
       >
+        Retry
+      </button>
+    </div>
+  );
+}
+
+// Cached data stays on screen when a refresh fails; this says how old it is.
+export function RefreshNotice({
+  error,
+  lastSuccess,
+  onRetry,
+}: {
+  error: string | null;
+  lastSuccess: number | null;
+  onRetry: () => void;
+}) {
+  if (!error) return null;
+  return (
+    <div role="alert" className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-300">
+      <span>
+        Refresh failed: {error}
+        {lastSuccess ? ` Showing data from ${formatDistanceToNow(lastSuccess, { addSuffix: true })}.` : ''}
+      </span>
+      <button type="button" onClick={onRetry} className="underline">
         Retry
       </button>
     </div>
