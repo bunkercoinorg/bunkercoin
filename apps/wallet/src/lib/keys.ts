@@ -111,6 +111,13 @@ export function hexToBase58(hex: string): string {
   return bytesToBase58(bytes);
 }
 
+/** Same 32-byte account however it was typed (base58 or hex, any case). */
+export function sameAddress(a: string, b: string): boolean {
+  const x = decodeId(a.trim(), 32);
+  const y = decodeId(b.trim(), 32);
+  return x !== null && y !== null && bytesToHex(x) === bytesToHex(y);
+}
+
 export function isValidAddress(address: string): boolean {
   try {
     decodeAddress(address);
