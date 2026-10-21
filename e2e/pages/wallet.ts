@@ -44,12 +44,17 @@ export class WalletPage {
     return this.page.getByRole('heading', { name: 'Set up your wallet' });
   }
 
+  /** The word grid has no list role: each cell is a span holding its index in an <i> before the word. */
+  async readPhrase(scope: Locator): Promise<string> {
+    const cells = await scope.locator('span').filter({ has: this.page.locator('i') }).allTextContents();
+    return cells.map((c) => c.replace(/^\d+/, '').trim()).join(' ');
+  }
+
   async createWallet(password: string): Promise<{ phrase: string; address: string }> {
     await this.button('Create new wallet').click();
     const reveal = this.card('Your recovery phrase');
-    await this.button('Copy', reveal).click();
-    await expect(this.button('Copied', reveal)).toBeVisible();
-    const phrase = await this.clipboard();
+    await expect(this.button('Copy', reveal)).toHaveCount(0);
+    const phrase = await this.readPhrase(reveal);
     expect(phrase.split(' ')).toHaveLength(24);
     await this.button('I wrote them down', reveal).click();
     await this.confirmWords(phrase);
@@ -130,8 +135,13 @@ export class WalletPage {
     return this.balanceCard.getByText('BUNKER', { exact: true }).locator('xpath=preceding-sibling::span[1]');
   }
 
+  /** 'connecting…', 'live', 'live · history unavailable', 'offline · updated 12s ago', 'offline'. */
+  get connectionStatus(): Locator {
+    return this.page.getByRole('status');
+  }
+
   get liveStatus(): Locator {
-    return this.page.getByText('live', { exact: true });
+    return this.connectionStatus.filter({ hasText: /^live$/ });
   }
 
   async address(): Promise<string> {
@@ -174,36 +184,56 @@ export class WalletPage {
   // ---- activity ---------------------------------------------------------
 
   /**
-   * History rows are clickable divs with no role; the row is the parent of
-   * its "↑ Sent 0.25to abcd…wxyz" label span.
+   * An Activity row is the toggle button (aria-expanded) plus its status pill and,
+   * once expanded, the detail table; the returned locator is their common wrapper.
    */
-  historyRow(direction: 'Sent' | 'Received', amount: string): Locator {
+  activityRow(label: string | RegExp): Locator {
+    return this.card('Activity')
+      .locator('button[aria-expanded]')
+      .filter({ hasText: label })
+      .locator('xpath=../..');
+  }
+
+  /** Finalized rows: "↑ Sent 0.25 BUNKER" + "to abcd…wxyz"; tokens show their ticker instead of BUNKER. */
+  historyRow(direction: 'Sent' | 'Received', value: string): Locator {
     const arrow = direction === 'Sent' ? '↑' : '↓';
     const preposition = direction === 'Sent' ? 'to' : 'from';
-    const text = new RegExp(`^${arrow} ${direction} ${escape(amount)}\\s*${preposition} \\S+$`);
-    return this.card('Activity').getByText(text).locator('xpath=..');
+    return this.activityRow(new RegExp(`^${arrow} ${direction} ${escape(value)}\\s*${preposition} \\S+$`));
   }
 
   pendingRow(label: string | RegExp): Locator {
-    return this.card('Activity').getByText(label).locator('xpath=..');
+    return this.activityRow(label);
+  }
+
+  resendButton(row: Locator): Locator {
+    return this.button('Resend', row);
+  }
+
+  get latestOnlyHint(): Locator {
+    return this.card('Activity').getByText(/^Showing your latest \d+ transactions/);
   }
 
   async expectFinalized(row: Locator, timeout = FINALITY_MS): Promise<void> {
     await expect(row).toContainText('✓ finalized', { timeout });
   }
 
-  /** Expands a row and returns label -> value of its detail table. */
+  /** Expands a row and returns label -> value of its detail table (short values are spans, long ones copy buttons). */
   async txDetails(row: Locator): Promise<Record<string, string>> {
-    await row.click();
-    const table = row.locator('xpath=following-sibling::div[1]');
-    await expect(table.getByText('View in explorer ↗')).toBeVisible();
-    const rows = await table.locator('xpath=./div[count(span)=2]').all();
+    const toggle = row.locator('button[aria-expanded]');
+    if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const table = row.locator('xpath=./div[2]');
+    const rows = await table.locator('xpath=./div[count(*)=2]').all();
     const out: Record<string, string> = {};
     for (const r of rows) {
-      const [label, value] = await r.locator('span').allTextContents();
+      const [label, value] = await r.locator('xpath=./*').allTextContents();
       out[label] = value;
     }
     return out;
+  }
+
+  get sendError(): Locator {
+    return this.card('Send').getByRole('alert');
   }
 
   // ---- danger zone ------------------------------------------------------

@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createWriteStream, existsSync, mkdirSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rename, rm } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -10,7 +10,7 @@ import { serveStatic } from './static-server';
 const E2E_DIR = path.resolve(import.meta.dirname, '..');
 const ROOT = path.resolve(E2E_DIR, '..');
 const WALLET_DIR = path.join(ROOT, 'apps/wallet');
-// Inside node_modules: ignored by git and by the wallet's tsconfig, never mistaken for a deployable out/.
+// The export (baked with the local RPC URL) moves out of out/ into node_modules so it is never mistaken for a deployable build.
 const WALLET_BUILD_DIR = 'node_modules/.cache/e2e-wallet';
 const LOG_DIR = path.join(E2E_DIR, 'logs');
 const READY_TIMEOUT_MS = 5 * 60_000;
@@ -57,12 +57,16 @@ async function buildNode(): Promise<string> {
   return path.join(targetDir, 'release/pactor_consensus');
 }
 
-function buildWallet(rpcUrl: string): Promise<void> {
-  return run('bun', ['x', 'next', 'build'], {
+async function buildWallet(rpcUrl: string): Promise<void> {
+  await run('bun', ['x', 'next', 'build'], {
     cwd: WALLET_DIR,
-    env: { NEXT_PUBLIC_RPC_URL: rpcUrl, NEXT_BUILD_DIR: WALLET_BUILD_DIR, NEXT_TELEMETRY_DISABLED: '1' },
+    env: { NEXT_PUBLIC_RPC_URL: rpcUrl, NEXT_TELEMETRY_DISABLED: '1' },
     log: 'wallet-build.log',
   });
+  const target = path.join(WALLET_DIR, WALLET_BUILD_DIR);
+  await rm(target, { recursive: true, force: true });
+  mkdirSync(path.dirname(target), { recursive: true });
+  await rename(path.join(WALLET_DIR, 'out'), target);
 }
 
 async function waitForChain(rpc: Rpc, node: ChildProcess): Promise<void> {

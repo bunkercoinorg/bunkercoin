@@ -21,7 +21,7 @@ test('send BUNKER: sender pays amount + fee, receiver gets amount', async ({ ope
   await sender.expectBalance(senderAfter);
   await receiver.expectBalance(amount);
 
-  const sent = sender.historyRow('Sent', '0.25');
+  const sent = sender.historyRow('Sent', '0.25 BUNKER');
   await sender.expectFinalized(sent);
   const details = await sender.txDetails(sent);
   expect(details).toMatchObject({
@@ -32,7 +32,7 @@ test('send BUNKER: sender pays amount + fee, receiver gets amount', async ({ ope
   });
   expect(details.Reference).toMatch(/…/);
 
-  await receiver.expectFinalized(receiver.historyRow('Received', '0.25'), 60_000);
+  await receiver.expectFinalized(receiver.historyRow('Received', '0.25 BUNKER'), 60_000);
 });
 
 test('send BUNKER: amount above balance is refused before signing', async ({ openWallet }) => {

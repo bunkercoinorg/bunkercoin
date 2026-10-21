@@ -12,7 +12,7 @@ test('faucet: airdrop lands as exactly 1 BUNKER after finality', async ({ openWa
   await wallet.expectBalance(UNITS_PER_BUNKER);
   await expect.poll(() => rpc.getBalance(address), { timeout: FINALITY_MS }).toBe(UNITS_PER_BUNKER);
 
-  const row = wallet.historyRow('Received', '1');
+  const row = wallet.historyRow('Received', '1 BUNKER');
   await wallet.expectFinalized(row);
   await expect(wallet.pendingRow('Faucet')).toHaveCount(0);
 });
