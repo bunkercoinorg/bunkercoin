@@ -4,7 +4,8 @@ export const FINALITY_MS = 5 * 60_000;
 
 /** Mirrors the wallet's display format so UI text can be asserted from base units. */
 export function formatBunker(units: number): string {
-  return (units / UNITS_PER_BUNKER).toLocaleString('en-US', { maximumFractionDigits: 6 });
+  const whole = Math.floor(units / UNITS_PER_BUNKER).toLocaleString('en-US');
+  return `${whole}.${String(units % UNITS_PER_BUNKER).padStart(6, '0')}`;
 }
 
 export interface TokenHolding {
