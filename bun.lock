@@ -39,6 +39,8 @@
       "name": "@bunkercoin/wallet",
       "version": "0.1.0",
       "dependencies": {
+        "@bunkercoin/chain-format": "workspace:*",
+        "@bunkercoin/ui": "workspace:*",
         "@noble/curves": "^1.9.0",
         "@noble/hashes": "^1.8.0",
         "@scure/bip39": "^1.5.0",

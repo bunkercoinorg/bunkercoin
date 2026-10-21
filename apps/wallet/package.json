@@ -10,6 +10,8 @@
     "postbuild": "test -f out/index.html && test -f out/_headers || (echo 'export missing: out/ or out/_headers was not generated' && exit 1)"
   },
   "dependencies": {
+    "@bunkercoin/chain-format": "workspace:*",
+    "@bunkercoin/ui": "workspace:*",
     "@noble/curves": "^1.9.0",
     "@noble/hashes": "^1.8.0",
     "@scure/bip39": "^1.5.0",
