@@ -1,0 +1,57 @@
+@import 'tailwindcss';
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex), ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+@theme {
+  --color-bg: #0a0a0a;
+  --color-panel: #0f120f;
+  --color-panel-2: #151a16;
+  --color-line: #212823;
+  --color-line-strong: #2e372f;
+  --color-ink: #f2f4f1;
+  --color-muted: #98a29b;
+  --color-faint: #5d6660;
+  --color-accent: #00ffb2;
+  --color-amber: #fbbf24;
+  --color-danger: #ff7a76;
+
+  --animate-kdf-sweep: kdf-sweep 1.1s ease-in-out infinite alternate;
+  --animate-gate-in: gate-in 0.35s ease both;
+}
+
+@keyframes kdf-sweep {
+  from {
+    transform: translateX(-40%);
+  }
+  to {
+    transform: translateX(240%);
+  }
+}
+
+@keyframes gate-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@layer base {
+  body {
+    @apply min-h-screen bg-bg font-sans text-ink;
+  }
+  button {
+    @apply cursor-pointer;
+  }
+  button:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible {
+    @apply outline-2 outline-offset-2 outline-accent;
+  }
+}
