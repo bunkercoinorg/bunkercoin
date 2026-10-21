@@ -1,37 +1,43 @@
 'use client';
 
 import { useState } from 'react';
-import type { ChainTransaction } from '@/lib/connection';
-import { addressToHex, hexToBase58 } from '@/lib/keys';
-import { formatUnits, shortAddress, elapsedLabel } from '@/lib/format';
+import { tokenLabel, type AccountHistory, type ChainTransaction, type TokenBalance } from '@/lib/connection';
+import { hexToBase58 } from '@/lib/keys';
+import { formatCount, formatUnits, shortAddress, elapsedLabel } from '@/lib/format';
 import type { PendingTx } from '@/lib/pending';
 import TxDetails from '@/components/TxDetails';
-import { Button, Card } from '@/components/ui';
+import { Button, Card, Hint } from '@/components/ui';
 
 const ROW =
-  'flex cursor-pointer items-center justify-between border-t border-line py-3 text-sm ' +
+  'flex items-center justify-between border-t border-line py-3 text-sm ' +
   'hover:bg-[linear-gradient(90deg,transparent,rgba(0,255,178,0.08)_50%,transparent)]';
+const TOGGLE = 'flex-1 cursor-pointer bg-transparent p-0 text-left text-inherit';
+
 function pendingLabel(p: PendingTx): string {
   if (p.kind === 'faucet') return 'Faucet';
-  if (p.kind === 'mint') return `Create ${p.ticker} · ${p.amount.toLocaleString()} supply`;
-  if (p.kind === 'token-send')
-    return `Send ${p.amount.toLocaleString()} ${p.ticker} → ${shortAddress(p.to ?? '')}`;
+  if (p.kind === 'mint') return `Create ${p.ticker} · ${formatCount(p.amount)} supply`;
+  if (p.kind === 'token-send') return `Send ${formatCount(p.amount)} ${p.ticker} → ${shortAddress(p.to ?? '')}`;
   return `Send ${formatUnits(p.amount)} → ${shortAddress(p.to ?? '')}`;
 }
 
 const PILL = 'rounded-full px-2 py-[3px] font-mono text-[11px] tracking-[0.04em] whitespace-nowrap';
 
 interface ActivityProps {
-  address: string;
+  addressHex: string;
   pending: PendingTx[];
-  history: ChainTransaction[];
+  history: AccountHistory | null;
+  tokens: TokenBalance[];
+  trackingLost: boolean;
   onDismiss: (txId: string) => void;
 }
 
-export default function Activity({ address, pending, history, onDismiss }: ActivityProps) {
+export default function Activity({ addressHex, pending, history, tokens, trackingLost, onDismiss }: ActivityProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const txs = history?.transactions ?? [];
 
-  if (pending.length === 0 && history.length === 0) return null;
+  if (pending.length === 0 && txs.length === 0) return null;
+
+  const tickers = new Map(tokens.map((t) => [t.tokenId, tokenLabel(t)]));
 
   return (
     <Card
@@ -40,28 +46,34 @@ export default function Activity({ address, pending, history, onDismiss }: Activ
     >
       {pending.map((p) => (
         <div key={p.txId}>
-          <div className={ROW} onClick={() => setExpanded(expanded === p.txId ? null : p.txId)}>
-            <span>
+          <div className={ROW}>
+            <button
+              type="button"
+              className={TOGGLE}
+              aria-expanded={expanded === p.txId}
+              onClick={() => setExpanded(expanded === p.txId ? null : p.txId)}
+            >
               {pendingLabel(p)}
               <span className="ml-2 text-[12.5px] text-faint">{elapsedLabel(p.at)}</span>
-            </span>
-            {p.failed ? (
-              <span className={`${PILL} bg-danger/10 text-danger`} title={p.failed}>
-                failed
+            </button>
+            {p.state === 'pending' ? (
+              <span className={`${PILL} bg-amber/10 text-amber`}>confirming…</span>
+            ) : (
+              <span
+                className={`${PILL} ${p.state === 'failed' ? 'bg-danger/10 text-danger' : 'bg-amber/10 text-amber'}`}
+                title={p.state === 'failed' ? p.error : 'No confirmation yet. Still checking every minute.'}
+              >
+                {p.state === 'failed' ? 'failed' : 'unconfirmed'}
                 <Button
                   variant="ghost"
                   small
                   className="ml-1.5"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDismiss(p.txId);
-                  }}
+                  aria-label="Dismiss"
+                  onClick={() => onDismiss(p.txId)}
                 >
                   ✕
                 </Button>
               </span>
-            ) : (
-              <span className={`${PILL} bg-amber/10 text-amber`}>confirming…</span>
             )}
           </div>
           {expanded === p.txId && (
@@ -69,79 +81,111 @@ export default function Activity({ address, pending, history, onDismiss }: Activ
               rows={[
                 ['Transaction id', p.txId],
                 p.to ? ['To', p.to] : null,
-                [
-                  'Amount',
-                  p.ticker ? `${p.amount.toLocaleString()} ${p.ticker}` : `${formatUnits(p.amount)} BUNKER`,
-                ],
+                ['Amount', p.ticker ? `${formatCount(p.amount)} ${p.ticker}` : `${formatUnits(p.amount)} BUNKER`],
                 ['Submitted', new Date(p.at).toLocaleString()],
-                p.failed ? ['Error', p.failed] : null,
+                p.state === 'unconfirmed' ? ['Status', 'Not confirmed yet; it may still finalize'] : null,
+                p.error ? ['Error', p.error] : null,
               ]}
             />
           )}
         </div>
       ))}
-      {history.map((t) => (
+      {txs.map((t) => (
         <HistoryRow
           key={t.hash}
           tx={t}
-          address={address}
+          addressHex={addressHex}
+          tickers={tickers}
           expanded={expanded === t.hash}
           onToggle={() => setExpanded(expanded === t.hash ? null : t.hash)}
         />
       ))}
+      {trackingLost && <Hint>Tracking could not be saved on this device; open transactions will not be followed after a reload.</Hint>}
+      {history && !history.complete && (
+        <Hint>
+          Showing your activity among the latest {history.scanned.toLocaleString('en-US')} network transactions; older
+          activity is not listed.
+        </Hint>
+      )}
     </Card>
   );
 }
 
+interface Described {
+  title: string;
+  sub: string | null;
+  to: string | null;
+  amount: string | null;
+}
+
+function describe(t: ChainTransaction, addressHex: string, tickers: Map<string, string>): Described {
+  const outgoing = t.sender === addressHex;
+  const body = t.body;
+  if (body.type === 'Transfer' || body.type === 'TokenTransfer') {
+    const value =
+      body.type === 'Transfer'
+        ? `${formatUnits(body.amount)} BUNKER`
+        : `${formatCount(body.amount)} ${tickers.get(body.tokenId) ?? `token ${body.tokenId}`}`;
+    const counterparty = hexToBase58(outgoing ? body.to : t.sender);
+    return {
+      title: `${outgoing ? '↑ Sent' : '↓ Received'} ${value}`,
+      sub: `${outgoing ? 'to' : 'from'} ${shortAddress(counterparty)}`,
+      to: hexToBase58(body.to),
+      amount: value,
+    };
+  }
+  if (body.type === 'Mint') {
+    return { title: `Created ${body.ticker} · ${formatCount(body.maxSupply)} supply`, sub: null, to: null, amount: null };
+  }
+  if (body.type === 'Burn') {
+    const value = `${formatCount(body.amount)} ${tickers.get(body.tokenId) ?? `token ${body.tokenId}`}`;
+    return { title: `Burned ${value}`, sub: null, to: null, amount: value };
+  }
+  return { title: `${body.name} transaction`, sub: null, to: null, amount: null };
+}
+
 function HistoryRow({
   tx: t,
-  address,
+  addressHex,
+  tickers,
   expanded,
   onToggle,
 }: {
   tx: ChainTransaction;
-  address: string;
+  addressHex: string;
+  tickers: Map<string, string>;
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const outgoing = t.sender === addressToHex(address);
-  const counterparty = hexToBase58(outgoing ? t.body?.to ?? t.sender : t.sender);
-  const failed = t.status?.success === false;
-  const isToken = t.body?.type === 'TokenTransfer';
-  const amountLabel = isToken
-    ? `${(t.body?.amount ?? 0).toLocaleString()} tokens`
-    : formatUnits(t.body?.amount ?? 0);
+  const d = describe(t, addressHex, tickers);
+  const { outcome } = t;
+  const pill =
+    outcome.kind === 'success'
+      ? { cls: 'bg-accent/10 text-accent', text: '✓ finalized' }
+      : outcome.kind === 'failed'
+        ? { cls: 'bg-danger/10 text-danger', text: 'failed' }
+        : { cls: 'bg-amber/10 text-amber', text: 'outcome unknown' };
 
   return (
     <div>
-      <div className={ROW} onClick={onToggle}>
-        <span>
-          {outgoing ? '↑ Sent' : '↓ Received'} {amountLabel}
-          <span className="ml-2 text-[12.5px] text-faint">
-            {outgoing ? 'to' : 'from'} {shortAddress(counterparty)}
-          </span>
-        </span>
-        <span
-          className={`${PILL} ${failed ? 'bg-danger/10 text-danger' : 'bg-accent/10 text-accent'}`}
-          title={t.status?.error || ''}
-        >
-          {failed ? 'failed' : '✓ finalized'}
+      <div className={ROW}>
+        <button type="button" className={TOGGLE} aria-expanded={expanded} onClick={onToggle}>
+          {d.title}
+          {d.sub && <span className="ml-2 text-[12.5px] text-faint">{d.sub}</span>}
+        </button>
+        <span className={`${PILL} ${pill.cls}`} title={outcome.kind === 'failed' ? (outcome.error ?? '') : ''}>
+          {pill.text}
         </span>
       </div>
       {expanded && (
         <TxDetails
           rows={[
             ['From', hexToBase58(t.sender)],
-            t.body?.to ? ['To', hexToBase58(t.body.to)] : null,
-            [
-              'Amount',
-              isToken
-                ? `${(t.body?.amount ?? 0).toLocaleString()} tokens`
-                : `${formatUnits(t.body?.amount ?? 0)} BUNKER`,
-            ],
-            ['Fee', `${formatUnits(t.fee ?? 0)} BUNKER`],
+            d.to ? ['To', d.to] : null,
+            d.amount ? ['Amount', d.amount] : null,
+            ['Fee', `${formatUnits(t.fee)} BUNKER`],
             ['Reference', t.hash],
-            t.status?.error ? ['Error', String(t.status.error)] : null,
+            outcome.kind === 'failed' && outcome.error ? ['Error', outcome.error] : null,
           ]}
           explorerHash={t.hash}
         />

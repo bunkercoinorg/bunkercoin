@@ -23,21 +23,23 @@ export default function TxDetails({ rows, explorerHash }: TxDetailsProps) {
             <span className="flex-none pt-0.5 font-mono text-[10.5px] tracking-[0.12em] uppercase text-faint">
               {label}
             </span>
-            <span
-              className={value.length > 20 ? 'cursor-pointer font-mono' : 'font-mono'}
-              title={value.length > 20 ? 'Click to copy' : undefined}
-              onClick={
-                value.length > 20
-                  ? async () => {
-                      await copyText(value);
-                      setCopiedKey(label);
-                      setTimeout(() => setCopiedKey(null), 1200);
-                    }
-                  : undefined
-              }
-            >
-              {copiedKey === label ? 'Copied' : value.length > 28 ? shortAddress(value, 10) : value}
-            </span>
+            {value.length > 20 ? (
+              <button
+                type="button"
+                className="cursor-pointer bg-transparent p-0 text-right font-mono text-inherit"
+                title="Click to copy"
+                aria-label={`Copy ${label}`}
+                onClick={async () => {
+                  await copyText(value);
+                  setCopiedKey(label);
+                  setTimeout(() => setCopiedKey(null), 1200);
+                }}
+              >
+                {copiedKey === label ? 'Copied' : value.length > 28 ? shortAddress(value, 10) : value}
+              </button>
+            ) : (
+              <span className="font-mono">{value}</span>
+            )}
           </div>
         ))}
       {explorerHash && (
