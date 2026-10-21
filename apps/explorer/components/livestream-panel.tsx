@@ -1,80 +1,109 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { requestLabStatus, type LabStreamStatus } from '@/lib/explorer-api/lab-stream';
+import { HLS_URL, STREAM_IFRAME_HOSTS, WHEP_URL } from '@/lib/config';
+import { firstVariantUrl, isMasterPlaylist, liveEdge } from '@/lib/hls';
+import { allowedStreamUrl, withQuery } from '@/lib/stream-url';
 import StreamLikeButton from '@/components/stream-like-button';
 import R2StreamPlayer from '@/components/r2-stream-player';
 import WhepPlayer from '@/components/whep-player';
 
 type StreamStatus = 'loading' | 'live' | 'waiting' | 'error';
 
-// Sub-second WebRTC live view — the primary (and normally only) path.
-const WHEP_URL = process.env.NEXT_PUBLIC_WHEP_URL;
-// Optional HLS mirror. Unset in production: the box publishes only to WebRTC,
-// so a stale manifest would be worse than showing "reconnecting".
-const R2_HLS_URL = process.env.NEXT_PUBLIC_STREAM_HLS_URL;
-
 const MANIFEST_POLL_MS = 5000;
-// Manifest unchanged for this long means the encoder stopped pushing.
+// No new segment and no playback progress for this long means the encoder stopped.
 const STALE_AFTER_MS = 20_000;
+const WHEP_RETRY_BASE_MS = 10_000;
+const WHEP_RETRY_MAX_MS = 120_000;
+const LAB_STATUS_POLL_MS = 15_000;
 
+// WebRTC (WHEP) is the primary path; the HLS mirror is optional. Production
+// sets only WHEP, so a WHEP-only config must stand on its own.
 export default function LivestreamPanel() {
-  if (WHEP_URL || R2_HLS_URL) return <R2Panel src={R2_HLS_URL} />;
+  if (WHEP_URL || HLS_URL) return <R2Panel whep={WHEP_URL} hls={HLS_URL} />;
   return <CloudflarePanel />;
 }
 
-function R2Panel({ src }: { src?: string }) {
+async function fetchLiveEdge(src: string, signal: AbortSignal): Promise<number | null> {
+  const get = async (url: string) => {
+    const res = await fetch(url, { cache: 'no-store', signal });
+    if (!res.ok) throw new Error(`playlist ${res.status}`);
+    return res.text();
+  };
+  const top = await get(src);
+  if (!isMasterPlaylist(top)) return liveEdge(top);
+  const variant = firstVariantUrl(top, src);
+  return variant ? liveEdge(await get(variant)) : null;
+}
+
+function R2Panel({ whep, hls }: { whep?: string; hls?: string }) {
   const [status, setStatus] = useState<StreamStatus>('loading');
   const [message, setMessage] = useState('Loading live view');
-  // WebRTC first for sub-second latency, HLS as a temporary stand-in: a blip
-  // (or the ingest's own restart) must not strand a long-lived tab on HLS.
-  const [mode, setMode] = useState<'webrtc' | 'hls'>(WHEP_URL ? 'webrtc' : 'hls');
-  const [attempt, setAttempt] = useState(0);
-  const lastManifest = useRef<{ body: string; at: number }>({ body: '', at: 0 });
-  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [mode, setMode] = useState<'webrtc' | 'hls' | 'idle'>(whep ? 'webrtc' : 'hls');
+  // `session` keys the WHEP player; `failures` only drives the retry backoff.
+  const [session, setSession] = useState(0);
+  const failures = useRef(0);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [hlsPlayerKey, setHlsPlayerKey] = useState(0);
+  const hlsBroken = useRef(false);
+  const lastEdge = useRef<{ edge: number | null; at: number }>({ edge: null, at: 0 });
+  const lastProgress = useRef(0);
+
+  useEffect(() => () => clearTimeout(retryTimer.current), []);
 
   const whepLive = useCallback(() => {
+    failures.current = 0;
     setStatus('live');
     setMessage('Live from the radio lab');
-    setAttempt(0); // a good connection earns a fast retry next time
   }, []);
 
   const whepDown = useCallback(() => {
-    // Without an HLS mirror there is nothing to fall back to — say so and retry.
-    if (!src) {
+    const delay = Math.min(WHEP_RETRY_BASE_MS * 2 ** failures.current++, WHEP_RETRY_MAX_MS);
+    if (hls) {
+      setMode('hls');
+    } else {
+      setMode('idle');
       setStatus('waiting');
       setMessage('Reconnecting to the live view…');
     }
-    setMode('hls');
-    setAttempt((n) => n + 1);
-  }, [src]);
+    clearTimeout(retryTimer.current);
+    retryTimer.current = setTimeout(() => {
+      setSession((n) => n + 1);
+      setMode('webrtc');
+    }, delay);
+  }, [hls]);
 
-  // Retry WebRTC on a backoff (10s → 2min) while HLS keeps the picture up.
-  useEffect(() => {
-    if (mode !== 'hls' || !WHEP_URL || attempt === 0) return;
-    const delay = Math.min(10_000 * 2 ** (attempt - 1), 120_000);
-    retryRef.current = setTimeout(() => setMode('webrtc'), delay);
-    return () => {
-      if (retryRef.current) clearTimeout(retryRef.current);
-    };
-  }, [mode, attempt]);
+  const hlsProgress = useCallback(() => {
+    lastProgress.current = Date.now();
+  }, []);
+
+  const hlsFatal = useCallback(() => {
+    hlsBroken.current = true;
+    setStatus('waiting');
+    setMessage('Waiting for live video');
+  }, []);
 
   useEffect(() => {
-    if (mode !== 'hls' || !src) return;
-    const manifestUrl = src;
-    let cancelled = false;
+    if (mode !== 'hls' || !hls) return;
+    const src = hls;
+    const ctrl = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
     async function poll() {
       try {
-        const res = await fetch(manifestUrl, { cache: 'no-store' });
-        if (!res.ok) throw new Error(`manifest ${res.status}`);
-        const body = await res.text();
-        if (cancelled) return;
+        const edge = await fetchLiveEdge(src, ctrl.signal);
+        if (ctrl.signal.aborted) return;
         const now = Date.now();
-        if (body !== lastManifest.current.body) {
-          lastManifest.current = { body, at: now };
+        if (edge !== null && edge !== lastEdge.current.edge) {
+          lastEdge.current = { edge, at: now };
+          if (hlsBroken.current) {
+            hlsBroken.current = false;
+            setHlsPlayerKey((k) => k + 1);
+          }
         }
-        if (now - lastManifest.current.at < STALE_AFTER_MS) {
+        const fresh = now - Math.max(lastEdge.current.at, lastProgress.current) < STALE_AFTER_MS;
+        if (fresh && !hlsBroken.current) {
           setStatus('live');
           setMessage('Live from the radio lab');
         } else {
@@ -82,95 +111,90 @@ function R2Panel({ src }: { src?: string }) {
           setMessage('Waiting for live video');
         }
       } catch {
-        if (!cancelled) {
-          setStatus('waiting');
-          setMessage('Live view is not available yet');
-        }
+        if (ctrl.signal.aborted) return;
+        setStatus('waiting');
+        setMessage('Live view is not available yet');
       }
+      if (!ctrl.signal.aborted) timer = setTimeout(poll, MANIFEST_POLL_MS);
     }
 
     void poll();
-    const interval = window.setInterval(poll, MANIFEST_POLL_MS);
     return () => {
-      cancelled = true;
-      window.clearInterval(interval);
+      ctrl.abort();
+      clearTimeout(timer);
     };
-  }, [src, mode]);
+  }, [hls, mode]);
 
   return (
     <PanelChrome status={status} message={message}>
-      {mode === 'webrtc' && WHEP_URL && (
-        // key forces a fresh peer connection on every retry.
-        <WhepPlayer key={attempt} src={WHEP_URL} onLive={whepLive} onDown={whepDown} />
+      {mode === 'webrtc' && whep && <WhepPlayer key={session} src={whep} onLive={whepLive} onDown={whepDown} />}
+      {mode === 'hls' && status === 'live' && hls && (
+        <R2StreamPlayer key={hlsPlayerKey} src={hls} onProgress={hlsProgress} onFatal={hlsFatal} />
       )}
-      {mode === 'hls' && status === 'live' && src && <R2StreamPlayer src={src} />}
     </PanelChrome>
   );
+}
+
+// The iframe stays on the first allowed URL until the lab reports a new video.
+function nextPlayerUrl(current: string | null, next: LabStreamStatus): string | null {
+  const url = allowedStreamUrl(next.iframeUrl, STREAM_IFRAME_HOSTS);
+  if (!url) return current;
+  if (!current) return url;
+  if (!next.activeVideoUid || current.includes(next.activeVideoUid)) return current;
+  return url;
 }
 
 function CloudflarePanel() {
   const [status, setStatus] = useState<StreamStatus>('loading');
   const [message, setMessage] = useState('Loading live view');
-  const [labStatus, setLabStatus] = useState<LabStreamStatus | null>(null);
   const [playerUrl, setPlayerUrl] = useState<string | null>(null);
+  const playerUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
+    const ctrl = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
     async function loadStatus() {
       try {
-        const nextStatus = await requestLabStatus();
-        if (cancelled) return;
-
-        setLabStatus(nextStatus);
-        if (nextStatus.playback?.iframeUrl && shouldUseNextPlayerUrl(playerUrl, nextStatus)) {
-          setPlayerUrl(nextStatus.playback.iframeUrl);
+        const next = await requestLabStatus(ctrl.signal);
+        if (ctrl.signal.aborted) return;
+        const url = nextPlayerUrl(playerUrlRef.current, next);
+        if (url !== playerUrlRef.current) {
+          playerUrlRef.current = url;
+          setPlayerUrl(url);
         }
-
-        if (!nextStatus.inputId || !nextStatus.playback) {
+        if (!next.inputId || !url) {
           setStatus('waiting');
           setMessage('Live view is not available yet');
-          return;
-        }
-
-        if (nextStatus.live === false) {
+        } else if (next.live === false) {
           setStatus('waiting');
           setMessage('Waiting for live video');
-          return;
+        } else {
+          setStatus('live');
+          setMessage('Live from the radio lab');
         }
-
-        setStatus('live');
-        setMessage('Live from the radio lab');
       } catch (error) {
-        if (!cancelled) {
-          setStatus('error');
-          setMessage(error instanceof Error ? error.message : 'Unable to load live view');
-        }
+        if (ctrl.signal.aborted) return;
+        setStatus('error');
+        setMessage(error instanceof Error ? error.message : 'Unable to load live view');
       }
+      if (!ctrl.signal.aborted) timer = setTimeout(loadStatus, LAB_STATUS_POLL_MS);
     }
 
     void loadStatus();
-    const interval = window.setInterval(loadStatus, 15000);
-
     return () => {
-      cancelled = true;
-      window.clearInterval(interval);
+      ctrl.abort();
+      clearTimeout(timer);
     };
-  }, [playerUrl]);
+  }, []);
 
-  const iframeUrl = playerUrl || labStatus?.playback?.iframeUrl;
-  const iframeSrc = useMemo(() => {
-    if (!iframeUrl) return null;
-    const separator = iframeUrl.includes('?') ? '&' : '?';
-    return `${iframeUrl}${separator}autoplay=true&muted=true&controls=true`;
-  }, [iframeUrl]);
-  const shouldRenderPlayer = status === 'live' && Boolean(iframeSrc);
+  const iframeSrc = playerUrl ? withQuery(playerUrl, { autoplay: 'true', muted: 'true', controls: 'true' }) : null;
 
   return (
     <PanelChrome status={status} message={message}>
-      {shouldRenderPlayer && (
+      {status === 'live' && iframeSrc && (
         <iframe
-          src={iframeSrc ?? undefined}
+          src={iframeSrc}
           title="Live View"
           className="absolute left-0 top-0 h-full w-full border-0"
           allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
@@ -219,13 +243,4 @@ function statusBadgeClassName(status: StreamStatus) {
   if (status === 'live') return `${base} bg-emerald-500/20 text-emerald-400`;
   if (status === 'error') return `${base} bg-red-500/20 text-red-400`;
   return `${base} bg-muted text-muted-foreground`;
-}
-
-function shouldUseNextPlayerUrl(currentUrl: string | null, nextStatus: LabStreamStatus) {
-  const nextUrl = nextStatus.playback?.iframeUrl;
-  if (!nextUrl) return false;
-  if (!currentUrl) return true;
-  if (!nextStatus.activeVideoUid) return false;
-
-  return !currentUrl.includes(nextStatus.activeVideoUid);
 }
