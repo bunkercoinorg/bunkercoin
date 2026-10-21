@@ -41,7 +41,9 @@ export function ActivityRow({ item, now }: { item: ActivityItem; now: number }) 
       sub={item.sub}
       value={failed ? tag : amount}
       tag={failed ? undefined : (tag ?? undefined)}
-      valueSub={failed ? 'nothing moved' : item.slot !== null ? `slot ${formatUnits(item.slot, 0)}` : undefined}
+      valueSub={
+        failed ? 'nothing moved' : item.status === 'final-failed' ? 'fee spent' : item.slot !== null ? `slot ${formatUnits(item.slot, 0)}` : undefined
+      }
     />
   );
 }

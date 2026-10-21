@@ -295,7 +295,9 @@ export default function Dashboard({ signer, onLock, onWalletRemoved, autoLockMin
             slow = true;
             continue;
           }
-          void apply(patchEntry(entry.txId, { state: 'failed', error: (e as Error).message }));
+          void apply(
+            patchEntry(entry.txId, { state: 'failed', error: (e as Error).message, ...(e instanceof TxFailedError ? { executed: true as const } : {}) }),
+          );
           if (e instanceof TxFailedError) {
             release();
             void refresh();

@@ -22,3 +22,14 @@ test('fees and metadata updates persist exactly; a malformed fee drops the entry
   store.set(pendingKey('c', 'a'), JSON.stringify([legacy, { ...legacy, txId: 't3', fee: 1.5 }]));
   assert.deepEqual(loadPending('c', 'a'), [{ txId: 't2', kind: 'send', amount: 5n, at: 2, nonce: 1n, state: 'pending' }]);
 });
+
+test('an executed failure keeps its flag; a refused broadcast has none', async () => {
+  store.clear();
+  const executed: PendingTx = { txId: 'x1', kind: 'send', amount: 5n, at: 1, nonce: 2n, state: 'failed', error: 'Transaction failed: InsufficientFunds', executed: true };
+  const refused: PendingTx = { txId: 'x2', kind: 'send', amount: 5n, at: 2, nonce: 3n, state: 'failed', error: 'bad nonce' };
+  assert.ok(await mutatePending('c', 'a', addEntry(executed)));
+  assert.ok(await mutatePending('c', 'a', addEntry(refused)));
+  const loaded = loadPending('c', 'a');
+  assert.deepEqual(loaded.find((p) => p.txId === 'x1'), executed);
+  assert.deepEqual(loaded.find((p) => p.txId === 'x2'), refused);
+});

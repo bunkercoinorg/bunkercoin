@@ -64,8 +64,31 @@ export default function Outcome({
   const finalAt = state.finalized.get(txId);
   const home = () => actions.go('#home');
 
-  if (finalAt !== undefined) {
-    const onChain = state.history?.transactions.find((t) => hexToBase58(t.hash) === txId);
+  const onChain = state.history?.transactions.find((t) => hexToBase58(t.hash) === txId);
+  const executedError = onChain?.outcome.kind === 'failed' ? (onChain.outcome.error ?? 'unknown reason') : entry?.executed ? (entry.error ?? 'unknown reason') : null;
+  if (executedError !== null) {
+    return (
+      <section className="bc-ctr pt-4">
+        <span className="bc-row justify-center">
+          {onChain && <StatusTag status="finalized" />}
+          <StatusTag status="failed" />
+        </span>
+        <h1 className="bc-t1">Failed on chain.</h1>
+        <p className="bc-small">
+          It executed and failed: <span className="mono text-fg">{executedError.replace(/^[A-Za-z ]+: /, '').replace(/\.$/, '')}</span>. The fee was spent;
+          nothing else moved.
+        </p>
+        <div className="bc-acts justify-center">
+          <Button onClick={onRetry}>edit and retry</Button>
+          <ButtonLink variant="quiet" href={explorerTx(txId)} external>
+            view in explorer ↗
+          </ButtonLink>
+        </div>
+      </section>
+    );
+  }
+
+  if (finalAt !== undefined || onChain?.outcome.kind === 'success') {
     return (
       <div className="wl-stack wl-gap32">
         <div className="bc-ctr pt-4">
@@ -74,7 +97,8 @@ export default function Outcome({
           <p className="bc-lead">{copy.lead}</p>
           <p className="bc-hint mono">
             {onChain && `slot ${formatUnits(onChain.slot, 0)} · `}
-            {formatDuration(finalAt - sent.acceptedAt)} · <CopyValue value={txId} label="transaction" />
+            {finalAt !== undefined && `${formatDuration(finalAt - sent.acceptedAt)} · `}
+            <CopyValue value={txId} label="transaction" />
           </p>
         </div>
         <div className="grid justify-items-center gap-3">

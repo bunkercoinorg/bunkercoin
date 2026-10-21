@@ -40,9 +40,11 @@ export default function TxDetails({ txId, state, actions }: { txId: string; stat
       ? item.status === 'final'
         ? 'succeeded'
         : 'not reported yet'
-      : item.status === 'final-failed' || item.status === 'failed'
-        ? `failed: ${item.error ?? 'unknown reason'}`
-        : 'not reported yet';
+      : item.status === 'final-failed'
+        ? `failed on chain, fee spent: ${item.error ?? 'unknown reason'}`
+        : item.status === 'failed'
+          ? `refused by the node, nothing moved: ${item.error ?? 'unknown reason'}`
+          : 'not reported yet';
   const key: Fact[] = [];
   if (item.counterparty) key.push({ label: item.counterparty.label, value: <CopyValue value={item.counterparty.address} label={item.counterparty.label === 'to' ? 'recipient' : 'sender'} /> });
   const fee = item.fee ?? item.pending?.fee ?? null;
@@ -83,7 +85,7 @@ export default function TxDetails({ txId, state, actions }: { txId: string; stat
         <ButtonLink variant="quiet" href={explorerTx(item.id)} external>
           explorer ↗
         </ButtonLink>
-        {item.status === 'failed' && (
+        {item.pending?.state === 'failed' && (
           <Button variant="ghost" onClick={() => (actions.dismiss(item.id), back())}>
             dismiss
           </Button>

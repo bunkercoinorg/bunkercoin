@@ -27,6 +27,8 @@ export interface PendingTx {
   to?: string;
   ticker?: string;
   error?: string;
+  /** A `failed` entry the chain executed and failed (fee and nonce spent), as opposed to a broadcast the node refused. */
+  executed?: true;
 }
 
 /** A signed nonce that may still execute. Kept apart from Activity so dismissing or trimming never frees it. */
@@ -70,6 +72,7 @@ function decode(v: unknown): PendingTx | null {
     ...(typeof e.to === 'string' ? { to: e.to } : {}),
     ...(typeof e.ticker === 'string' ? { ticker: e.ticker } : {}),
     ...(typeof e.error === 'string' ? { error: e.error } : {}),
+    ...(e.executed === true ? { executed: true as const } : {}),
   };
 }
 

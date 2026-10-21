@@ -41,7 +41,7 @@ export function tickerMap(tokens: TokenBalance[], registry: TokenMeta[] | null):
 export const isOpen = (s: ItemStatus) => s === 'pending' || s === 'unconfirmed' || s === 'uncertain';
 
 export function fromPending(p: PendingTx): ActivityItem {
-  const status: ItemStatus = p.state;
+  const status: ItemStatus = p.state === 'failed' && p.executed ? 'final-failed' : p.state;
   const base = {
     id: p.txId,
     status,
@@ -126,15 +126,14 @@ export function fromChain(t: ChainTransaction, meHex: string, tickers: Tickers):
   return { ...base, kind: b.name.toLowerCase(), icon: 'activity', sub: shortId(base.id), amount: null, counterparty: null };
 }
 
-/** This wallet's open submissions first, then what the chain scan found, without duplicates. */
+/** This wallet's open submissions first, then what the chain scan found; a chain record replaces the local entry for the same id. */
 export function activityItems(
   pending: PendingTx[],
   history: AccountHistory | null,
   meHex: string,
   tickers: Tickers,
 ): ActivityItem[] {
-  const open = pending.map(fromPending);
-  const ids = new Set(open.map((i) => i.id));
-  const chain = (history?.transactions ?? []).map((t) => fromChain(t, meHex, tickers)).filter((i) => !ids.has(i.id));
-  return [...open, ...chain];
+  const chain = (history?.transactions ?? []).map((t) => fromChain(t, meHex, tickers));
+  const ids = new Set(chain.map((i) => i.id));
+  return [...pending.filter((p) => !ids.has(p.txId)).map(fromPending), ...chain];
 }
