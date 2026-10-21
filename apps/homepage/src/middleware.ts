@@ -1,34 +1,21 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { gate } from "@/lib/gate";
 
-const EU_COUNTRIES = new Set([
-    "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR",
-    "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL",
-    "PL", "PT", "RO", "SK", "SI", "ES", "SE",
-]);
-
-const GLOBAL_PATHS = ["/whitepaper", "/view"];
-
-// blocks EU residents server-side using cloudflare's cf-ipcountry header
 export function middleware(request: NextRequest) {
-    const { pathname } = request.nextUrl;
-    const country = request.headers.get("cf-ipcountry");
+    const decision = gate({
+        url: request.url,
+        method: request.method,
+        country: request.headers.get("cf-ipcountry"),
+        referer: request.headers.get("referer"),
+    });
 
-    const isGlobal = GLOBAL_PATHS.some(
-        (path) => pathname === path || pathname.startsWith(`${path}/`),
-    );
-
-    if (
-        !isGlobal &&
-        country &&
-        EU_COUNTRIES.has(country) &&
-        !pathname.startsWith("/blocked")
-    ) {
+    if (decision.action === "redirect") return NextResponse.redirect(decision.url, 307);
+    if (decision.action === "rewrite") {
         const url = request.nextUrl.clone();
-        url.pathname = "/blocked";
+        url.pathname = decision.pathname;
         return NextResponse.rewrite(url);
     }
-
     return NextResponse.next();
 }
 
