@@ -106,6 +106,9 @@
 .bc-btn .bc-ic { width: 14px; height: 14px; }
 .bc-btn:disabled, .bc-btn[aria-disabled="true"] { background: transparent; color: var(--dim); border: 1px dashed var(--control); cursor: not-allowed; text-decoration: none; }
 .bc-btn[aria-busy="true"] { cursor: progress; }
+.bc-btn-st { display: inline-grid; }
+.bc-btn-st > * { grid-area: 1 / 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.bc-btn-st > [aria-hidden] { visibility: hidden; }
 .bc-btn[aria-busy="true"]::after { content: ""; width: 7px; height: 12px; background: currentColor; animation: bc-blink 1s steps(1) infinite; }
 @keyframes bc-blink { 50% { opacity: 0; } }
 .bc-acts { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }

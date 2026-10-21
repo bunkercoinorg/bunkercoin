@@ -3,7 +3,6 @@
 import {
   cloneElement,
   isValidElement,
-  useLayoutEffect,
   useRef,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
@@ -31,24 +30,28 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> &
     busy?: boolean;
   };
 
-/** 44px (md) / 32px (sm). Disabled renders dashed. */
-export function Button({ variant, size, block, iconOnly, busy, type = 'button', className, style, onClick, ...rest }: ButtonProps) {
-  const ref = useRef<HTMLButtonElement>(null);
-  const idleWidth = useRef<number | undefined>(undefined);
-  useLayoutEffect(() => {
-    if (!busy && ref.current) idleWidth.current = ref.current.offsetWidth;
-  });
+/** 44px (md) / 32px (sm). Disabled renders dashed. Busy stacks the hidden idle label under the busy one, so the width holds without inline styles. */
+export function Button({ variant, size, block, iconOnly, busy, type = 'button', className, onClick, children, ...rest }: ButtonProps) {
+  const idle = useRef<ReactNode>(children);
+  if (!busy) idle.current = children;
   return (
     <button
-      ref={ref}
       type={type}
       className={className ? `bc-btn ${className}` : 'bc-btn'}
       aria-busy={busy || undefined}
-      style={busy && idleWidth.current ? { minWidth: idleWidth.current, ...style } : style}
       onClick={busy ? (e) => e.preventDefault() : onClick}
       {...look({ variant, size, block, iconOnly })}
       {...rest}
-    />
+    >
+      {busy ? (
+        <span className="bc-btn-st">
+          <span aria-hidden="true">{idle.current}</span>
+          <span>{children}</span>
+        </span>
+      ) : (
+        children
+      )}
+    </button>
   );
 }
 
