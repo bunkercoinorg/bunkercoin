@@ -39,7 +39,7 @@ export default function SetPassword({ mnemonic, beginUnlock }: SetPasswordProps)
     try {
       // Deliberately slow (Argon2id): this cost is what a thief pays per guess.
       const record = await encryptMnemonic(mnemonic, password, undefined, { onFallback: () => setFallback(true) });
-      await saveKeystore(record);
+      await saveKeystore(record, finish.current);
       if (!finish(keypairFromMnemonic(mnemonic), record)) throw new Error('The wallet on this device changed meanwhile.');
     } catch (e) {
       setError((e as Error).message || 'Encryption failed');

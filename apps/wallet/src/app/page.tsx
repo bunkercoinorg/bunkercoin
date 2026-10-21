@@ -9,8 +9,10 @@ import {
   KEYSTORE_KEY,
   keystoreFingerprint,
   loadKeystore,
+  type KeystoreRecord,
   type KeystoreState,
 } from '@/lib/keystore';
+import type { Keypair } from '@/lib/keys';
 import {
   loadSession,
   removeLegacySession,
@@ -160,7 +162,7 @@ export default function Wallet() {
   // Captured when the attempt starts, so an erase or replacement while Argon2id runs voids it.
   const beginUnlock = useCallback((): FinishUnlock => {
     const current = gate.begin();
-    return (keypair, record) => {
+    const finish = (keypair: Keypair, record: KeystoreRecord) => {
       const fp = keystoreFingerprint(record);
       const stored = fingerprintOf(loadKeystore());
       return settleUnlock(current() && stored === fp, keypair, (k) => {
@@ -173,6 +175,7 @@ export default function Wallet() {
         setPhase('unlocked');
       });
     };
+    return Object.assign(finish, { current });
   }, [gate]);
 
   return (

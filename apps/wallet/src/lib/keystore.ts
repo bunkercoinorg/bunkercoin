@@ -200,8 +200,10 @@ export function keystoreFingerprint(record: KeystoreRecord): string {
 }
 
 /** Refuses to overwrite anything already stored, including a record that failed to parse; atomic across tabs. */
-export function saveKeystore(record: KeystoreRecord): Promise<void> {
+export function saveKeystore(record: KeystoreRecord, current: () => boolean = () => true): Promise<void> {
   return withLock(KEYSTORE_KEY, () => {
+    // Checked under the lock: a setup cancelled or erased while waiting must not recreate a wallet.
+    if (!current()) throw new Error('Setup was cancelled; nothing was saved');
     const existing = loadKeystore();
     if (existing.status !== 'absent') throw new Error('A wallet record already exists on this device');
     localStorage.setItem(KEYSTORE_KEY, JSON.stringify(validateRecord(record)));

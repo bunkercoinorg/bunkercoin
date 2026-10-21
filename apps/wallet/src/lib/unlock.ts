@@ -1,8 +1,8 @@
 import type { Keypair } from './keys.ts';
 import type { KeystoreRecord } from './keystore.ts';
 
-/** Completes an unlock begun earlier; false when it went stale and its key was zeroed. */
-export type FinishUnlock = (keypair: Keypair, record: KeystoreRecord) => boolean;
+/** Completes an unlock begun earlier; false when it went stale and its key was zeroed. `current` reads staleness. */
+export type FinishUnlock = ((keypair: Keypair, record: KeystoreRecord) => boolean) & { current: () => boolean };
 
 /** Unlocks that finish after an erase, lock, wallet replacement or unmount must not become a session. */
 export class UnlockGate {

@@ -10,6 +10,7 @@ import {
   keystoreFingerprint,
   type KeystoreRecord,
 } from '../src/lib/keystore.ts';
+import { withLock } from '../src/lib/locks.ts';
 
 // Fast parameters for functional tests — production strength is timed separately.
 const FAST = { iterations: 1, memorySizeKiB: 1024, parallelism: 1 };
@@ -160,4 +161,24 @@ test('the fingerprint changes with the salt or ciphertext', () => {
   assert.equal(keystoreFingerprint({ ...LEGACY_RECORD }), fp);
   assert.notEqual(keystoreFingerprint({ ...LEGACY_RECORD, salt: 'AAAAAAAAAAAAAAAAAAAAAA==' }), fp);
   assert.notEqual(keystoreFingerprint({ ...LEGACY_RECORD, ciphertext: LEGACY_RECORD.ciphertext.replace(/^T/, 'U') }), fp);
+});
+
+test('a setup cancelled while waiting for the keystore lock saves nothing', async () => {
+  const store = new Map<string, string>();
+  await withStorage(store, async () => {
+    let current = true;
+    let release!: () => void;
+    const acquired = new Promise<void>((ready) => {
+      void withLock('bunkercoin.keystore.v1', () => {
+        ready();
+        return new Promise<void>((r) => (release = r));
+      });
+    });
+    await acquired;
+    const save = saveKeystore(LEGACY_RECORD, () => current);
+    current = false;
+    release();
+    await assert.rejects(save, /cancelled/);
+  });
+  assert.equal(store.size, 0, 'an erased or abandoned setup must not recreate a wallet');
 });
