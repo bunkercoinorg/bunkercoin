@@ -29,3 +29,15 @@ export {
   normalizeSlot,
 } from './codec.ts';
 export { normalizeTimestampMs, relativeAge, utcClock, shortId } from './time.ts';
+export {
+  METADATA_NAME_MAX,
+  METADATA_DESCRIPTION_MAX,
+  METADATA_IMAGE_MIN,
+  METADATA_IMAGE_MAX,
+  MetadataValidationError,
+  validateMetadata,
+  canonicalMetadataJson,
+  metadataHash,
+  type MetadataDocument,
+  type MetadataImage,
+} from './metadata.ts';
