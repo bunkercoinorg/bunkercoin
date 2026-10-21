@@ -40,6 +40,7 @@ export default function SetPassword({
 }) {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [shown, setShown] = useState(false);
   const [errors, setErrors] = useState<{ password?: string; confirm?: string; save?: string }>({});
   const [stage, setStage] = useState<Stage | null>(null);
   const [fallback, setFallback] = useState(false);
@@ -109,6 +110,8 @@ export default function SetPassword({
           autoComplete="new-password"
           disabled={busy}
           autoFocus
+          shown={shown}
+          onShownChange={setShown}
         />
         <PasswordField
           id="repeat-password"
@@ -122,6 +125,7 @@ export default function SetPassword({
           autoComplete="new-password"
           disabled={busy}
           reveal={false}
+          shown={shown}
           onEnter={() => void submit()}
         />
       </div>

@@ -14,6 +14,8 @@ export default function PasswordField({
   autoComplete = 'current-password',
   autoFocus,
   reveal = true,
+  shown: shownProp,
+  onShownChange,
   onEnter,
 }: {
   id: string;
@@ -25,11 +27,15 @@ export default function PasswordField({
   disabled?: boolean;
   autoComplete?: 'current-password' | 'new-password';
   autoFocus?: boolean;
-  /** Repeat fields follow the first field's [show] instead of carrying their own. */
+  /** Repeat fields follow the first field's [show] (pass the shared `shown`) instead of carrying their own. */
   reveal?: boolean;
+  shown?: boolean;
+  onShownChange?: (shown: boolean) => void;
   onEnter?: () => void;
 }) {
-  const [shown, setShown] = useState(false);
+  const [own, setOwn] = useState(false);
+  const shown = shownProp ?? own;
+  const toggle = () => (onShownChange ?? setOwn)(!shown);
   return (
     <Field
       id={id}
@@ -38,7 +44,7 @@ export default function PasswordField({
       error={error}
       action={
         reveal ? (
-          <Button variant="ghost" aria-pressed={shown} aria-controls={id} onClick={() => setShown((s) => !s)}>
+          <Button variant="ghost" aria-pressed={shown} aria-controls={id} onClick={toggle}>
             {shown ? 'hide' : 'show'}
           </Button>
         ) : undefined
