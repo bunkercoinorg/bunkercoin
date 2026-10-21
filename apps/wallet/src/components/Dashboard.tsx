@@ -96,9 +96,9 @@ export default function Dashboard({ signer, onLock, onWalletRemoved }: Dashboard
 
   const reserve = useCallback(
     async (op: (list: Reservation[]) => Reservation[]) => {
-      unsavedReservations.current = op(unsavedReservations.current);
       const ok = await mutateReservations(chain, address, op);
-      if (ok) unsavedReservations.current = [];
+      const unsaved = unsavedReservations.current;
+      unsavedReservations.current = ok ? unsaved.filter((r) => op([r]).some((x) => x.txId === r.txId)) : op(unsaved);
       return ok;
     },
     [chain, address],
