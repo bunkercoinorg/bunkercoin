@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { createMnemonic, type Keypair } from '@/lib/keys';
+import { createMnemonic } from '@/lib/keys';
+import type { FinishUnlock } from '@/lib/unlock';
 import Reveal from '@/components/onboarding/Reveal';
 import ConfirmWords from '@/components/onboarding/ConfirmWords';
 import Recover from '@/components/onboarding/Recover';
@@ -11,10 +12,10 @@ import { Button, Card, Row } from '@/components/ui';
 type Step = 'choice' | 'reveal' | 'confirm' | 'recover' | 'password';
 
 interface OnboardingProps {
-  onUnlocked: (keypair: Keypair) => void;
+  beginUnlock: () => FinishUnlock;
 }
 
-export default function Onboarding({ onUnlocked }: OnboardingProps) {
+export default function Onboarding({ beginUnlock }: OnboardingProps) {
   const [step, setStep] = useState<Step>('choice');
   const [mnemonic, setMnemonic] = useState('');
 
@@ -63,5 +64,5 @@ export default function Onboarding({ onUnlocked }: OnboardingProps) {
     );
   }
 
-  return <SetPassword mnemonic={mnemonic} onUnlocked={onUnlocked} />;
+  return <SetPassword mnemonic={mnemonic} beginUnlock={beginUnlock} />;
 }

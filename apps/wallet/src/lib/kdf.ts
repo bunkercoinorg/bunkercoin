@@ -24,4 +24,5 @@ export interface KdfRequest {
   params: KdfParams;
 }
 
-export type KdfResponse = { ok: true; raw: Uint8Array } | { ok: false; message: string };
+/** `started` arrives first: proof the worker loaded, so only a dead worker trips the watchdog. */
+export type KdfResponse = { started: true } | { ok: true; raw: Uint8Array } | { ok: false; message: string };

@@ -7,6 +7,7 @@ import {
   validateRecord,
   loadKeystore,
   saveKeystore,
+  keystoreFingerprint,
   type KeystoreRecord,
 } from '../src/lib/keystore.ts';
 
@@ -57,12 +58,12 @@ test('decryption honours the parameters stored in the record', async () => {
   assert.equal(await decryptMnemonic(record, 'pw'), PHRASE);
 });
 
-test('production KDF parameters cost seconds, not milliseconds', async () => {
-  const start = performance.now();
-  await encryptMnemonic(PHRASE, 'timing-check', KDF_DEFAULTS);
-  const elapsed = performance.now() - start;
-  console.log(`    argon2id at production strength: ${Math.round(elapsed)}ms`);
-  assert.ok(elapsed > 1500, `KDF too fast to be a deterrent: ${Math.round(elapsed)}ms`);
+test('new records use production-strength KDF parameters', async () => {
+  assert.deepEqual(KDF_DEFAULTS, { iterations: 14, memorySizeKiB: 256 * 1024, parallelism: 1 });
+  const record = await encryptMnemonic(PHRASE, 'pw', FAST);
+  assert.deepEqual(record.kdf, { name: 'argon2id', ...FAST }, 'params are stored with the record');
+  const byDefault = await encryptMnemonic(PHRASE, 'pw');
+  assert.deepEqual(byDefault.kdf, { name: 'argon2id', ...KDF_DEFAULTS }, 'new wallets get the production params');
 });
 
 // Written by the pre-worker keystore (main-thread hash-wasm); existing wallets must keep unlocking.
@@ -96,7 +97,7 @@ test('records with unknown versions, kdfs or out-of-bounds params are refused', 
   assert.deepEqual(validateRecord(LEGACY_RECORD), LEGACY_RECORD);
 });
 
-function withStorage(store: Map<string, string> | 'denied', fn: () => void) {
+async function withStorage(store: Map<string, string> | 'denied', fn: () => unknown) {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
   const fake = {
     getItem: (k: string) => {
@@ -112,30 +113,51 @@ function withStorage(store: Map<string, string> | 'denied', fn: () => void) {
   };
   Object.defineProperty(globalThis, 'localStorage', { value: fake, configurable: true });
   try {
-    fn();
+    await fn();
   } finally {
     if (original) Object.defineProperty(globalThis, 'localStorage', original);
     else delete (globalThis as { localStorage?: unknown }).localStorage;
   }
 }
 
-test('absent, corrupt and denied storage are distinct states', () => {
-  withStorage(new Map(), () => assert.equal(loadKeystore().status, 'absent'));
-  withStorage(new Map([['bunkercoin.keystore.v1', '{not json']]), () => assert.equal(loadKeystore().status, 'corrupt'));
-  withStorage(new Map([['bunkercoin.keystore.v1', JSON.stringify({ ...LEGACY_RECORD, version: 9 })]]), () =>
+test('absent, corrupt and denied storage are distinct states', async () => {
+  await withStorage(new Map(), () => assert.equal(loadKeystore().status, 'absent'));
+  await withStorage(new Map([['bunkercoin.keystore.v1', '{not json']]), () => assert.equal(loadKeystore().status, 'corrupt'));
+  await withStorage(new Map([['bunkercoin.keystore.v1', JSON.stringify({ ...LEGACY_RECORD, version: 9 })]]), () =>
     assert.equal(loadKeystore().status, 'corrupt'),
   );
-  withStorage('denied', () => assert.equal(loadKeystore().status, 'unavailable'));
-  withStorage(new Map([['bunkercoin.keystore.v1', JSON.stringify(LEGACY_RECORD)]]), () =>
+  await withStorage('denied', () => assert.equal(loadKeystore().status, 'unavailable'));
+  await withStorage(new Map([['bunkercoin.keystore.v1', JSON.stringify(LEGACY_RECORD)]]), () =>
     assert.equal(loadKeystore().status, 'ok'),
   );
 });
 
-test('a corrupt record is never overwritten by a new wallet', () => {
+test('a corrupt record is never overwritten by a new wallet', async () => {
   const store = new Map([['bunkercoin.keystore.v1', '{not json']]);
-  withStorage(store, () => assert.throws(() => saveKeystore(LEGACY_RECORD), /already exists/));
+  await withStorage(store, () => assert.rejects(saveKeystore(LEGACY_RECORD), /already exists/));
   assert.equal(store.get('bunkercoin.keystore.v1'), '{not json');
   const empty = new Map<string, string>();
-  withStorage(empty, () => saveKeystore(LEGACY_RECORD));
+  await withStorage(empty, () => saveKeystore(LEGACY_RECORD));
   assert.ok(empty.has('bunkercoin.keystore.v1'));
+});
+
+test('two simultaneous setups store exactly one wallet', async () => {
+  const store = new Map<string, string>();
+  const other = { ...LEGACY_RECORD, salt: 'AAAAAAAAAAAAAAAAAAAAAA==' };
+  await withStorage(store, async () => {
+    const results = await Promise.allSettled([saveKeystore(LEGACY_RECORD), saveKeystore(other)]);
+    assert.deepEqual(
+      results.map((r) => r.status),
+      ['fulfilled', 'rejected'],
+    );
+  });
+  assert.equal(JSON.parse(store.get('bunkercoin.keystore.v1')!).salt, LEGACY_RECORD.salt);
+});
+
+test('the fingerprint changes with the salt or ciphertext', () => {
+  const fp = keystoreFingerprint(LEGACY_RECORD);
+  assert.match(fp, /^[0-9a-f]{64}$/);
+  assert.equal(keystoreFingerprint({ ...LEGACY_RECORD }), fp);
+  assert.notEqual(keystoreFingerprint({ ...LEGACY_RECORD, salt: 'AAAAAAAAAAAAAAAAAAAAAA==' }), fp);
+  assert.notEqual(keystoreFingerprint({ ...LEGACY_RECORD, ciphertext: LEGACY_RECORD.ciphertext.replace(/^T/, 'U') }), fp);
 });

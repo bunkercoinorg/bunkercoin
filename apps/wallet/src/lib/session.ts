@@ -9,6 +9,7 @@ const DB_NAME = 'bunkercoin-session';
 const STORE = 'keys';
 const STORAGE_KEY = 'bunkercoin.session.v2';
 const LEGACY_KEYS = ['bunkercoin.session.v1'];
+const LEGACY_WRAP_ID = 'wrap-key';
 const ORPHAN_AFTER_MS = 24 * 60 * 60_000;
 export const SESSION_IDLE_MS = 15 * 60_000;
 
@@ -20,6 +21,8 @@ interface SessionBlob {
   iv: string;
   ct: string;
   at: number;
+  /** keystoreFingerprint of the record this key was unlocked from. */
+  fp: string;
 }
 
 interface WrapEntry {
@@ -67,7 +70,7 @@ function readBlob(): SessionBlob | null {
     const blob = JSON.parse(raw) as Partial<SessionBlob>;
     if (typeof blob.id !== 'string' || typeof blob.iv !== 'string' || typeof blob.ct !== 'string') return null;
     if (typeof blob.at !== 'number' || !Number.isFinite(blob.at)) return null;
-    return blob as SessionBlob;
+    return { ...(blob as SessionBlob), fp: typeof blob.fp === 'string' ? blob.fp : '' };
   } catch {
     return null;
   }
@@ -115,7 +118,7 @@ async function sweepOrphans(keep: string): Promise<void> {
 }
 
 /** Best-effort: without a session the user simply unlocks again after a reload. */
-export function saveSession(signer: Signer): Promise<void> {
+export function saveSession(signer: Signer, fingerprint: string): Promise<void> {
   const gen = generation;
   const stale = () => gen !== generation || !signer.active;
   return serialized(async () => {
@@ -135,17 +138,19 @@ export function saveSession(signer: Signer): Promise<void> {
       await idb('readwrite', (s) => s.delete(wrapId(id)));
       return;
     }
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ id, iv: toB64(iv), ct: toB64(ct), at: Date.now() } satisfies SessionBlob));
+    const blob: SessionBlob = { id, iv: toB64(iv), ct: toB64(ct), at: Date.now(), fp: fingerprint };
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(blob));
     if (previous && previous.id !== id) await idb('readwrite', (s) => s.delete(wrapId(previous.id)));
     await sweepOrphans(wrapId(id)).catch(() => undefined);
   }).catch(() => undefined);
 }
 
-export async function loadSession(): Promise<RestoredSession | null> {
+/** Restores only a session unlocked from the keystore record with this fingerprint; any other is revoked. */
+export async function loadSession(fingerprint: string): Promise<RestoredSession | null> {
   const gen = generation;
   const blob = readBlob();
   if (!blob) return null;
-  if (Date.now() - blob.at > SESSION_IDLE_MS) {
+  if (blob.fp !== fingerprint || Date.now() - blob.at > SESSION_IDLE_MS) {
     await revokeSession();
     return null;
   }
@@ -180,6 +185,16 @@ export function touchSession(now = Date.now()): void {
   } catch {
     // Worst case the session expires early.
   }
+}
+
+/** v1 kept its ciphertext in sessionStorage and one shared wrapping key in IndexedDB; both go, expired or not. */
+export async function removeLegacySession(): Promise<void> {
+  try {
+    LEGACY_KEYS.forEach((k) => sessionStorage.removeItem(k));
+  } catch {
+    // Storage denied: nothing to remove.
+  }
+  await idb('readwrite', (s) => s.delete(LEGACY_WRAP_ID)).catch(() => undefined);
 }
 
 /** Resolves once the ciphertext and its wrapping key are both gone. */

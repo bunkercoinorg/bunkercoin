@@ -10,6 +10,7 @@ export default function RecoveryPhrase() {
   const [phrase, setPhrase] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [fallback, setFallback] = useState(false);
 
   const hide = useCallback(() => {
     setPhrase('');
@@ -29,7 +30,8 @@ export default function RecoveryPhrase() {
     setBusy(true);
     setError('');
     try {
-      setPhrase(await decryptMnemonic(requireKeystore(), password));
+      setFallback(false);
+      setPhrase(await decryptMnemonic(requireKeystore(), password, { onFallback: () => setFallback(true) }));
       setPassword('');
     } catch (e) {
       const msg = (e as Error).message;
@@ -71,7 +73,9 @@ export default function RecoveryPhrase() {
           {busy && (
             <div className="mt-3 flex items-center gap-2.5 text-[13.5px] text-muted">
               <span className="h-3.5 w-3.5 flex-none animate-spin rounded-full border-2 border-line-strong border-t-accent" />
-              Checking your password — a few seconds…
+              {fallback
+                ? 'Slower fallback: the background worker did not respond, so this tab may stop responding.'
+                : 'Checking your password — a few seconds…'}
             </div>
           )}
           <Divider />

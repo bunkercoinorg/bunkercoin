@@ -7,6 +7,7 @@ const scope = self as unknown as {
 };
 
 scope.onmessage = async ({ data }) => {
+  scope.postMessage({ started: true });
   try {
     const raw = await argon2Raw(data.password, data.salt, data.params);
     scope.postMessage({ ok: true, raw }, [raw.buffer as ArrayBuffer]);

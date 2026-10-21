@@ -4,16 +4,31 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Onboarding from '@/components/Onboarding';
 import Unlock from '@/components/Unlock';
 import Dashboard from '@/components/Dashboard';
-import { clearKeystore, loadKeystore } from '@/lib/keystore';
-import { loadSession, saveSession, revokeSession, touchSession, SESSION_IDLE_MS } from '@/lib/session';
+import {
+  clearKeystore,
+  KEYSTORE_KEY,
+  keystoreFingerprint,
+  loadKeystore,
+  type KeystoreState,
+} from '@/lib/keystore';
+import {
+  loadSession,
+  removeLegacySession,
+  revokeSession,
+  saveSession,
+  touchSession,
+  SESSION_IDLE_MS,
+} from '@/lib/session';
 import { clearAllPending } from '@/lib/pending';
 import { Signer } from '@/lib/signer';
-import type { Keypair } from '@/lib/keys';
+import { settleUnlock, UnlockGate, type FinishUnlock } from '@/lib/unlock';
 import { Button } from '@/components/ui';
 
 const AUTO_LOCK_MS = SESSION_IDLE_MS;
 
 type Phase = 'loading' | 'insecure' | 'unavailable' | 'corrupt' | 'onboarding' | 'locked' | 'unlocked';
+
+const fingerprintOf = (state: KeystoreState) => (state.status === 'ok' ? keystoreFingerprint(state.record) : null);
 
 export default function Wallet() {
   // 'loading' avoids hydration mismatch: localStorage exists only client-side.
@@ -22,6 +37,26 @@ export default function Wallet() {
   const [confirmErase, setConfirmErase] = useState(false);
   const signerRef = useRef<Signer | null>(null);
   const deadline = useRef(0);
+  const gate = useRef(new UnlockGate()).current;
+  // The keystore record the current phase was derived from; another tab replacing it invalidates everything.
+  const fingerprint = useRef<string | null>(null);
+
+  const forgetKey = useCallback(() => {
+    gate.invalidate();
+    signerRef.current?.revoke();
+    signerRef.current = null;
+    return revokeSession();
+  }, [gate]);
+
+  const route = useCallback((state: KeystoreState) => {
+    fingerprint.current = fingerprintOf(state);
+    if (state.status === 'unavailable' || state.status === 'corrupt') {
+      setStorageError(state.reason);
+      setPhase(state.status);
+    } else {
+      setPhase(state.status === 'absent' ? 'onboarding' : 'locked');
+    }
+  }, []);
 
   useEffect(() => {
     // WebCrypto needs a secure context; without it nothing can be decrypted.
@@ -29,42 +64,47 @@ export default function Wallet() {
       setPhase('insecure');
       return;
     }
-    const stored = loadKeystore();
-    if (stored.status === 'unavailable' || stored.status === 'corrupt') {
-      setStorageError(stored.reason);
-      setPhase(stored.status);
-      return;
-    }
-    if (stored.status === 'absent') {
-      setPhase('onboarding');
-      return;
-    }
-    // Refresh inside the idle window resumes the session, not the Argon2id unlock.
     let cancelled = false;
-    void loadSession().then((session) => {
-      if (cancelled) {
-        session?.keypair.privateKey.fill(0);
-        return;
-      }
-      if (session && Date.now() < session.lastActivity + AUTO_LOCK_MS) {
-        signerRef.current = new Signer(session.keypair);
-        deadline.current = session.lastActivity + AUTO_LOCK_MS;
-        setPhase('unlocked');
-      } else {
-        session?.keypair.privateKey.fill(0);
-        setPhase('locked');
-      }
-    });
+    const legacy = removeLegacySession();
+    const stored = loadKeystore();
+    if (stored.status !== 'ok') route(stored);
+    else {
+      const fp = keystoreFingerprint(stored.record);
+      fingerprint.current = fp;
+      // Refresh inside the idle window resumes the session, not the Argon2id unlock.
+      void legacy
+        .then(() => loadSession(fp))
+        .then((session) => {
+          if (cancelled || fingerprint.current !== fp) {
+            session?.keypair.privateKey.fill(0);
+            return;
+          }
+          if (session && Date.now() < session.lastActivity + AUTO_LOCK_MS) {
+            signerRef.current = new Signer(session.keypair);
+            deadline.current = session.lastActivity + AUTO_LOCK_MS;
+            setPhase('unlocked');
+          } else {
+            session?.keypair.privateKey.fill(0);
+            setPhase('locked');
+          }
+        });
+    }
+    // Another tab erased, recovered or created a wallet: whatever this tab holds belongs to the old one.
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== KEYSTORE_KEY && e.key !== null) return;
+      const state = loadKeystore();
+      if (state.status === 'ok' && fingerprintOf(state) === fingerprint.current) return;
+      void forgetKey();
+      setConfirmErase(false);
+      route(state);
+    };
+    window.addEventListener('storage', onStorage);
     return () => {
       cancelled = true;
+      gate.invalidate();
+      window.removeEventListener('storage', onStorage);
     };
-  }, []);
-
-  const forgetKey = useCallback(() => {
-    signerRef.current?.revoke();
-    signerRef.current = null;
-    return revokeSession();
-  }, []);
+  }, [gate, forgetKey, route]);
 
   const lock = useCallback(() => {
     void forgetKey();
@@ -74,13 +114,14 @@ export default function Wallet() {
   const erase = useCallback(async () => {
     await forgetKey();
     try {
-      clearKeystore();
+      await clearKeystore();
     } catch (e) {
       setStorageError((e as Error).message);
       setPhase('unavailable');
       return;
     }
     clearAllPending();
+    fingerprint.current = null;
     setConfirmErase(false);
     setPhase('onboarding');
   }, [forgetKey]);
@@ -116,14 +157,23 @@ export default function Wallet() {
     };
   }, [phase, lock]);
 
-  const unlocked = (keypair: Keypair) => {
-    signerRef.current?.revoke();
-    const signer = new Signer(keypair);
-    signerRef.current = signer;
-    deadline.current = Date.now() + AUTO_LOCK_MS;
-    void saveSession(signer);
-    setPhase('unlocked');
-  };
+  // Captured when the attempt starts, so an erase or replacement while Argon2id runs voids it.
+  const beginUnlock = useCallback((): FinishUnlock => {
+    const current = gate.begin();
+    return (keypair, record) => {
+      const fp = keystoreFingerprint(record);
+      const stored = fingerprintOf(loadKeystore());
+      return settleUnlock(current() && stored === fp, keypair, (k) => {
+        signerRef.current?.revoke();
+        const signer = new Signer(k);
+        signerRef.current = signer;
+        fingerprint.current = fp;
+        deadline.current = Date.now() + AUTO_LOCK_MS;
+        void saveSession(signer, fp);
+        setPhase('unlocked');
+      });
+    };
+  }, [gate]);
 
   return (
     <main className="mx-auto flex min-h-screen max-w-155 flex-col px-6 pb-18">
@@ -178,9 +228,9 @@ export default function Wallet() {
       )}
       {(phase === 'onboarding' || phase === 'locked') && (
         <div className="flex flex-1 animate-gate-in flex-col justify-center pb-[9vh] motion-reduce:animate-none">
-          {phase === 'onboarding' && <Onboarding onUnlocked={unlocked} />}
+          {phase === 'onboarding' && <Onboarding beginUnlock={beginUnlock} />}
           {phase === 'locked' && (
-            <Unlock onUnlocked={unlocked} onReset={() => void erase()} />
+            <Unlock beginUnlock={beginUnlock} onReset={() => void erase()} />
           )}
         </div>
       )}
