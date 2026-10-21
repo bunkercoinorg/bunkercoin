@@ -21,12 +21,12 @@ export function useReview(state: WalletState, actions: WalletActions, fee: bigin
   const [plan, setPlan] = useState<NoncePlan | null>(null);
   const [planError, setPlanError] = useState('');
   const live = useRef(true);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    live.current = true;
+    return () => {
       live.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
 
   const loadPlan = useCallback(() => {
     setPlanError('');
