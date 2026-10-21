@@ -3,6 +3,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
 import bs58 from 'bs58';
+import { canonicalMetadataJson } from '@bunkercoin/chain-format';
 
 export const MNEMONIC_WORDS = 24;
 
@@ -23,7 +24,8 @@ export interface SignedTransaction {
   body:
     | { Transfer: { to: string; amount: bigint } }
     | { TokenTransfer: { to: string; token_id: string; amount: bigint } }
-    | { Mint: { ticker: string; max_supply: bigint; metadata_hash: string } };
+    | { Mint: { ticker: string; max_supply: bigint; metadata_hash: string } }
+    | { UpdateMetadata: { token_id: string; metadata_hash: string } };
 }
 
 /** Native BUNKER and custom tokens are told apart by kind, never by ticker. */
@@ -178,9 +180,29 @@ export function mintSigningHash({
   );
 }
 
-/** SHA-256 of the off-chain metadata JSON the chain commits to. */
-export function metadataHash(metadata: unknown): Uint8Array {
-  return sha256(new TextEncoder().encode(JSON.stringify(metadata)));
+/** @deprecated Use lib/metadata. Canonical hash of an image-less {name, description} document; throws when invalid. */
+export function metadataHash(metadata: { name: string; description: string }): Uint8Array {
+  const doc = { v: 1, name: metadata.name.normalize('NFC'), description: metadata.description.normalize('NFC'), image: null } as const;
+  return sha256(new TextEncoder().encode(canonicalMetadataJson(doc)));
+}
+
+// UpdateMetadata layout: sender ‖ nonce ‖ fee ‖ 0x09 ‖ token_id(4) ‖ metadata_hash(32).
+export function updateMetadataSigningHash({
+  sender,
+  nonce,
+  fee,
+  tokenId,
+  metadataHash,
+}: {
+  sender: Uint8Array;
+  nonce: number | bigint;
+  fee: number | bigint;
+  tokenId: Uint8Array;
+  metadataHash: Uint8Array;
+}): Uint8Array {
+  if (tokenId.length !== 4) throw new Error('tokenId must be 4 bytes');
+  if (metadataHash.length !== 32) throw new Error('metadataHash must be 32 bytes');
+  return sha256(new Uint8Array([...sender, ...u64le(nonce), ...u64le(fee), 0x09, ...tokenId, ...metadataHash]));
 }
 
 /** Transaction::hash: sha256(sender ‖ nonce ‖ fee ‖ signature), base58 as the RPC returns it. Known before sending. */
@@ -292,5 +314,30 @@ export function signTokenTransfer({
         amount,
       },
     },
+  };
+}
+
+export function signUpdateMetadata({
+  privateKey,
+  publicKey,
+  tokenId,
+  metadataHash: hash,
+  nonce,
+  fee,
+}: {
+  privateKey: Uint8Array;
+  publicKey: Uint8Array;
+  tokenId: Uint8Array;
+  metadataHash: Uint8Array;
+  nonce: bigint;
+  fee: bigint;
+}): SignedTransaction {
+  const digest = updateMetadataSigningHash({ sender: publicKey, nonce, fee, tokenId, metadataHash: hash });
+  return {
+    sender: bs58.encode(publicKey),
+    nonce,
+    fee,
+    signature: bs58.encode(ed25519.sign(digest, privateKey)),
+    body: { UpdateMetadata: { token_id: toHex(tokenId), metadata_hash: toHex(hash) } },
   };
 }

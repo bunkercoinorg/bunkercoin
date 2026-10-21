@@ -16,6 +16,8 @@ import {
   signTokenTransfer,
   mintSigningHash,
   metadataHash,
+  signUpdateMetadata,
+  updateMetadataSigningHash,
   isValidTicker,
   tokenIdBytes,
   isTokenId,
@@ -218,6 +220,43 @@ test('signed mint verifies and carries a hex metadata hash', () => {
   assert.match(tx.body.Mint.metadata_hash, /^[0-9a-f]{64}$/, 'node decodes metadata_hash from hex');
   const digest = mintSigningHash({ sender: publicKey, nonce: 0, fee: 100, ticker: 'BNKR', maxSupply: 500, metadataHash: hash });
   assert.ok(ed25519.verify(bs58.decode(tx.signature), digest, publicKey));
+});
+
+test('update metadata signing hash matches the node byte layout', () => {
+  // sender ‖ nonce_le ‖ fee_le ‖ 0x09 ‖ token_id(4, raw) ‖ metadata_hash(32)
+  const sender = new Uint8Array(32).fill(1);
+  const metadata = new Uint8Array(32).fill(0xcd);
+  const hash = updateMetadataSigningHash({ sender, nonce: 7, fee: 100, tokenId: tokenIdBytes('01000000'), metadataHash: metadata });
+  const expected = new Uint8Array([
+    ...sender,
+    7, 0, 0, 0, 0, 0, 0, 0,
+    100, 0, 0, 0, 0, 0, 0, 0,
+    0x09,
+    1, 0, 0, 0,
+    ...metadata,
+  ]);
+  assert.deepEqual(Buffer.from(hash), createHash('sha256').update(expected).digest());
+  assert.throws(() => updateMetadataSigningHash({ sender, nonce: 0, fee: 0, tokenId: new Uint8Array(3), metadataHash: metadata }));
+  assert.throws(() => updateMetadataSigningHash({ sender, nonce: 0, fee: 0, tokenId: new Uint8Array(4), metadataHash: new Uint8Array(31) }));
+});
+
+test('signed metadata update verifies and carries hex token id and hash', () => {
+  const { privateKey, publicKey, address } = keypairFromMnemonic(createMnemonic());
+  const tokenId = tokenIdBytes('0a000000');
+  const hash = new Uint8Array(32).fill(0xab);
+  const tx = signUpdateMetadata({ privateKey, publicKey, tokenId, metadataHash: hash, nonce: 3n, fee: 100n });
+  assert.equal(tx.sender, address);
+  assert.deepEqual(tx.body, { UpdateMetadata: { token_id: '0a000000', metadata_hash: 'ab'.repeat(32) } });
+  const digest = updateMetadataSigningHash({ sender: publicKey, nonce: 3n, fee: 100n, tokenId, metadataHash: hash });
+  assert.ok(ed25519.verify(bs58.decode(tx.signature), digest, publicKey));
+});
+
+test('the legacy metadataHash export is the canonical document hash', () => {
+  assert.equal(
+    Buffer.from(metadataHash({ name: 'BunkerCoin', description: '' })).toString('hex'),
+    '3fac357e74836eeb1811034d4c8b7381c54421ab04e73a6134d5cb7fe745d4fb',
+  );
+  assert.throws(() => metadataHash({ name: '', description: '' }));
 });
 
 test('metadata hash is stable and content-dependent', () => {

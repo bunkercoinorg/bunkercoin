@@ -6,7 +6,7 @@ const VERSION = 'v2';
 const LEGACY_KEY = `${PREFIX}v1`;
 const MAX_ENTRIES = 20;
 
-export type PendingKind = 'faucet' | 'send' | 'mint' | 'token-send';
+export type PendingKind = 'faucet' | 'send' | 'mint' | 'token-send' | 'metadata';
 
 /**
  * 'uncertain': recorded before broadcast and not acknowledged by the node (yet).
@@ -38,7 +38,7 @@ export interface Reservation {
   wire?: string;
 }
 
-const KINDS: PendingKind[] = ['faucet', 'send', 'mint', 'token-send'];
+const KINDS: PendingKind[] = ['faucet', 'send', 'mint', 'token-send', 'metadata'];
 const STATES: PendingState[] = ['uncertain', 'pending', 'unconfirmed', 'failed'];
 const DIGITS = /^\d+$/;
 
