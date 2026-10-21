@@ -1,17 +1,39 @@
 import { ed25519 } from '@noble/curves/ed25519.js';
 import bs58 from 'bs58';
-import type { Keypair } from './keys';
+import type { Keypair } from './keys.ts';
+import type { Signer } from './signer.ts';
 
-// The private key is encrypted under a non-extractable AES key (IndexedDB
-// holds the CryptoKey, sessionStorage the ciphertext) — per-tab, never readable in storage.
+// The private key is encrypted under a non-extractable AES key (IndexedDB holds the CryptoKey,
+// sessionStorage the ciphertext); each tab session has its own wrapping key.
 const DB_NAME = 'bunkercoin-session';
 const STORE = 'keys';
-const KEY_ID = 'wrap-key';
-const STORAGE_KEY = 'bunkercoin.session.v1';
+const STORAGE_KEY = 'bunkercoin.session.v2';
+const LEGACY_KEYS = ['bunkercoin.session.v1'];
+const ORPHAN_AFTER_MS = 24 * 60 * 60_000;
 export const SESSION_IDLE_MS = 15 * 60_000;
 
 const toB64 = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes));
-const fromB64 = (text: string): Uint8Array => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
+const fromB64 = (text: string): Uint8Array<ArrayBuffer> => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
+
+interface SessionBlob {
+  id: string;
+  iv: string;
+  ct: string;
+  at: number;
+}
+
+interface WrapEntry {
+  key: CryptoKey;
+  created: number;
+}
+
+export interface RestoredSession {
+  keypair: Keypair;
+  /** Last persisted user activity; the idle deadline counts from here. */
+  lastActivity: number;
+}
+
+const wrapId = (id: string) => `wrap-${id}`;
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -22,95 +44,153 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-function idbRequest<T>(req: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-interface SessionBlob {
-  iv: string;
-  ct: string;
-  at: number;
-}
-
-export async function saveSession(keypair: Keypair): Promise<void> {
+/** Runs one request and resolves only once its transaction has committed. */
+async function idb<T>(mode: IDBTransactionMode, op: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+  const db = await openDb();
   try {
-    const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, [
-      'encrypt',
-      'decrypt',
-    ]);
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const ct = new Uint8Array(
-      await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, keypair.privateKey as Uint8Array<ArrayBuffer>),
-    );
-    const db = await openDb();
-    await idbRequest(db.transaction(STORE, 'readwrite').objectStore(STORE).put(key, KEY_ID));
+    return await new Promise<T>((resolve, reject) => {
+      const tx = db.transaction(STORE, mode);
+      const req = op(tx.objectStore(STORE));
+      tx.oncomplete = () => resolve(req.result);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } finally {
     db.close();
-    const blob: SessionBlob = { iv: toB64(iv), ct: toB64(ct), at: Date.now() };
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(blob));
-  } catch {
-    // Best-effort: without a session the user simply unlocks again.
   }
 }
 
-export async function loadSession(): Promise<Keypair | null> {
+function readBlob(): SessionBlob | null {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    const blob = JSON.parse(raw) as SessionBlob;
-    if (Date.now() - blob.at > SESSION_IDLE_MS) {
-      clearSession();
+    const blob = JSON.parse(raw) as Partial<SessionBlob>;
+    if (typeof blob.id !== 'string' || typeof blob.iv !== 'string' || typeof blob.ct !== 'string') return null;
+    if (typeof blob.at !== 'number' || !Number.isFinite(blob.at)) return null;
+    return blob as SessionBlob;
+  } catch {
+    return null;
+  }
+}
+
+function dropBlob(): void {
+  try {
+    sessionStorage.removeItem(STORAGE_KEY);
+    LEGACY_KEYS.forEach((k) => sessionStorage.removeItem(k));
+  } catch {
+    // Storage denied: there is nothing to remove either.
+  }
+}
+
+// Every revoke bumps the generation; saves and loads started before it give up.
+let generation = 0;
+let queue: Promise<unknown> = Promise.resolve();
+
+function serialized<T>(fn: () => Promise<T>): Promise<T> {
+  const run = queue.then(fn, fn);
+  queue = run.catch(() => undefined);
+  return run;
+}
+
+async function sweepOrphans(keep: string): Promise<void> {
+  const db = await openDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      const store = tx.objectStore(STORE);
+      const cursor = store.openCursor();
+      cursor.onsuccess = () => {
+        const c = cursor.result;
+        if (!c) return;
+        const entry = c.value as Partial<WrapEntry> | undefined;
+        if (c.key !== keep && (!entry?.created || Date.now() - entry.created > ORPHAN_AFTER_MS)) c.delete();
+        c.continue();
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/** Best-effort: without a session the user simply unlocks again after a reload. */
+export function saveSession(signer: Signer): Promise<void> {
+  const gen = generation;
+  const stale = () => gen !== generation || !signer.active;
+  return serialized(async () => {
+    if (stale()) return;
+    const previous = readBlob();
+    const id = toB64(crypto.getRandomValues(new Uint8Array(12))).replace(/[+/=]/g, '');
+    const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    // WebCrypto copies the input synchronously, so the key buffer is not read after `use` returns.
+    const sealing = signer.use((privateKey) =>
+      crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, privateKey as Uint8Array<ArrayBuffer>),
+    );
+    const ct = new Uint8Array(await sealing);
+    if (stale()) return;
+    await idb('readwrite', (s) => s.put({ key, created: Date.now() } satisfies WrapEntry, wrapId(id)));
+    if (stale()) {
+      await idb('readwrite', (s) => s.delete(wrapId(id)));
+      return;
+    }
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ id, iv: toB64(iv), ct: toB64(ct), at: Date.now() } satisfies SessionBlob));
+    if (previous && previous.id !== id) await idb('readwrite', (s) => s.delete(wrapId(previous.id)));
+    await sweepOrphans(wrapId(id)).catch(() => undefined);
+  }).catch(() => undefined);
+}
+
+export async function loadSession(): Promise<RestoredSession | null> {
+  const gen = generation;
+  const blob = readBlob();
+  if (!blob) return null;
+  if (Date.now() - blob.at > SESSION_IDLE_MS) {
+    await revokeSession();
+    return null;
+  }
+  try {
+    const entry = await idb<WrapEntry | undefined>('readonly', (s) => s.get(wrapId(blob.id)));
+    if (!entry?.key) return null;
+    const privateKey = new Uint8Array(
+      await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(blob.iv) }, entry.key, fromB64(blob.ct)),
+    );
+    if (gen !== generation || privateKey.length !== 32) {
+      privateKey.fill(0);
       return null;
     }
-    const db = await openDb();
-    const key = await idbRequest<CryptoKey | undefined>(
-      db.transaction(STORE, 'readonly').objectStore(STORE).get(KEY_ID),
-    );
-    db.close();
-    if (!key) return null;
-    const privateKey = new Uint8Array(
-      await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: fromB64(blob.iv) as Uint8Array<ArrayBuffer> },
-        key,
-        fromB64(blob.ct) as Uint8Array<ArrayBuffer>,
-      ),
-    );
     const publicKey = ed25519.getPublicKey(privateKey);
-    return { privateKey, publicKey, address: bs58.encode(publicKey) };
+    return { keypair: { privateKey, publicKey, address: bs58.encode(publicKey) }, lastActivity: blob.at };
   } catch {
+    await revokeSession();
     return null;
   }
 }
 
 let lastTouch = 0;
 
-/** Slide the idle window forward on user activity (throttled). */
-export function touchSession(): void {
-  const now = Date.now();
+/** Persist user activity (throttled) so a reload resumes with the remaining idle time only. */
+export function touchSession(now = Date.now()): void {
   if (now - lastTouch < 10_000) return;
   lastTouch = now;
+  const blob = readBlob();
+  if (!blob) return;
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const blob = JSON.parse(raw) as SessionBlob;
-    blob.at = now;
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(blob));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ ...blob, at: now }));
   } catch {
-    // Ignore — worst case the session expires on schedule.
+    // Worst case the session expires early.
   }
 }
 
-export function clearSession(): void {
-  try {
-    sessionStorage.removeItem(STORAGE_KEY);
-    // Removing the wrap key makes any leftover ciphertext undecryptable.
-    void openDb().then((db) => {
-      db.transaction(STORE, 'readwrite').objectStore(STORE).delete(KEY_ID);
-      db.close();
-    });
-  } catch {
-    // Blob without key (or vice versa) is useless anyway.
-  }
+/** Resolves once the ciphertext and its wrapping key are both gone. */
+export function revokeSession(): Promise<void> {
+  generation++;
+  lastTouch = 0;
+  const id = readBlob()?.id;
+  dropBlob();
+  return serialized(async () => {
+    const ids = new Set([id, readBlob()?.id].filter((x): x is string => !!x));
+    dropBlob();
+    for (const i of ids) await idb('readwrite', (s) => s.delete(wrapId(i)));
+  }).catch(() => undefined);
 }

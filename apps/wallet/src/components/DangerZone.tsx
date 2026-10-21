@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { clearKeystore } from '@/lib/keystore';
 import { Button, Card, Row } from '@/components/ui';
 
 export default function DangerZone({ onWalletRemoved }: { onWalletRemoved: () => void }) {
@@ -18,10 +17,7 @@ export default function DangerZone({ onWalletRemoved }: { onWalletRemoved: () =>
           </Button>
           <Button
             variant="danger"
-            onClick={() => {
-              clearKeystore();
-              onWalletRemoved();
-            }}
+            onClick={onWalletRemoved}
           >
             Erase from this device
           </Button>

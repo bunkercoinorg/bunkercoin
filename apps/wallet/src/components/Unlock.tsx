@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { decryptMnemonic, loadKeystore, clearKeystore } from '@/lib/keystore';
+import { decryptMnemonic, requireKeystore } from '@/lib/keystore';
 import { keypairFromMnemonic, type Keypair } from '@/lib/keys';
 import { useElapsed } from '@/hooks/useElapsed';
 import KdfProgress from '@/components/KdfProgress';
@@ -23,7 +23,7 @@ export default function Unlock({ onUnlocked, onReset }: UnlockProps) {
     setBusy(true);
     setError('');
     try {
-      const mnemonic = await decryptMnemonic(loadKeystore(), password);
+      const mnemonic = await decryptMnemonic(requireKeystore(), password);
       onUnlocked(keypairFromMnemonic(mnemonic));
     } catch (e) {
       const msg = (e as Error).message;
@@ -74,10 +74,7 @@ export default function Unlock({ onUnlocked, onReset }: UnlockProps) {
             variant="danger"
             small
             className="mt-2.5"
-            onClick={() => {
-              clearKeystore();
-              onReset();
-            }}
+            onClick={onReset}
           >
             Really erase this wallet from the device
           </Button>
