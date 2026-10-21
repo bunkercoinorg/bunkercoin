@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { keypairFromMnemonic, type Keypair } from '@/lib/keys';
+import { keypairFromMnemonic } from '@/lib/keys';
+import type { FinishUnlock } from '@/lib/unlock';
 import { encryptMnemonic, saveKeystore } from '@/lib/keystore';
 import { useElapsed } from '@/hooks/useElapsed';
 import KdfProgress from '@/components/KdfProgress';
@@ -11,14 +12,15 @@ const MIN_PASSWORD = 8;
 
 interface SetPasswordProps {
   mnemonic: string;
-  onUnlocked: (keypair: Keypair) => void;
+  beginUnlock: () => FinishUnlock;
 }
 
-export default function SetPassword({ mnemonic, onUnlocked }: SetPasswordProps) {
+export default function SetPassword({ mnemonic, beginUnlock }: SetPasswordProps) {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [fallback, setFallback] = useState(false);
   const elapsed = useElapsed(busy);
 
   const submit = async () => {
@@ -32,11 +34,13 @@ export default function SetPassword({ mnemonic, onUnlocked }: SetPasswordProps) 
     }
     setBusy(true);
     setError('');
+    setFallback(false);
+    const finish = beginUnlock();
     try {
       // Deliberately slow (Argon2id): this cost is what a thief pays per guess.
-      const record = await encryptMnemonic(mnemonic, password);
-      saveKeystore(record);
-      onUnlocked(keypairFromMnemonic(mnemonic));
+      const record = await encryptMnemonic(mnemonic, password, undefined, { onFallback: () => setFallback(true) });
+      await saveKeystore(record, finish.current);
+      if (!finish(keypairFromMnemonic(mnemonic), record)) throw new Error('The wallet on this device changed meanwhile.');
     } catch (e) {
       setError((e as Error).message || 'Encryption failed');
       setBusy(false);
@@ -60,7 +64,7 @@ export default function SetPassword({ mnemonic, onUnlocked }: SetPasswordProps) 
       />
       {error && <ErrorText>{error}</ErrorText>}
       {busy ? (
-        <KdfProgress label="Encrypting your recovery phrase" elapsed={elapsed} />
+        <KdfProgress label="Encrypting your recovery phrase" elapsed={elapsed} fallback={fallback} />
       ) : (
         <>
           <Divider />

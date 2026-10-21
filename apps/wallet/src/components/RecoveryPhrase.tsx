@@ -1,8 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { decryptMnemonic, loadKeystore } from '@/lib/keystore';
-import { copyText } from '@/lib/clipboard';
+import { decryptMnemonic, requireKeystore } from '@/lib/keystore';
 import { Button, Card, Divider, ErrorText, Input, Row, Warn, WordGrid } from '@/components/ui';
 
 export default function RecoveryPhrase() {
@@ -11,7 +10,7 @@ export default function RecoveryPhrase() {
   const [phrase, setPhrase] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [copied, setCopied] = useState(false);
+  const [fallback, setFallback] = useState(false);
 
   const hide = useCallback(() => {
     setPhrase('');
@@ -31,7 +30,8 @@ export default function RecoveryPhrase() {
     setBusy(true);
     setError('');
     try {
-      setPhrase(await decryptMnemonic(loadKeystore(), password));
+      setFallback(false);
+      setPhrase(await decryptMnemonic(requireKeystore(), password, { onFallback: () => setFallback(true) }));
       setPassword('');
     } catch (e) {
       const msg = (e as Error).message;
@@ -46,7 +46,7 @@ export default function RecoveryPhrase() {
       {!open && !phrase && (
         <>
           <p className="mb-4 text-[13.5px] leading-relaxed text-muted">
-            View or copy the 24 words this wallet was created with.
+            View the 24 words this wallet was created with.
           </p>
           <Button variant="ghost" small onClick={() => setOpen(true)}>
             Show recovery phrase…
@@ -73,7 +73,9 @@ export default function RecoveryPhrase() {
           {busy && (
             <div className="mt-3 flex items-center gap-2.5 text-[13.5px] text-muted">
               <span className="h-3.5 w-3.5 flex-none animate-spin rounded-full border-2 border-line-strong border-t-accent" />
-              Checking your password — a few seconds…
+              {fallback
+                ? 'Slower fallback: the background worker did not respond, so this tab may stop responding.'
+                : 'Checking your password — a few seconds…'}
             </div>
           )}
           <Divider />
@@ -90,21 +92,11 @@ export default function RecoveryPhrase() {
       {phrase && (
         <>
           <Warn>
-            Anyone with these words controls your funds. Hide them as soon as you are done — they
+            Anyone with these words controls your funds. Hide them as soon as you are done; they
             disappear automatically after a minute.
           </Warn>
           <WordGrid words={phrase.split(' ')} />
           <Row>
-            <Button
-              variant="ghost"
-              onClick={async () => {
-                await copyText(phrase);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 1500);
-              }}
-            >
-              {copied ? 'Copied' : 'Copy'}
-            </Button>
             <Button onClick={hide}>Hide</Button>
           </Row>
         </>

@@ -17,13 +17,32 @@ export const MAX_TICKER_LEN = 8;
 
 export interface SignedTransaction {
   sender: string;
-  nonce: number;
-  fee: number;
+  nonce: bigint;
+  fee: bigint;
   signature: string;
   body:
-    | { Transfer: { to: string; amount: number } }
-    | { TokenTransfer: { to: string; token_id: string; amount: number } }
-    | { Mint: { ticker: string; max_supply: number; metadata_hash: string } };
+    | { Transfer: { to: string; amount: bigint } }
+    | { TokenTransfer: { to: string; token_id: string; amount: bigint } }
+    | { Mint: { ticker: string; max_supply: bigint; metadata_hash: string } };
+}
+
+/** Native BUNKER and custom tokens are told apart by kind, never by ticker. */
+export type Asset = { kind: 'native' } | { kind: 'token'; tokenId: string };
+
+export const NATIVE_ASSET: Asset = { kind: 'native' };
+
+export function assetKey(asset: Asset): string {
+  return asset.kind === 'native' ? 'native' : `token:${asset.tokenId}`;
+}
+
+/** Token ids are 4 raw bytes, hex-encoded by the node ("01000000"). */
+export function isTokenId(id: unknown): id is string {
+  return typeof id === 'string' && /^[0-9a-f]{8}$/.test(id);
+}
+
+export function tokenIdBytes(id: string): Uint8Array {
+  if (!isTokenId(id)) throw new Error('Token id must be 8 lowercase hex characters');
+  return Uint8Array.from(id.match(/../g)!.map((b) => parseInt(b, 16)));
 }
 
 export function createMnemonic(): string {
@@ -42,7 +61,9 @@ export function normalizeMnemonic(phrase: string): string {
 export function keypairFromMnemonic(phrase: string, passphrase = ''): Keypair {
   const normalized = normalizeMnemonic(phrase);
   if (!validateMnemonic(normalized, wordlist)) throw new Error('Invalid recovery phrase');
-  const privateKey = mnemonicToSeedSync(normalized, passphrase).slice(0, 32);
+  const seed = mnemonicToSeedSync(normalized, passphrase);
+  const privateKey = seed.slice(0, 32);
+  seed.fill(0);
   const publicKey = ed25519.getPublicKey(privateKey);
   return { privateKey, publicKey, address: bs58.encode(publicKey) };
 }
@@ -80,9 +101,14 @@ export function isValidAddress(address: string): boolean {
   }
 }
 
+const U64_MAX = (1n << 64n) - 1n;
+
+// setBigUint64 wraps silently; an out-of-range value must never sign as a different one.
 const u64le = (value: number | bigint): Uint8Array => {
+  const big = BigInt(value);
+  if (big < 0n || big > U64_MAX) throw new RangeError('value does not fit in a u64');
   const bytes = new Uint8Array(8);
-  new DataView(bytes.buffer).setBigUint64(0, BigInt(value), true);
+  new DataView(bytes.buffer).setBigUint64(0, big, true);
   return bytes;
 };
 
@@ -157,6 +183,14 @@ export function metadataHash(metadata: unknown): Uint8Array {
   return sha256(new TextEncoder().encode(JSON.stringify(metadata)));
 }
 
+/** Transaction::hash: sha256(sender ‖ nonce ‖ fee ‖ signature), base58 as the RPC returns it. Known before sending. */
+export function transactionId(tx: SignedTransaction): string {
+  const sender = bs58.decode(tx.sender);
+  const signature = bs58.decode(tx.signature);
+  if (sender.length !== 32 || signature.length !== 64) throw new Error('malformed signed transaction');
+  return bs58.encode(sha256(new Uint8Array([...sender, ...u64le(tx.nonce), ...u64le(tx.fee), ...signature])));
+}
+
 export function toHex(bytes: Uint8Array): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
@@ -177,10 +211,10 @@ export function signMint({
   privateKey: Uint8Array;
   publicKey: Uint8Array;
   ticker: string;
-  maxSupply: number;
+  maxSupply: bigint;
   metadataHash: Uint8Array;
-  nonce: number;
-  fee: number;
+  nonce: bigint;
+  fee: bigint;
 }): SignedTransaction {
   const digest = mintSigningHash({
     sender: publicKey,
@@ -211,9 +245,9 @@ export function signTransfer({
   privateKey: Uint8Array;
   publicKey: Uint8Array;
   to: string;
-  amount: number;
-  nonce: number;
-  fee: number;
+  amount: bigint;
+  nonce: bigint;
+  fee: bigint;
 }): SignedTransaction {
   const recipient = decodeAddress(to);
   const hash = transferSigningHash({ sender: publicKey, nonce, fee, to: recipient, amount });
@@ -239,9 +273,9 @@ export function signTokenTransfer({
   publicKey: Uint8Array;
   to: string;
   tokenId: Uint8Array;
-  amount: number;
-  nonce: number;
-  fee: number;
+  amount: bigint;
+  nonce: bigint;
+  fee: bigint;
 }): SignedTransaction {
   const recipient = decodeAddress(to);
   const hash = tokenTransferSigningHash({ sender: publicKey, nonce, fee, to: recipient, tokenId, amount });

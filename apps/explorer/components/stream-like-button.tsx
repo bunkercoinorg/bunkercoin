@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Heart } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { LIKE_WS_URL } from '@/lib/config';
 
 // Likes fan out to the lab overlay only; the explorer never renders hearts.
-const LIKE_WS_URL = process.env.NEXT_PUBLIC_LIKE_WS_URL;
 const FLUSH_DEBOUNCE_MS = 400;
 const MAX_LIKES_PER_MESSAGE = 25;
 

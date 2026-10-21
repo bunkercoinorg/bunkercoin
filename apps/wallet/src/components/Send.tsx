@@ -1,122 +1,111 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import type { BunkerConnection, TokenBalance } from '@/lib/connection';
-import { signTransfer, signTokenTransfer, isValidAddress, type Keypair } from '@/lib/keys';
-import { formatUnits, parseBunker } from '@/lib/format';
-import type { PendingTx } from '@/lib/pending';
+import { useState } from 'react';
+import { NATIVE_TICKER, tokenLabel, type TokenBalance } from '@/lib/connection';
+import {
+  assetKey,
+  isValidAddress,
+  NATIVE_ASSET,
+  signTokenTransfer,
+  signTransfer,
+  tokenIdBytes,
+  type Asset,
+} from '@/lib/keys';
+import { formatCount, formatUnits, parseBunker, parseCount, shortAddress } from '@/lib/format';
+import type { Signer } from '@/lib/signer';
+import type { SubmitSigned } from '@/components/Dashboard';
 import { Button, Card, Divider, ErrorText, Hint, Input, Label } from '@/components/ui';
 
-const NATIVE = 'BUNKER';
 
 interface SendProps {
-  conn: BunkerConnection;
-  keypair: Keypair;
-  balance: number | null;
+  signer: Signer;
+  balance: bigint | null;
   tokens: TokenBalance[];
-  onSubmitted: (entry: PendingTx) => void;
+  fee: bigint | null;
+  feeError: string;
+  submit: SubmitSigned;
 }
 
-const tokenIdBytes = (t: TokenBalance): Uint8Array => {
-  const raw = t.tokenId ?? t.token_id ?? 0;
-  // Token ids arrive as a hex string or a number; the chain wants 4 raw bytes.
-  if (typeof raw === 'string' && /^[0-9a-fA-F]{8}$/.test(raw)) {
-    return Uint8Array.from(raw.match(/../g)!.map((b) => parseInt(b, 16)));
-  }
-  const bytes = new Uint8Array(4);
-  new DataView(bytes.buffer).setUint32(0, Number(raw), true);
-  return bytes;
-};
-
-export default function Send({ conn, keypair, balance, tokens, onSubmitted }: SendProps) {
+export default function Send({ signer, balance, tokens, fee, feeError, submit }: SendProps) {
   const [to, setTo] = useState('');
   const [amount, setAmount] = useState('');
-  const [asset, setAsset] = useState(NATIVE);
-  const [fee, setFee] = useState<number | null>(null);
+  const [asset, setAsset] = useState<Asset>(NATIVE_ASSET);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
-  useEffect(() => {
-    conn.getFee().then(setFee).catch(() => {});
-  }, [conn]);
+  const selected = asset.kind === 'token' ? (tokens.find((t) => t.tokenId === asset.tokenId) ?? null) : null;
+  const assetLabel = asset.kind === 'native' ? NATIVE_TICKER : selected ? tokenLabel(selected) : `Token ${asset.tokenId}`;
 
-  const selected = tokens.find((t) => (t.ticker || String(t.tokenId ?? t.token_id)) === asset);
-  const isToken = asset !== NATIVE && !!selected;
-
-  const submit = async () => {
+  const send = async () => {
     setError('');
-    let units: number;
-    if (isToken) {
-      // Custom tokens have no decimals on-chain — whole counts only.
-      units = Number(amount.replace(/[, ]/g, ''));
-      if (!Number.isInteger(units) || units <= 0) {
-        setError('Enter a whole number of tokens.');
-        return;
-      }
-      const held = selected?.amount ?? selected?.balance ?? 0;
-      if (units > held) {
-        setError(`You only hold ${held.toLocaleString()} ${asset}.`);
-        return;
-      }
-    } else {
-      try {
-        units = parseBunker(amount);
-      } catch (e) {
-        setError((e as Error).message);
-        return;
-      }
+    setNotice('');
+    if (asset.kind === 'token' && !selected) {
+      setError('That token is no longer in this wallet.');
+      return;
     }
-    if (!isValidAddress(to)) {
+    let units: bigint;
+    try {
+      units = selected ? parseCount(amount) : parseBunker(amount);
+    } catch (e) {
+      const msg = (e as Error).message;
+      setError(selected && msg.includes('whole') ? 'Enter a whole number of tokens.' : msg);
+      return;
+    }
+    if (selected && units > selected.balance) {
+      setError(`You only hold ${formatCount(selected.balance)} ${assetLabel}.`);
+      return;
+    }
+    const recipient = to.trim();
+    if (!isValidAddress(recipient)) {
       setError('That is not a valid BunkerCoin address.');
       return;
     }
-    if (to.trim() === keypair.address) {
+    if (recipient === signer.address) {
       setError('That is your own address.');
       return;
     }
-    const currentFee = fee ?? 100;
-    if (!isToken && balance !== null && units + currentFee > balance) {
-      setError(`Insufficient balance (fee is ${formatUnits(currentFee)} BUNKER).`);
+    if (fee === null) {
+      setError(feeError ? `Network fee unavailable: ${feeError}` : 'The network fee has not loaded yet.');
+      return;
+    }
+    // The fee on screen is the fee that gets signed.
+    const reviewedFee = fee;
+    if (!selected && balance !== null && units + reviewedFee > balance) {
+      setError(`Insufficient balance (fee is ${formatUnits(reviewedFee)} BUNKER).`);
       return;
     }
     // Token transfers still pay their fee in BUNKER.
-    if (isToken && balance !== null && balance < currentFee) {
-      setError(`Not enough BUNKER for the ${formatUnits(currentFee)} fee.`);
+    if (selected && balance !== null && balance < reviewedFee) {
+      setError(`Not enough BUNKER for the ${formatUnits(reviewedFee)} fee.`);
       return;
     }
     setBusy(true);
     try {
-      // Nonce is fetched at send time: it must match the account's current value.
-      const nonce = await conn.getNonce(keypair.address);
-      const tx = isToken
-        ? signTokenTransfer({
-            privateKey: keypair.privateKey,
-            publicKey: keypair.publicKey,
-            to: to.trim(),
-            tokenId: tokenIdBytes(selected!),
-            amount: units,
-            nonce,
-            fee: currentFee,
-          })
-        : signTransfer({
-            privateKey: keypair.privateKey,
-            publicKey: keypair.publicKey,
-            to: to.trim(),
-            amount: units,
-            nonce,
-            fee: currentFee,
-          });
-      const txId = await conn.sendTransaction(tx);
-      onSubmitted({
-        txId,
-        kind: isToken ? 'token-send' : 'send',
-        to: to.trim(),
-        amount: units,
-        ticker: isToken ? asset : undefined,
-        at: Date.now(),
-      });
+      const { txId, tracked } = await submit(
+        (nonce) =>
+          signer.use((privateKey, publicKey) =>
+            selected
+              ? signTokenTransfer({
+                  privateKey,
+                  publicKey,
+                  to: recipient,
+                  tokenId: tokenIdBytes(selected.tokenId),
+                  amount: units,
+                  nonce,
+                  fee: reviewedFee,
+                })
+              : signTransfer({ privateKey, publicKey, to: recipient, amount: units, nonce, fee: reviewedFee }),
+          ),
+        { kind: selected ? 'token-send' : 'send', to: recipient, amount: units, ticker: selected ? assetLabel : undefined },
+      );
       setTo('');
       setAmount('');
+      if (!tracked) {
+        setNotice(
+          `Sent (${shortAddress(txId, 6)}). Tracking could not be saved on this device, so it will not survive a reload.`,
+        );
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -130,22 +119,23 @@ export default function Send({ conn, keypair, balance, tokens, onSubmitted }: Se
         <>
           <Label>Asset</Label>
           <div className="flex flex-wrap gap-2">
-            {[NATIVE, ...tokens.map((t, i) => t.ticker || `Token ${t.tokenId ?? t.token_id ?? i}`)].map(
-              (label) => (
-                <Button
-                  key={label}
-                  variant={asset === label ? 'primary' : 'ghost'}
-                  small
-                  onClick={() => {
-                    setAsset(label);
-                    setAmount('');
-                    setError('');
-                  }}
-                >
-                  {label}
-                </Button>
-              ),
-            )}
+            {[
+              { asset: NATIVE_ASSET, label: NATIVE_TICKER },
+              ...tokens.map((t) => ({ asset: { kind: 'token', tokenId: t.tokenId } as Asset, label: tokenLabel(t) })),
+            ].map((option) => (
+              <Button
+                key={assetKey(option.asset)}
+                variant={assetKey(asset) === assetKey(option.asset) ? 'primary' : 'ghost'}
+                small
+                onClick={() => {
+                  setAsset(option.asset);
+                  setAmount('');
+                  setError('');
+                }}
+              >
+                {option.label}
+              </Button>
+            ))}
           </div>
         </>
       )}
@@ -161,20 +151,25 @@ export default function Send({ conn, keypair, balance, tokens, onSubmitted }: Se
           setError('');
         }}
       />
-      <Label>Amount ({asset})</Label>
+      <Label>Amount ({assetLabel})</Label>
       <Input
         value={amount}
-        placeholder={isToken ? '100' : '0.25'}
+        placeholder={asset.kind === 'token' ? '100' : '0.25'}
         inputMode="decimal"
         onChange={(e) => {
           setAmount(e.target.value);
           setError('');
         }}
       />
-      {fee !== null && <Hint>Network fee: {formatUnits(fee)} BUNKER</Hint>}
+      {fee !== null ? (
+        <Hint>Network fee: {formatUnits(fee)} BUNKER</Hint>
+      ) : (
+        feeError && <Hint>Network fee unavailable: {feeError}</Hint>
+      )}
       {error && <ErrorText>{error}</ErrorText>}
+      {notice && <Hint>{notice}</Hint>}
       <Divider />
-      <Button disabled={busy || !to || !amount} onClick={submit}>
+      <Button disabled={busy || !to || !amount || fee === null} onClick={send}>
         {busy ? 'Signing & sending…' : 'Send'}
       </Button>
     </Card>

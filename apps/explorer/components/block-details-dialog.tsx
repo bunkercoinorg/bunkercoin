@@ -1,8 +1,10 @@
 'use client';
 
 import { useAtom } from 'jotai';
-import { selectedBlockHashAtom, selectedBlockDetailsAtom, blockDetailsLoadingAtom } from '@/lib/atoms';
+import { selectedBlockHashAtom } from '@/lib/atoms';
 import { api } from '@/lib/api';
+import { useEntity } from '@/lib/use-entity';
+import { RefreshNotice } from '@/components/explorer-ui';
 import {
   Dialog,
   DialogContent,
@@ -12,75 +14,40 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { Copy, AlertTriangle, Clock, Check } from 'lucide-react';
+import type { Block } from '@/lib/types';
+
+const PENDING_POLL_MS = 5000;
+const COPIED_MS = 2000;
+
+const pollUntilFinal = (b: Block | null) => (b && b.status !== 'finalized' ? PENDING_POLL_MS : null);
 
 export default function BlockDetailsDialog() {
   const [selectedBlockHash, setSelectedBlockHash] = useAtom(selectedBlockHashAtom);
-  const [blockDetails, setBlockDetails] = useAtom(selectedBlockDetailsAtom);
-  const [loading, setLoading] = useAtom(blockDetailsLoadingAtom);
-  const [pendingTime, setPendingTime] = useState(0);
+  const entity = useEntity(selectedBlockHash, (id, signal) => api.getBlock(id, { signal }), pollUntilFinal);
+  const blockDetails = entity.data;
+  const loading = entity.status === 'loading';
   const [copiedHash, setCopiedHash] = useState<string | null>(null);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  useEffect(() => {
-    if (selectedBlockHash !== null) {
-      setLoading(true);
-      setBlockDetails(null);
-      api.getBlock(selectedBlockHash)
-        .then((details) => {
-          setBlockDetails(details);
-          setLoading(false);
-        })
-        .catch(() => {
-          setLoading(false);
-          setBlockDetails(null);
-        });
-    }
-  }, [selectedBlockHash, setBlockDetails, setLoading]);
-
-  useEffect(() => {
-    if (blockDetails && blockDetails.status !== 'finalized' && blockDetails.proposed_timestamp) {
-      const updatePendingTime = () => {
-        const now = Date.now();
-        const proposedTime = blockDetails.proposed_timestamp!;
-        setPendingTime(Math.floor((now - proposedTime) / 1000));
-      };
-
-      updatePendingTime();
-      const interval = setInterval(updatePendingTime, 1000);
-
-      return () => clearInterval(interval);
-    } else {
-      setPendingTime(0);
-    }
-  }, [blockDetails]);
-
-  useEffect(() => {
-    if (selectedBlockHash === null) return;
-
-    const interval = setInterval(() => {
-      api.getBlock(selectedBlockHash)
-        .then((details) => {
-          setBlockDetails(details);
-        })
-        .catch(() => {});
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [selectedBlockHash, setBlockDetails]);
+  useEffect(() => () => clearTimeout(copyTimer.current), []);
 
   const handleClose = () => {
     setSelectedBlockHash(null);
-    setBlockDetails(null);
     setCopiedHash(null);
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text).then(() => {
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
       setCopiedHash(text);
-      setTimeout(() => setCopiedHash(null), 2000);
-    }).catch(() => {});
+      clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopiedHash(null), COPIED_MS);
+    } catch {
+      setCopiedHash(null);
+    }
   };
 
   const handleParentClick = () => {
@@ -119,11 +86,14 @@ export default function BlockDetailsDialog() {
           </div>
         ) : blockDetails ? (
           <div className="space-y-3 py-2 text-sm">
+            <RefreshNotice error={entity.refreshError} lastSuccess={entity.lastSuccess} onRetry={entity.retry} />
             <div className="flex items-start gap-2">
               <span className="w-[110px] text-muted-foreground">Hash</span>
               <span className="font-mono break-all flex-1">{blockDetails.hash}</span>
-              <button 
-                onClick={() => copyToClipboard(blockDetails.hash)} 
+              <button
+                type="button"
+                aria-label="Copy hash"
+                onClick={() => copyToClipboard(blockDetails.hash)}
                 className="opacity-70 hover:opacity-100 transition-all duration-200"
               >
                 {copiedHash === blockDetails.hash ? (
@@ -160,17 +130,13 @@ export default function BlockDetailsDialog() {
                 <div className="flex items-center gap-2">
                   <span className="w-[110px] text-muted-foreground">Proposed at</span>
                   <span>
-                    {blockDetails.proposed_timestamp && !isNaN(new Date(blockDetails.proposed_timestamp).getTime())
-                      ? format(new Date(blockDetails.proposed_timestamp), 'PPpp')
-                      : blockDetails.timestamp && !isNaN(new Date(blockDetails.timestamp).getTime())
-                        ? format(new Date(blockDetails.timestamp), 'PPpp')
-                        : 'N/A'}
+                    {blockDetails.proposed_timestamp ? format(blockDetails.proposed_timestamp, 'PPpp') : 'N/A'}
                   </span>
                 </div>
-                {blockDetails.finalized_timestamp && !isNaN(new Date(blockDetails.finalized_timestamp).getTime()) ? (
+                {blockDetails.finalized_timestamp ? (
                   <div className="flex items-center gap-2">
                     <span className="w-[110px] text-muted-foreground">Finalized at</span>
-                    <span>{format(new Date(blockDetails.finalized_timestamp), 'PPpp')}</span>
+                    <span>{format(blockDetails.finalized_timestamp, 'PPpp')}</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
@@ -178,9 +144,7 @@ export default function BlockDetailsDialog() {
                     <span className="flex items-center gap-1.5">
                       <Clock size={14} className="animate-pulse" />
                       <span>
-                        {blockDetails.proposed_timestamp
-                          ? formatDistanceToNow(blockDetails.proposed_timestamp)
-                          : `${pendingTime}s`}
+                        {blockDetails.proposed_timestamp ? formatDistanceToNow(blockDetails.proposed_timestamp) : 'N/A'}
                       </span>
                     </span>
                   </div>
@@ -192,10 +156,10 @@ export default function BlockDetailsDialog() {
               <div className="flex items-center gap-2">
                 <span className="w-[110px] text-muted-foreground">Timestamp</span>
                 <span>
-                  {blockDetails.finalized_timestamp && !isNaN(new Date(blockDetails.finalized_timestamp).getTime())
-                    ? format(new Date(blockDetails.finalized_timestamp), 'PPpp')
-                    : blockDetails.proposed_timestamp && !isNaN(new Date(blockDetails.proposed_timestamp).getTime())
-                      ? format(new Date(blockDetails.proposed_timestamp), 'PPpp')
+                  {blockDetails.finalized_timestamp
+                    ? format(blockDetails.finalized_timestamp, 'PPpp')
+                    : blockDetails.proposed_timestamp
+                      ? format(blockDetails.proposed_timestamp, 'PPpp')
                       : 'N/A'}
                 </span>
               </div>
@@ -205,6 +169,7 @@ export default function BlockDetailsDialog() {
               <div className="flex items-center gap-2">
                 <span className="w-[110px] text-muted-foreground">Parent Slot</span>
                 <button
+                  type="button"
                   onClick={handleParentClick}
                   className="font-mono underline-offset-2 hover:underline text-primary"
                   disabled={!blockDetails.parent_hash}
@@ -218,8 +183,10 @@ export default function BlockDetailsDialog() {
               <div className="flex items-start gap-2">
                 <span className="w-[110px] text-muted-foreground">Parent Hash</span>
                 <span className="font-mono break-all flex-1">{blockDetails.parent_hash}</span>
-                <button 
-                  onClick={() => copyToClipboard(blockDetails.parent_hash!)} 
+                <button
+                  type="button"
+                  aria-label="Copy parent hash"
+                  onClick={() => blockDetails.parent_hash && copyToClipboard(blockDetails.parent_hash)}
                   className="opacity-70 hover:opacity-100 transition-all duration-200"
                 >
                   {copiedHash === blockDetails.parent_hash ? (
@@ -230,6 +197,13 @@ export default function BlockDetailsDialog() {
                 </button>
               </div>
             )}
+          </div>
+        ) : entity.status === 'error' ? (
+          <div className="py-8 text-center text-sm text-red-400">
+            {entity.error}{' '}
+            <button type="button" onClick={entity.retry} className="underline">
+              Retry
+            </button>
           </div>
         ) : (
           <div className="py-8 text-center text-muted-foreground">Block not found</div>

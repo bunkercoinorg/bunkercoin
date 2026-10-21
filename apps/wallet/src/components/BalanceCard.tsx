@@ -1,14 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import type { TokenBalance } from '@/lib/connection';
-import { formatUnits, shortAddress } from '@/lib/format';
+import { tokenLabel, type TokenBalance } from '@/lib/connection';
+import { formatCount, formatUnits, shortAddress } from '@/lib/format';
 import { copyText } from '@/lib/clipboard';
 import { Button, Card, Divider } from '@/components/ui';
 
 interface BalanceCardProps {
   address: string;
-  balance: number | null;
+  balance: bigint | null;
   tokens: TokenBalance[];
 }
 
@@ -39,11 +39,11 @@ export default function BalanceCard({ address, balance, tokens }: BalanceCardPro
       {tokens.length > 0 && (
         <>
           <Divider />
-          {tokens.map((t, i) => (
-            <div className="flex items-center justify-between border-t border-line py-3 text-sm" key={i}>
-              <span>{t.ticker || `Token ${t.tokenId ?? t.token_id ?? i}`}</span>
+          {tokens.map((t) => (
+            <div className="flex items-center justify-between border-t border-line py-3 text-sm" key={t.tokenId}>
+              <span>{tokenLabel(t)}</span>
               {/* Custom tokens have no decimals on-chain — raw count, not µ units. */}
-              <span className="font-mono">{(t.amount ?? t.balance ?? 0).toLocaleString()}</span>
+              <span className="font-mono">{formatCount(t.balance)}</span>
             </div>
           ))}
         </>

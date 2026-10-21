@@ -1,30 +1,35 @@
 'use client';
 
 import { useState } from 'react';
-import { decryptMnemonic, loadKeystore, clearKeystore } from '@/lib/keystore';
-import { keypairFromMnemonic, type Keypair } from '@/lib/keys';
+import { decryptMnemonic, requireKeystore } from '@/lib/keystore';
+import { keypairFromMnemonic } from '@/lib/keys';
+import type { FinishUnlock } from '@/lib/unlock';
 import { useElapsed } from '@/hooks/useElapsed';
 import KdfProgress from '@/components/KdfProgress';
 import { Button, ErrorText, Input } from '@/components/ui';
 
 interface UnlockProps {
-  onUnlocked: (keypair: Keypair) => void;
+  beginUnlock: () => FinishUnlock;
   onReset: () => void;
 }
 
-export default function Unlock({ onUnlocked, onReset }: UnlockProps) {
+export default function Unlock({ beginUnlock, onReset }: UnlockProps) {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
+  const [fallback, setFallback] = useState(false);
   const elapsed = useElapsed(busy);
 
   const submit = async () => {
     setBusy(true);
     setError('');
+    setFallback(false);
+    const finish = beginUnlock();
     try {
-      const mnemonic = await decryptMnemonic(loadKeystore(), password);
-      onUnlocked(keypairFromMnemonic(mnemonic));
+      const record = requireKeystore();
+      const mnemonic = await decryptMnemonic(record, password, { onFallback: () => setFallback(true) });
+      if (!finish(keypairFromMnemonic(mnemonic), record)) throw new Error('The wallet on this device changed meanwhile.');
     } catch (e) {
       const msg = (e as Error).message;
       setError(msg === 'Incorrect password' ? 'Incorrect password.' : msg);
@@ -57,7 +62,7 @@ export default function Unlock({ onUnlocked, onReset }: UnlockProps) {
       {error && <ErrorText>{error}</ErrorText>}
 
       {busy ? (
-        <KdfProgress label="Unlocking — checking your password" elapsed={elapsed} />
+        <KdfProgress label="Unlocking — checking your password" elapsed={elapsed} fallback={fallback} />
       ) : (
         <div className="mt-4.5">
           <Button disabled={!password} onClick={submit}>
@@ -74,10 +79,7 @@ export default function Unlock({ onUnlocked, onReset }: UnlockProps) {
             variant="danger"
             small
             className="mt-2.5"
-            onClick={() => {
-              clearKeystore();
-              onReset();
-            }}
+            onClick={onReset}
           >
             Really erase this wallet from the device
           </Button>
