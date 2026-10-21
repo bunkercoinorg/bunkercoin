@@ -5,9 +5,9 @@ import * as next from '../src/index.ts';
 import * as walletJson from '../../../apps/wallet/src/lib/json.ts';
 import * as walletFormat from '../../../apps/wallet/src/lib/format.ts';
 import * as walletKeys from '../../../apps/wallet/src/lib/keys.ts';
-import * as explorerJson from '../../../apps/explorer/lib/json.ts';
-import * as explorerAmount from '../../../apps/explorer/lib/amount.ts';
-import * as explorerCodec from '../../../apps/explorer/lib/codec.ts';
+import * as explorerJson from './legacy/explorer-json.ts';
+import * as explorerAmount from './legacy/explorer-amount.ts';
+import * as explorerCodec from './legacy/explorer-codec.ts';
 
 function rng(seed: number) {
   return () => {
