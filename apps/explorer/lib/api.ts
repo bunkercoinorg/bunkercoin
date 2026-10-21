@@ -1,7 +1,7 @@
 import { NODE_API_URL } from './config.ts';
 import { parseJson, type Json } from './json.ts';
 import { joinUrl, nodePaths } from './routes.ts';
-import { normalizeHash, normalizeSlot, normalizeTokenId } from './codec.ts';
+import { normalizeHash, normalizeSlot, normalizeTokenId } from '@bunkercoin/chain-format';
 import { resolveSearch } from './search.ts';
 import {
   asAccount,
@@ -10,6 +10,7 @@ import {
   asHolderPage,
   asNodes,
   asToken,
+  asTokens,
   asTransaction,
   ShapeError,
 } from './guards.ts';
@@ -136,6 +137,11 @@ export const api = {
     const key = normalizeTokenId(id);
     if (key === null) return null;
     return orNull(await request(nodePaths.token(key), opts), (b) => asToken(b));
+  },
+
+  getTokens: async (opts?: RequestOptions): Promise<TokenSummary[]> => {
+    const body = await expect(nodePaths.tokens(), opts);
+    return guard(() => asTokens(body));
   },
 
   getTokenHolders: async (

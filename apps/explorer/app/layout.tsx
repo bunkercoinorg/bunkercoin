@@ -1,17 +1,9 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { fontClassName } from "@bunkercoin/ui/fonts";
+import { THEME_COLORS, themeInitScript } from "@bunkercoin/ui";
 import "./globals.css";
 import Providers from './providers';
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import Shell from '@/components/shell';
 
 const title = "BunkerCoin Explorer | Private Testnet";
 const description =
@@ -62,17 +54,22 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport: Viewport = { themeColor: THEME_COLORS.dark };
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <Providers>{children}</Providers>
+    <html lang="en" data-theme="dark" className={fontClassName} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript('dark') }} />
+      </head>
+      <body>
+        <Providers>
+          <Shell>{children}</Shell>
+        </Providers>
       </body>
     </html>
   );

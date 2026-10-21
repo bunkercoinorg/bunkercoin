@@ -23,6 +23,9 @@ export interface TransactionBody {
   to?: string;
   amount?: bigint;
   token_id?: string;
+  ticker?: string;
+  max_supply?: bigint;
+  metadata_hash?: string;
 }
 
 // Mirrors the node's `status.location`: mempool -> confirmed (in a block) -> finalized.
@@ -56,6 +59,8 @@ export interface TokenSummary {
   ticker: string;
   current_supply: bigint;
   max_supply?: bigint;
+  creator?: string;
+  metadata_hash?: string;
 }
 
 export interface TokenHolder {

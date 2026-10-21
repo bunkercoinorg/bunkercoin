@@ -1,4 +1,4 @@
-import { normalizeHash, normalizeSlot, normalizeTokenId, toBase58 } from './codec.ts';
+import { normalizeHash, normalizeSlot, normalizeTokenId, toBase58 } from '@bunkercoin/chain-format';
 import type { AccountDetails, SearchKind, SearchMatch } from './types.ts';
 
 export interface SearchCandidate {
@@ -6,9 +6,21 @@ export interface SearchCandidate {
   id: string;
 }
 
+const PREFIXES: Record<string, SearchKind> = { slot: 'block', block: 'block', tx: 'transaction', account: 'account', token: 'token' };
+
 // Every entity a query could name by shape alone. An 8-digit string is both a
-// slot and a token id, and a 32-byte value is a tx, block, or account.
+// slot and a token id, and a 32-byte value is a tx, block, or account. A
+// `slot:`/`block:`/`tx:`/`account:`/`token:` prefix keeps only that kind.
 export function classifyQuery(raw: string): SearchCandidate[] {
+  const prefixed = /^(slot|block|tx|account|token):\s*(.*)$/i.exec(raw.trim());
+  if (prefixed) {
+    const name = prefixed[1].toLowerCase();
+    return classifyShape(prefixed[2]).filter((c) => c.kind === PREFIXES[name] && (name !== 'slot' || /^\d+$/.test(c.id)));
+  }
+  return classifyShape(raw);
+}
+
+function classifyShape(raw: string): SearchCandidate[] {
   const q = raw.trim();
   if (!q) return [];
   const out: SearchCandidate[] = [];

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { classifyQuery, resolveSearch, searchOutcome, type SearchProbes } from '../lib/search.ts';
-import { base58Encode, hexEncode } from '../lib/codec.ts';
+import { bytesToBase58 as base58Encode, bytesToHex as hexEncode } from '@bunkercoin/chain-format';
 import type { AccountDetails } from '../lib/types.ts';
 
 const HASH = 'ab'.repeat(32);
@@ -117,4 +117,12 @@ test('base58 input is normalized to hex before probing', async () => {
   const key = new Uint8Array(32).fill(9);
   await resolveSearch(base58Encode(key), probes({}, calls));
   assert.ok(calls.includes(`transaction:${hexEncode(key)}`));
+});
+
+test('a prefix keeps only that kind of candidate', () => {
+  assert.deepEqual(classifyQuery('slot:00000001').map((c) => c.kind), ['block']);
+  assert.deepEqual(classifyQuery('token:00000001').map((c) => [c.kind, c.id]), [['token', '00000001']]);
+  assert.deepEqual(classifyQuery('TX: ' + 'ab'.repeat(32)).map((c) => c.kind), ['transaction']);
+  assert.deepEqual(classifyQuery('slot:' + 'ab'.repeat(32)), []);
+  assert.deepEqual(classifyQuery('account:12'), []);
 });

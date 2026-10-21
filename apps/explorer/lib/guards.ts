@@ -110,6 +110,9 @@ function asBody(v: unknown): TransactionBody {
     to: opt(o.to, (x) => str(x, 'tx.body.to')),
     amount: opt(o.amount, (x) => u64(x, 'tx.body.amount')),
     token_id: opt(o.token_id, (x) => str(x, 'tx.body.token_id')),
+    ticker: opt(o.ticker, (x) => str(x, 'tx.body.ticker')),
+    max_supply: opt(o.max_supply, (x) => u64(x, 'tx.body.max_supply')),
+    metadata_hash: opt(o.metadata_hash, (x) => str(x, 'tx.body.metadata_hash')),
   };
 }
 
@@ -157,8 +160,13 @@ export function asToken(v: unknown, path = 'token'): TokenSummary {
     ticker: str(o.ticker, `${path}.ticker`),
     current_supply: u64(o.current_supply, `${path}.current_supply`),
     max_supply: opt(o.max_supply, (x) => u64(x, `${path}.max_supply`)),
+    creator: opt(o.creator, (x) => str(x, `${path}.creator`)),
+    metadata_hash: opt(o.metadata_hash, (x) => str(x, `${path}.metadata_hash`)),
   };
 }
+
+export const asTokens = (v: unknown): TokenSummary[] =>
+  arr(obj(v, 'tokens').tokens, 'tokens.tokens').map((t, i) => asToken(t, `tokens[${i}]`));
 
 export function asHolderPage(v: unknown): HolderPage {
   const o = obj(v, 'holders');
