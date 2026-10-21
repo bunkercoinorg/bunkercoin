@@ -318,3 +318,19 @@ test('asset identity never lets a token named like the native asset select nativ
   assert.notEqual(assetKey(bunkerToken), assetKey(NATIVE_ASSET));
   assert.notEqual(assetKey(bunkerToken), assetKey({ kind: 'token', tokenId: '03000000' }));
 });
+
+test('checkPhrase counts words, names the first unknown finished word and checks the checksum', async () => {
+  const { checkPhrase } = await import('../src/lib/keys.ts');
+  const phrase = createMnemonic();
+  const words = phrase.split(' ');
+  assert.deepEqual(checkPhrase(` ${phrase.toUpperCase()}\n`), { count: 24, unknown: null, valid: true });
+  assert.deepEqual(checkPhrase(words.slice(0, 18).join(' ')), { count: 18, unknown: null, valid: false });
+  assert.deepEqual(checkPhrase('abandon ab'), { count: 2, unknown: null, valid: false }, 'the word being typed is not judged');
+  assert.deepEqual(checkPhrase('abandon ab '), { count: 2, unknown: { position: 2, word: 'ab' }, valid: false });
+  const bad = [...words];
+  bad[8] = 'hazrd';
+  assert.deepEqual(checkPhrase(bad.join(' ')).unknown, { position: 9, word: 'hazrd' });
+  assert.deepEqual(checkPhrase(Array(24).fill('abandon').join(' ')), { count: 24, unknown: null, valid: false }, 'checksum fails');
+  assert.equal(checkPhrase(`${Array(23).fill('abandon').join(' ')} art`).valid, true);
+  assert.equal(checkPhrase(`${words.slice(0, 23).join(' ')} zzzz`).unknown?.position, 24, 'the 24th word is judged');
+});

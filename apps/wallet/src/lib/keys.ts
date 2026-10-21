@@ -56,6 +56,28 @@ export function normalizeMnemonic(phrase: string): string {
   return phrase.trim().toLowerCase().split(/\s+/).join(' ');
 }
 
+export const WORDLIST: readonly string[] = wordlist;
+const WORDS = new Set(wordlist);
+
+export interface PhraseCheck {
+  count: number;
+  /** First finished word outside the list; the word still being typed is not judged. */
+  unknown: { position: number; word: string } | null;
+  valid: boolean;
+}
+
+export function checkPhrase(text: string): PhraseCheck {
+  const words = text.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const typing = words.length > 0 && !/\s$/.test(text) && words.length < MNEMONIC_WORDS;
+  const judged = typing ? words.slice(0, -1) : words;
+  const at = judged.findIndex((w) => !WORDS.has(w));
+  return {
+    count: words.length,
+    unknown: at === -1 ? null : { position: at + 1, word: judged[at] },
+    valid: words.length === MNEMONIC_WORDS && at === -1 && validateMnemonic(words.join(' '), wordlist),
+  };
+}
+
 /** Mnemonic -> ed25519 keypair. Seed's first 32 bytes are the private scalar. */
 export function keypairFromMnemonic(phrase: string, passphrase = ''): Keypair {
   const normalized = normalizeMnemonic(phrase);

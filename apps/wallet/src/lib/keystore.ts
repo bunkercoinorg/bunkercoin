@@ -5,6 +5,7 @@ import { withLock } from './locks.ts';
 export type { KdfParams } from './kdf.ts';
 
 export const KEYSTORE_KEY = 'bunkercoin.keystore.v1';
+const ADDRESS_KEY = 'bunkercoin.address.v1';
 export const KDF_WATCHDOG_MS = 30_000;
 
 export interface DeriveOptions {
@@ -184,13 +185,45 @@ export function loadKeystore(): KeystoreState {
   }
 }
 
-/** The record to decrypt, or a user-facing error for every other storage state. */
+export class KeystoreError extends Error {
+  readonly status: 'absent' | 'corrupt' | 'unavailable';
+  constructor(status: KeystoreError['status'], message: string) {
+    super(message);
+    this.name = 'KeystoreError';
+    this.status = status;
+  }
+}
+
+/** The record to decrypt, or a KeystoreError naming every other storage state. */
 export function requireKeystore(): KeystoreRecord {
   const state = loadKeystore();
   if (state.status === 'ok') return state.record;
-  if (state.status === 'absent') throw new Error('No wallet on this device');
-  if (state.status === 'corrupt') throw new Error(`The stored wallet is unreadable (${state.reason})`);
-  throw new Error(`Browser storage is unavailable (${state.reason})`);
+  if (state.status === 'absent') throw new KeystoreError('absent', 'No wallet on this device');
+  if (state.status === 'corrupt') throw new KeystoreError('corrupt', `The stored wallet is unreadable (${state.reason})`);
+  throw new KeystoreError('unavailable', `Browser storage is unavailable (${state.reason})`);
+}
+
+/** The stored text exactly as saved, null when absent; throws when storage is denied. */
+export function readKeystoreRaw(): string | null {
+  return localStorage.getItem(KEYSTORE_KEY);
+}
+
+/** `412 bytes · version 3, expected 1`: what the unreadable-record gate shows. */
+export function describeRecord(raw: string): string {
+  const bytes = new TextEncoder().encode(raw).length;
+  let reason: string;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    const version = typeof parsed === 'object' && parsed !== null ? (parsed as { version?: unknown }).version : undefined;
+    if (version !== 1) reason = `version ${version === undefined ? 'missing' : JSON.stringify(version)}, expected 1`;
+    else {
+      validateRecord(parsed);
+      reason = 'readable';
+    }
+  } catch (e) {
+    reason = e instanceof SyntaxError ? 'not JSON' : (e as Error).message;
+  }
+  return `${bytes} bytes · ${reason}`;
 }
 
 /** Identifies one encrypted record; a session bound to another fingerprint belongs to a replaced wallet. */
@@ -210,6 +243,45 @@ export function saveKeystore(record: KeystoreRecord, current: () => boolean = ()
   });
 }
 
+/** Overwrites exactly the record the user agreed to replace; one changed meanwhile (another tab) is refused. */
+export function replaceKeystore(record: KeystoreRecord, previousRaw: string, current: () => boolean = () => true): Promise<void> {
+  return withLock(KEYSTORE_KEY, () => {
+    if (!current()) throw new Error('Setup was cancelled; nothing was saved');
+    if (localStorage.getItem(KEYSTORE_KEY) !== previousRaw) throw new Error('The saved wallet changed meanwhile; nothing was replaced');
+    localStorage.setItem(KEYSTORE_KEY, JSON.stringify(validateRecord(record)));
+    forgetAddress();
+  });
+}
+
 export function clearKeystore(): Promise<void> {
-  return withLock(KEYSTORE_KEY, () => localStorage.removeItem(KEYSTORE_KEY));
+  return withLock(KEYSTORE_KEY, () => {
+    localStorage.removeItem(KEYSTORE_KEY);
+    forgetAddress();
+  });
+}
+
+/** The address last unlocked from the record with this fingerprint, so a replace warning can name it while locked. */
+export function rememberedAddress(fingerprint: string): string | null {
+  try {
+    const memo = JSON.parse(localStorage.getItem(ADDRESS_KEY) ?? 'null') as { fp?: unknown; address?: unknown } | null;
+    return memo && memo.fp === fingerprint && typeof memo.address === 'string' ? memo.address : null;
+  } catch {
+    return null;
+  }
+}
+
+export function rememberAddress(fingerprint: string, address: string): void {
+  try {
+    localStorage.setItem(ADDRESS_KEY, JSON.stringify({ fp: fingerprint, address }));
+  } catch {
+    // Only the replace warning loses the address.
+  }
+}
+
+function forgetAddress(): void {
+  try {
+    localStorage.removeItem(ADDRESS_KEY);
+  } catch {
+    // Nothing stored either.
+  }
 }
