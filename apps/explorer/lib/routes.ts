@@ -18,7 +18,6 @@ const page = (route: string, key: string, value: string | number | bigint) =>
   `/${route}?${key}=${encodeURIComponent(String(value))}`;
 
 export const routes = {
-  home: () => '/',
   block: (id: string | number | bigint) => page('block', 'id', id),
   tx: (sig: string) => page('tx', 'sig', sig),
   account: (address: string) => page('account', 'address', address),
@@ -35,5 +34,4 @@ export const nodePaths = {
   token: (id: string) => buildPath(['tokens', id]),
   tokenHolders: (id: string, offset: number, limit: number) =>
     buildPath(['tokens', id, 'holders'], { offset, limit }),
-  ws: () => buildPath(['ws']),
 };

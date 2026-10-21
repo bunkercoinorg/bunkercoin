@@ -90,7 +90,10 @@ export function parseJson(text: string): Json {
         ws();
         if (text[i] !== ':') fail('Expected colon');
         i++;
-        Object.defineProperty(obj, key, { value: value(depth + 1), enumerable: true, writable: true, configurable: true });
+        const v = value(depth + 1);
+        // Assigning `__proto__` would replace the prototype instead of adding a key.
+        if (key === '__proto__') Object.defineProperty(obj, key, { value: v, enumerable: true, writable: true, configurable: true });
+        else obj[key] = v;
         ws();
         if (text[i] === ',') {
           i++;
