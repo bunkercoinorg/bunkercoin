@@ -46,11 +46,15 @@ The web apps live in a bun workspace under `apps/`:
 
 - `apps/explorer`: block explorer (Next.js)
 - `apps/wallet`: local-only web wallet (Next.js static export)
+- `apps/homepage`: bunkercoin.com (Next.js on Cloudflare Workers)
+- `apps/app`: the BunkerCoin app and hub (buybacks, transparency; Next.js on Cloudflare Workers)
 
 ```bash
 bun install
 bun run dev:explorer
 bun run dev:wallet
+bun run dev:homepage
+bun run dev:app
 bun run build
 ```
 

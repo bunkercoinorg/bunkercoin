@@ -1,5 +1,5 @@
 {
-  "name": "app",
+  "name": "@bunkercoin/app",
   "version": "1.0.0",
   "type": "module",
   "private": true,
@@ -21,7 +21,6 @@
     "@radix-ui/react-separator": "^1.1.6",
     "@radix-ui/react-slot": "^1.2.2",
     "@radix-ui/react-tooltip": "^1.2.6",
-    "@repo/ui": "*",
     "@solana/spl-token": "^0.4.13",
     "@solana/web3.js": "^1.98.2",
     "@solanafm/explorer-kit": "^1.2.0",
@@ -42,8 +41,8 @@
     "@repo/eslint-config": "*",
     "@repo/typescript-config": "*",
     "@types/node": "^22",
-    "@types/react": "19.0.8",
-    "@types/react-dom": "19.0.3",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
     "tw-animate-css": "^1.2.9",
     "typescript": "5.7.3"
   }

@@ -42,3 +42,6 @@ next-env.d.ts
 
 # JetBrains
 .idea
+
+# wrangler local secrets
+.dev.vars*
