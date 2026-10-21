@@ -105,7 +105,7 @@ const GALLERY: Record<string, ReactElement> = {
     columns: Array.from({ length: 60 }, (_, i) => ({ level: i === 17 ? null : (i % 8) + 1, finalized: i % 7 === 3 ? `48,${200 + i} finalized` : undefined })),
     summary: 'last 2 minutes: average 3.4 kb/s, 9 blocks finalized, 2 gaps',
     peak: '4.1 kb/s',
-    samples: [{ time: '21:04:17 UTC', value: '3.42 kb/s' }],
+    samples: [{ time: '21:04:17 UTC', value: '3.42 kb/s', finalized: '48,203 at 21:04:16 UTC' }],
   }),
   DataTable: h(explorer.DataTable, {
     caption: 'recent blocks',
@@ -240,6 +240,7 @@ test('words, qr, tables and strip carry their semantics', () => {
   assert.match(strip, /class="bc-c-g"/);
   assert.match(strip, /<title>48,203 finalized<\/title>/);
   assert.match(strip, /<table class="bc-sr"><caption>latest samples<\/caption>/);
+  assert.match(strip, /<th scope="col">finalized<\/th>.*<td>48,203 at 21:04:16 UTC<\/td>/);
   assert.match(render('Lifecycle'), /<li data-state="current" aria-current="step">/);
   assert.match(render('HeaderSearch'), /<form class="bc-hs" role="search"><label class="bc-sr" for="([^"]+)">search<\/label><input type="text" class="bc-inp" data-mono="" id="\1"/);
 });

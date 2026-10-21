@@ -6,7 +6,7 @@ import { StatusTag } from '../status.tsx';
 /** One 2s telemetry sample. `level` 0-8 lit cells, `null` = no sample (dashed gap). `finalized` labels a finalized column. */
 export type StripColumn = { level: number | null; finalized?: string };
 
-export type StripSample = { time: string; value: string };
+export type StripSample = { time: string; value: string; finalized?: string };
 
 function stripSvg(columns: StripColumn[], className: string) {
   const groups = new Map<string, string[]>();
@@ -107,6 +107,7 @@ export function TransmissionStrip({
             <tr>
               <th scope="col">time</th>
               <th scope="col">throughput</th>
+              <th scope="col">finalized</th>
             </tr>
           </thead>
           <tbody>
@@ -114,6 +115,7 @@ export function TransmissionStrip({
               <tr key={i}>
                 <td>{s.time}</td>
                 <td>{s.value}</td>
+                <td>{s.finalized ?? '–'}</td>
               </tr>
             ))}
           </tbody>

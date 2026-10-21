@@ -27,6 +27,13 @@ test('finalized blocks label their sampled column with the highest slot', () => 
   assert.match(f.summary, /1 block finalized, 1 gap$/);
 });
 
+test('a finalized mark on a gap column is neither counted nor listed; drawn marks are listed', () => {
+  const f = stripFrame([{ at: END - 500, bps: 1000 }], [{ slot: 7, at: END - 2500 }, { slot: 8, at: END - 100 }], END, 2);
+  assert.equal(f.columns[0].finalized, undefined);
+  assert.match(f.summary, /1 block finalized, 1 gap$/);
+  assert.deepEqual(f.samples, [{ time: '21:03:59 UTC', value: '1.00 kb/s', finalized: '8 at 21:03:59 UTC' }]);
+});
+
 test('samples outside the window are ignored and the table lists newest first', () => {
   const f = stripFrame([{ at: END - 10_000, bps: 9 }, { at: END - 3000, bps: 1000 }, { at: END - 1000, bps: 3000 }], [], END, 2);
   assert.deepEqual(f.samples.map((s) => s.value), ['3.00 kb/s', '1.00 kb/s']);

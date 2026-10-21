@@ -24,7 +24,7 @@ export interface StripFrame {
   columns: StripColumnData[];
   summary: string;
   peak: string | undefined;
-  samples: { time: string; value: string }[];
+  samples: { time: string; value: string; finalized?: string }[];
 }
 
 export const kbps = (bps: number) => `${(bps / 1000).toFixed(2)} kb/s`;
@@ -43,28 +43,32 @@ export function stripFrame(
   const start = end - count * step;
   const bucket = (at: number) => (at > start && at <= end ? Math.min(count - 1, Math.floor((at - start - 1) / step)) : -1);
   const values: (number | null)[] = Array(count).fill(null);
-  const shown: RadioSample[] = [];
+  const owner: (RadioSample | undefined)[] = Array(count).fill(undefined);
+  const shown: { sample: RadioSample; i: number }[] = [];
   for (const s of samples) {
     const i = bucket(s.at);
     if (i < 0) continue;
     values[i] = s.bps;
-    shown.push(s);
+    owner[i] = s;
+    shown.push({ sample: s, i });
   }
   const marks: (FinalizedMark | undefined)[] = Array(count).fill(undefined);
   for (const f of finalized) {
     const i = bucket(f.at);
     if (i >= 0 && (!marks[i] || marks[i]!.slot < f.slot)) marks[i] = f;
   }
+  // A mark on a gap column is never drawn, so it is neither counted nor listed.
+  const drawn = marks.map((m, i) => (values[i] === null ? undefined : m));
   const lit = values.filter((v): v is number => v !== null);
   const peak = lit.length ? Math.max(...lit) : 0;
   const columns = values.map((v, i): StripColumnData => {
     if (v === null) return { level: null };
     const level = v <= 0 || peak <= 0 ? 0 : Math.max(1, Math.ceil((8 * v) / peak));
-    const m = marks[i];
+    const m = drawn[i];
     return m ? { level, finalized: `${formatInteger(BigInt(m.slot))} finalized ${utcClock(m.at)}` } : { level };
   });
   const gaps = count - lit.length;
-  const blocks = marks.filter(Boolean).length;
+  const blocks = drawn.filter(Boolean).length;
   const average = lit.length ? lit.reduce((a, b) => a + b, 0) / lit.length : null;
   const summary =
     average === null
@@ -74,6 +78,12 @@ export function stripFrame(
     columns,
     summary,
     peak: lit.length ? kbps(peak) : undefined,
-    samples: shown.slice(-10).reverse().map((s) => ({ time: utcClock(s.at), value: kbps(s.bps) })),
+    samples: shown
+      .slice(-10)
+      .reverse()
+      .map(({ sample: s, i }) => {
+        const m = owner[i] === s ? drawn[i] : undefined;
+        return m ? { time: utcClock(s.at), value: kbps(s.bps), finalized: `${formatInteger(BigInt(m.slot))} at ${utcClock(m.at)}` } : { time: utcClock(s.at), value: kbps(s.bps) };
+      }),
   };
 }
