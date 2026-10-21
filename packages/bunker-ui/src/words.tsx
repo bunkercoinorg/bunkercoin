@@ -1,6 +1,6 @@
 'use client';
 
-import type { CSSProperties, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
@@ -8,7 +8,7 @@ const pad2 = (n: number) => String(n).padStart(2, '0');
 export function WordGrid({ words, columns = 4, label = 'recovery phrase' }: { words: string[] | null; columns?: 2 | 3 | 4; label?: string }) {
   if (!words) return null;
   return (
-    <ol className="bc-wg" aria-label={label} style={{ '--c': columns } as CSSProperties} onCopy={(e) => e.preventDefault()} onCut={(e) => e.preventDefault()}>
+    <ol className="bc-wg" aria-label={label} data-columns={columns} onCopy={(e) => e.preventDefault()} onCut={(e) => e.preventDefault()}>
       {words.map((w, i) => (
         <li key={i}>
           <b aria-hidden="true">{pad2(i + 1)}</b>

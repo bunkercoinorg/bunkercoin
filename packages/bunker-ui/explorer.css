@@ -75,5 +75,5 @@
 .bc-life > li[data-state="done"] { color: var(--fg); }
 @media (max-width: 40rem) { .bc-life { grid-template-columns: 1fr; } }
 .bc-bar8 { height: 8px; background: var(--line-soft); width: 100px; display: inline-block; vertical-align: middle; margin-right: 10px; }
-.bc-bar8 i { display: block; height: 100%; background: var(--dim); }
+.bc-bar8 rect { fill: var(--dim); }
 .bc-newbar { display: flex; align-items: center; gap: 12px; padding: 0 20px; min-height: 40px; background: var(--acc-soft); border-bottom: 1px solid var(--line); font: 400 12px/1 var(--mono); color: var(--fg); }

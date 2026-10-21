@@ -1,12 +1,10 @@
 'use client';
 
-import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { formatUnits, shortId } from '@bunkercoin/chain-format';
 import { Icon, type IconName } from './icons.tsx';
 import { Link } from './link.tsx';
 import { Button } from './controls.tsx';
-
-const vars = (v: Record<string, string | number | undefined>) => v as CSSProperties;
 
 export type PanelTone = 'default' | 'receipt' | 'danger';
 
@@ -67,7 +65,7 @@ export function Facts({
   phoneColumns?: 1 | 2;
 }) {
   return (
-    <dl className="bc-fx" data-variant={variant === 'rows' ? 'rows' : undefined} data-phone-columns={phoneColumns} style={vars({ '--c': columns })}>
+    <dl className="bc-fx" data-variant={variant === 'rows' ? 'rows' : undefined} data-phone-columns={phoneColumns} data-columns={columns}>
       {items.map((f, i) => (
         <div key={i} data-wide={f.wide ? '' : undefined} data-strong={f.strong ? '' : undefined} data-changed={f.changed ? '' : undefined}>
           <dt>{f.label}</dt>
@@ -79,9 +77,9 @@ export function Facts({
 }
 
 /** Gap-px cell grid (validators). */
-export function Cells({ children, columns = 2 }: { children: ReactNode; columns?: number }) {
+export function Cells({ children, columns = 2 }: { children: ReactNode; columns?: 1 | 2 | 3 | 4 }) {
   return (
-    <div className="bc-cells" style={vars({ '--c': columns })}>
+    <div className="bc-cells" data-columns={columns}>
       {children}
     </div>
   );

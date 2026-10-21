@@ -135,7 +135,9 @@ test('every exported component is in the gallery and renders', () => {
     .map(([name]) => name);
   for (const name of components) {
     assert.ok(name in GALLERY, `${name} missing from the gallery`);
-    assert.ok(render(name).length > 0, `${name} rendered nothing`);
+    const html = render(name);
+    assert.ok(html.length > 0, `${name} rendered nothing`);
+    assert.doesNotMatch(html, /\sstyle="/, `${name} emits an inline style, which the wallet CSP blocks`);
   }
 });
 

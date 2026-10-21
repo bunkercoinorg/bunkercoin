@@ -16,7 +16,7 @@ const ICONS = {
   plus: <><path d="M8 2.5v11M2.5 8h11" /></>,
   home: <><path d="M2.5 7L8 2.5 13.5 7v6.5h-11z" /><path d="M6.5 13.5v-4h3v4" /></>,
   activity: <><rect x="2.5" y="2.5" width="11" height="11" /><path d="M8 5v3.5h2.5" /></>,
-  settings: <><path d="M2 5h12M2 11h12" /><rect x="4.5" y="3.5" width="3" height="3" style={{ fill: "var(--bg)" }} /><rect x="8.5" y="9.5" width="3" height="3" style={{ fill: "var(--bg)" }} /></>,
+  settings: <><path d="M2 5h12M2 11h12" /><rect x="4.5" y="3.5" width="3" height="3" className="bc-ic-knob" /><rect x="8.5" y="9.5" width="3" height="3" className="bc-ic-knob" /></>,
   lock: <><rect x="3.5" y="7.5" width="9" height="6" /><path d="M5.5 7.5v-3h5v3" /></>,
   back: <><path d="M13.5 8h-11M6.5 4l-4 4 4 4" /></>,
   chev: <><path d="M6 3.5L10.5 8 6 12.5" /></>,
@@ -29,7 +29,7 @@ export const ICON_NAMES = Object.keys(ICONS) as IconName[];
 /** One sprite per page: the brand symbol and every line icon. AppShell renders it. */
 export function Sprite() {
   return (
-    <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true" focusable="false">
+    <svg className="bc-sprite" width="0" height="0" aria-hidden="true" focusable="false">
       <symbol id="bc-mark" viewBox="0 0 161 128">
         <path d={B_PATH} />
         <path d={C_PATH} />

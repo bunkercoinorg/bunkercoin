@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useState, type HTMLAttributes, type ReactNode } from 'react';
 import { relativeAge, utcClock } from '@bunkercoin/chain-format';
 import { Button } from './controls.tsx';
 
@@ -137,23 +137,15 @@ export function StateLine({ children }: { children: ReactNode }) {
   );
 }
 
-/** Hairline boxes, no shimmer. `columns` is a grid-template-columns list. */
-export function Skeleton({
-  rows = 8,
-  columns = ['90px', '110px', '1fr', '70px', '50px'],
-  label,
-}: {
-  rows?: number;
-  columns?: string[];
-  label?: ReactNode;
-}) {
+/** Hairline boxes, no shimmer; `columns` 1-5 (5 = the blocks table). */
+export function Skeleton({ rows = 8, columns = 5, label }: { rows?: number; columns?: 1 | 2 | 3 | 4 | 5; label?: ReactNode }) {
   return (
     <div role="status" aria-live="polite">
       {label ? <p className="bc-stl">{label}</p> : <span className="bc-sr">loading</span>}
       <div aria-hidden="true">
         {Array.from({ length: rows }, (_, r) => (
-          <div key={r} className="bc-skr" style={{ '--cols': columns.join(' ') } as CSSProperties}>
-            {columns.map((_, c) => (
+          <div key={r} className="bc-skr" data-cols={columns}>
+            {Array.from({ length: columns }, (_, c) => (
               <span key={c} className="bc-sk" />
             ))}
           </div>

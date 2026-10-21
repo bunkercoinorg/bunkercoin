@@ -1,6 +1,6 @@
 'use client';
 
-import type { CSSProperties, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { BrandMark, Icon, Sprite, type IconName } from './icons.tsx';
 import { Link } from './link.tsx';
 import { Button } from './controls.tsx';
@@ -131,7 +131,7 @@ const WALLET_TABS: TabItem[] = [
 /** Phone-only bottom navigation (wallet home, activity, settings). */
 export function TabBar({ current, items = WALLET_TABS, label = 'wallet' }: { current: string; items?: TabItem[]; label?: string }) {
   return (
-    <nav className="bc-tabbar" aria-label={label} style={{ '--c': items.length } as CSSProperties}>
+    <nav className="bc-tabbar" aria-label={label}>
       {items.map((t) => (
         <Link key={t.href} href={t.href} aria-current={t.label === current ? 'page' : undefined}>
           <Icon name={t.icon} />

@@ -52,9 +52,9 @@ export function ShareBar({ fraction, label }: { fraction: number; label: string 
   const pct = Math.max(0, Math.min(1, fraction)) * 100;
   return (
     <span>
-      <span className="bc-bar8" aria-hidden="true">
-        <i style={{ width: `${pct}%` }} />
-      </span>
+      <svg className="bc-bar8" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true">
+        <rect width={pct} height={8} />
+      </svg>
       {label}
     </span>
   );
