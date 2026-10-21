@@ -11,6 +11,8 @@ export const KDF_WATCHDOG_MS = 30_000;
 export interface DeriveOptions {
   /** The worker never answered; derivation continues on the main thread, which freezes the page meanwhile. */
   onFallback?: () => void;
+  /** Argon2id finished; what follows (AES, storage) is quick. */
+  onDerived?: () => void;
 }
 
 export interface KeystoreRecord {
@@ -88,6 +90,7 @@ function deriveRaw(password: string, salt: Uint8Array, params: KdfParams, { onFa
 
 async function deriveKey(password: string, salt: Uint8Array, params: KdfParams, opts?: DeriveOptions): Promise<CryptoKey> {
   const raw = await deriveRaw(password, salt, params, opts);
+  opts?.onDerived?.();
   try {
     return await crypto.subtle.importKey('raw', raw as Uint8Array<ArrayBuffer>, { name: 'AES-GCM' }, false, [
       'encrypt',

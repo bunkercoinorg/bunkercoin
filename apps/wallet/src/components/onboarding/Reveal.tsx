@@ -1,22 +1,52 @@
 'use client';
 
-import { Button, Card, Row, Warn, WordGrid } from '@/components/ui';
+import { useCallback, useState } from 'react';
+import { Button, FlowBar, Panel, WordGrid, WordGridHidden } from '@bunkercoin/ui';
+import { hidesIn, useAutoHide } from '@/components/onboarding/useAutoHide';
 
-export default function Reveal({ mnemonic, onNext }: { mnemonic: string; onNext: () => void }) {
+/** W03: the words mount only after the reveal tap and unmount on hide, 60s idle or a hidden tab. No copy. */
+export default function Reveal({ mnemonic, onBack, onNext }: { mnemonic: string; onBack: () => void; onNext: () => void }) {
+  const [shown, setShown] = useState(false);
+  const [seen, setSeen] = useState(false);
+  const hide = useCallback(() => setShown(false), []);
+  const left = useAutoHide(shown, hide);
   return (
-    <Card
-      title="Your recovery phrase"
-      sub="These 24 words are the only way to recover your wallet. Write them down in order and keep them offline."
-    >
-      <Warn>
-        Anyone with these words controls your funds. They are never sent anywhere. You can view
-        them again later from the wallet with your password. Write them on paper; the wallet does
-        not offer to copy them.
-      </Warn>
-      <WordGrid words={mnemonic.split(' ')} />
-      <Row>
-        <Button onClick={onNext}>I wrote them down</Button>
-      </Row>
-    </Card>
+    <div className="bc-col-app wl-stack wl-gap24">
+      <FlowBar title="create wallet" step={[1, 4]} onBack={onBack} />
+      <div>
+        <h1 className="bc-t1">Write down your 24 words.</h1>
+        <p className="bc-lead">In order, on paper. Anyone with them controls the coins.</p>
+      </div>
+      {shown ? (
+        <Panel
+          title="recovery phrase"
+          meta={hidesIn(left)}
+          actions={
+            <Button variant="ghost" size="sm" onClick={hide}>
+              hide
+            </Button>
+          }
+          flush
+        >
+          <WordGrid words={mnemonic.split(' ')} />
+        </Panel>
+      ) : (
+        <WordGridHidden>
+          <span className="bc-small">24 words · hidden</span>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setShown(true);
+              setSeen(true);
+            }}
+          >
+            show words
+          </Button>
+        </WordGridHidden>
+      )}
+      <Button block disabled={!seen} onClick={onNext}>
+        i wrote them down
+      </Button>
+    </div>
   );
 }
