@@ -1,0 +1,116 @@
+name: Sync bunker_coin
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "apps/**"
+      - "packages/**"
+      - "package.json"
+      - "bun.lock"
+      - "README.md"
+      - "LICENSE"
+      - ".gitignore"
+      - ".github/workflows/apps.yml"
+      - ".github/workflows/sync-bunker-coin.yml"
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit on main to sync (diffed against its first parent)
+        required: true
+
+concurrency:
+  group: sync-bunker-coin
+  cancel-in-progress: false
+
+env:
+  FORK: bunkercoinorg/bunker_coin
+
+jobs:
+  sync:
+    name: Open sync PR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: mono
+          fetch-depth: 0
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.FORK }}
+          path: fork
+          fetch-depth: 0
+          token: ${{ secrets.BUNKER_COIN_SYNC_TOKEN }}
+
+      - name: Build patch
+        id: patch
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ inputs.sha || github.sha }}
+          DISPATCH_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          cd mono
+          after=$(git rev-parse "$AFTER")
+          before=${BEFORE:-}
+          if [ -z "$before" ] || [ -n "$DISPATCH_SHA" ] || ! git cat-file -e "$before^{commit}" 2>/dev/null; then
+            before=$(git rev-parse "$after^")
+          fi
+          git diff --binary "$before" "$after" -- . \
+            ':!apps' ':!packages' ':!package.json' ':!bun.lock' ':!README.md' ':!LICENSE' ':!.gitignore' \
+            ':!.github/workflows/apps.yml' ':!.github/workflows/sync-bunker-coin.yml' > "$RUNNER_TEMP/sync.patch"
+          if [ ! -s "$RUNNER_TEMP/sync.patch" ]; then
+            echo "Nothing outside the apps to sync."
+            echo "empty=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git log --format=%B -1 "$after" > "$RUNNER_TEMP/message"
+          {
+            echo "empty=false"
+            echo "after=$after"
+            echo "short=${after:0:7}"
+            echo "author=$(git log --format='%an <%ae>' -1 "$after")"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Find source PR
+        id: source
+        if: steps.patch.outputs.empty == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pr=$(gh api "repos/${{ github.repository }}/commits/${{ steps.patch.outputs.after }}/pulls" --jq '.[0] // empty | {number, title} | @json')
+          if [ -n "$pr" ]; then
+            echo "number=$(jq -r .number <<<"$pr")" >> "$GITHUB_OUTPUT"
+            echo "title=$(jq -r .title <<<"$pr")" >> "$GITHUB_OUTPUT"
+          else
+            echo "title=$(head -1 "$RUNNER_TEMP/message")" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Apply and open PR
+        if: steps.patch.outputs.empty == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.BUNKER_COIN_SYNC_TOKEN }}
+          AFTER: ${{ steps.patch.outputs.after }}
+          SHORT: ${{ steps.patch.outputs.short }}
+          AUTHOR: ${{ steps.patch.outputs.author }}
+          SOURCE_PR: ${{ steps.source.outputs.number }}
+          TITLE: ${{ steps.source.outputs.title }}
+        run: |
+          set -euo pipefail
+          cd fork
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch -q "$GITHUB_WORKSPACE/mono" "$AFTER"
+          branch="sync/bunkercoin-${SOURCE_PR:-$SHORT}"
+          git switch -q -c "$branch" origin/main
+          git apply --3way --index "$RUNNER_TEMP/sync.patch"
+          git commit -q --author "$AUTHOR" -F "$RUNNER_TEMP/message"
+          git push -q --force origin "$branch"
+          source="${{ github.server_url }}/${{ github.repository }}/commit/$AFTER"
+          [ -n "$SOURCE_PR" ] && source="${{ github.repository }}#$SOURCE_PR"
+          if [ -z "$(gh pr list --repo "$FORK" --head "$branch" --json number --jq '.[0].number')" ]; then
+            gh pr create --repo "$FORK" --base main --head "$branch" --title "$TITLE" \
+              --body "Synced from $source: the Rust side of the monorepo change, app-only paths left out."
+          fi
