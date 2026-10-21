@@ -19,6 +19,10 @@ export const formatCount = formatInteger;
 /** "0.5" BUNKER -> 500000n units. Throws AmountError (spec copy) on malformed, sub-unit, zero or over-u64 input. */
 export const parseBunker = (text: string): bigint => parseUnits(text, NATIVE_SCALE);
 
+/** The amount field's parser: separators are stripped for whole token counts only, never around a BUNKER decimal. */
+export const parseAmount = (text: string, scale: typeof NATIVE_SCALE | typeof TOKEN_SCALE): bigint =>
+  scale === TOKEN_SCALE ? parseCount(text) : parseBunker(text);
+
 /** "1,000 000" -> 1000000n. Whole positive numbers that fit a u64 only; separators are typing aids. */
 export const parseCount = (text: string): bigint => parseUnits(String(text).replace(/[, ]/g, ''), TOKEN_SCALE);
 

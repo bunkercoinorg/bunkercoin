@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { Button, CopyValue, Disclosure, Field, FlowBar, Notice, TextInput } from '@bunkercoin/ui';
-import { AmountError, parseUnits } from '@bunkercoin/chain-format';
+import { AmountError } from '@bunkercoin/chain-format';
+import { parseCount } from '@/lib/format';
 import { isValidTicker, signMint } from '@/lib/keys';
 import { METADATA_ENABLED, metadataHashBytes } from '@/lib/metadata';
 import type { Signer } from '@/lib/signer';
@@ -50,7 +51,7 @@ export default function CreateToken({ state, actions, signer }: { state: WalletS
     setUploadError('');
     let value: bigint;
     try {
-      value = parseUnits(supply.trim(), 0);
+      value = parseCount(supply);
     } catch (e) {
       setSupplyError(e instanceof AmountError ? e.message : 'Tokens use whole units.');
       return;
