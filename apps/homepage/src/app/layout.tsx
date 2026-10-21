@@ -1,32 +1,27 @@
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import "./globals.css";
-
-const inter = Inter({
-    subsets: ["latin"],
-    variable: "--font-inter",
-});
-
+import "./bc.css";
 
 export const metadata: Metadata = {
     title: "BunkerCoin",
-    description: "The first blockchain on radiowaves, working without internet.",
+    description: "The blockchain that runs over shortwave radio. A private testnet runs today.",
     other: {
         "google": "notranslate",
     },
 };
 
+export const viewport: Viewport = { themeColor: "#090909", colorScheme: "dark" };
+
 export default function RootLayout({
-                                       children,
-                                   }: Readonly<{
+    children,
+}: Readonly<{
     children: React.ReactNode;
 }>) {
-
     return (
-        <html lang="en" translate="no">
-        <body className={`${inter.variable} antialiased bg-neutral-950 text-white notranslate`}>
-        {children}
-        </body>
+        <html lang="en" translate="no" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+            <body className="notranslate">{children}</body>
         </html>
     );
 }

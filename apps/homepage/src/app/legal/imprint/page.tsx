@@ -1,8 +1,8 @@
 import React from 'react';
-import Link from 'next/link';
+import { Link } from "@/components/bc/link";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from 'lucide-react';
-import Footer from "@/components/sections/footer";
+import { SiteFooter } from "@/components/bc/shell";
 
 const Imprint = () => {
     return (
@@ -40,7 +40,7 @@ const Imprint = () => {
                     </p>
                 </div>
         </main>
-        <Footer />
+        <SiteFooter />
         </>
     );
 };
