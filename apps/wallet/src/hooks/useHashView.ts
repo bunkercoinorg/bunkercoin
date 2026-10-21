@@ -11,13 +11,22 @@ export interface View {
 const NAMES: ViewName[] = ['home', 'send', 'receive', 'token', 'tokens', 'activity', 'tx', 'settings'];
 const HOME: View = { name: 'home', param: null };
 
+const PARENT: Partial<Record<ViewName, ViewName>> = { tx: 'activity', tokens: 'home', send: 'home' };
+
+/** Unknown names go home; a missing or undecodable param falls back to the parent view. */
 export function parseHash(hash: string): View {
   const [head, ...rest] = hash.replace(/^#/, '').split('/');
   const name = NAMES.find((n) => n === head);
   if (!name) return HOME;
-  const param = rest.length > 0 ? decodeURIComponent(rest.join('/')) : null;
-  if ((name === 'tx' || name === 'tokens') && !param) return { name: name === 'tx' ? 'activity' : 'home', param: null };
-  return { name, param };
+  const up: View = { name: PARENT[name] ?? name, param: null };
+  let param: string;
+  try {
+    param = decodeURIComponent(rest.join('/'));
+  } catch {
+    return up;
+  }
+  if (param) return { name, param };
+  return name === 'tx' || name === 'tokens' ? up : { name, param: null };
 }
 
 export const viewHref = (name: ViewName, param?: string | null) =>
