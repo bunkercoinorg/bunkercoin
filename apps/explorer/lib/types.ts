@@ -91,4 +91,6 @@ export interface SearchMatch {
   kind: SearchKind;
   id: string;
   label: string;
+  // An account the node knows nothing about yet: any valid key answers zeroed.
+  inactive?: boolean;
 }

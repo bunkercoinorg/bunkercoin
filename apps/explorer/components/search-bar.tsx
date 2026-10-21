@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Loader2, Search } from 'lucide-react';
 import { api } from '@/lib/api';
+import { searchOutcome } from '@/lib/search';
 import { routes } from '@/lib/routes';
 import type { SearchMatch } from '@/lib/types';
 
@@ -39,9 +40,9 @@ export default function SearchBar() {
     setError(null);
     setChoices([]);
     try {
-      const matches = await api.search(q);
-      if (matches.length === 1) router.push(hrefFor(matches[0]));
-      else if (matches.length > 1) setChoices(matches);
+      const outcome = searchOutcome(await api.search(q));
+      if (outcome.kind === 'route') router.push(hrefFor(outcome.match));
+      else if (outcome.kind === 'choose') setChoices(outcome.matches);
       else setError('Nothing on chain matches that transaction, account, block, or token.');
     } catch {
       setError('Search failed — the explorer API may be unreachable.');
@@ -86,7 +87,7 @@ export default function SearchBar() {
       {error ? <p className="text-xs text-red-400 mt-2 px-1">{error}</p> : null}
       {choices.length ? (
         <div className="mt-2 px-1 text-xs text-muted-foreground">
-          Matches more than one entity:
+          {choices.length > 1 ? 'Matches more than one entity:' : 'Did you mean:'}
           <ul className="mt-1 space-y-1">
             {choices.map((m) => (
               <li key={`${m.kind}:${m.id}`}>

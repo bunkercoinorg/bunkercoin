@@ -32,8 +32,8 @@ export interface SearchProbes {
   account: (hex: string) => Promise<AccountDetails | null>;
 }
 
-// The node answers any well-formed pubkey with a zeroed account, so only
-// on-chain activity counts as existence.
+// The node answers any well-formed pubkey with a zeroed account, so a zeroed
+// account is a valid but unconfirmed candidate.
 export const accountHasActivity = (a: AccountDetails) =>
   a.nonce > 0n || a.native_balance > 0n || Object.values(a.token_balances).some((b) => b > 0n);
 
@@ -55,20 +55,35 @@ function label(c: SearchCandidate): string {
 export async function resolveSearch(raw: string, probes: SearchProbes): Promise<SearchMatch[]> {
   const candidates = classifyQuery(raw);
   const hits = await Promise.all(
-    candidates.map(async (c) => {
+    candidates.map(async (c): Promise<SearchMatch | null> => {
+      const match = { ...c, label: label(c) };
       switch (c.kind) {
-        case 'block':
-          return /^\d+$/.test(c.id) ? (await probes.blockBySlot(c.id)) !== null : (await probes.block(c.id)) !== null;
+        case 'block': {
+          const b = /^\d+$/.test(c.id) ? await probes.blockBySlot(c.id) : await probes.block(c.id);
+          return b === null ? null : match;
+        }
         case 'token':
-          return (await probes.token(c.id)) !== null;
+          return (await probes.token(c.id)) === null ? null : match;
         case 'transaction':
-          return (await probes.transaction(c.id)) !== null;
+          return (await probes.transaction(c.id)) === null ? null : match;
         case 'account': {
           const a = await probes.account(c.id);
-          return a !== null && accountHasActivity(a);
+          if (a === null) return null;
+          return accountHasActivity(a) ? match : { ...match, label: `${match.label} (no activity yet)`, inactive: true };
         }
       }
     }),
   );
-  return candidates.filter((_, i) => hits[i]).map((c) => ({ ...c, label: label(c) }));
+  return hits.filter((m) => m !== null);
+}
+
+export type SearchOutcome = { kind: 'route'; match: SearchMatch } | { kind: 'choose'; matches: SearchMatch[] } | { kind: 'none' };
+
+// Only a single confirmed match routes directly; an account with no activity
+// is always offered as a choice, never followed on its own.
+export function searchOutcome(matches: SearchMatch[]): SearchOutcome {
+  const active = matches.filter((m) => !m.inactive);
+  if (active.length === 1) return { kind: 'route', match: active[0] };
+  if (!matches.length) return { kind: 'none' };
+  return { kind: 'choose', matches: [...active, ...matches.filter((m) => m.inactive)] };
 }

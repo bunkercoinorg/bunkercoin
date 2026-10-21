@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyQuery, resolveSearch, type SearchProbes } from '../lib/search.ts';
+import { classifyQuery, resolveSearch, searchOutcome, type SearchProbes } from '../lib/search.ts';
 import { base58Encode, hexEncode } from '../lib/codec.ts';
 import type { AccountDetails } from '../lib/types.ts';
 
@@ -77,12 +77,28 @@ test('token ids are probed, never assumed', async () => {
   assert.deepEqual(calls, ['token:deadbeef']);
 });
 
-test('a zeroed account is not a match', async () => {
-  assert.deepEqual(await resolveSearch(HASH, probes({ account: account() })), []);
+test('a zeroed account is an explicit no-activity candidate, never filtered out', async () => {
+  const fresh = await resolveSearch(HASH, probes({ account: account() }));
+  assert.deepEqual(fresh.map((m) => [m.kind, m.inactive]), [['account', true]]);
+  assert.match(fresh[0].label, /no activity yet/);
   const active = await resolveSearch(HASH, probes({ account: account({ nonce: 1n }) }));
-  assert.deepEqual(active.map((m) => m.kind), ['account']);
+  assert.deepEqual(active.map((m) => [m.kind, m.inactive]), [['account', undefined]]);
   const holder = await resolveSearch(HASH, probes({ account: account({ token_balances: { deadbeef: 3n } }) }));
-  assert.deepEqual(holder.map((m) => m.kind), ['account']);
+  assert.deepEqual(holder.map((m) => [m.kind, m.inactive]), [['account', undefined]]);
+});
+
+test('a zeroed account is offered as a choice, never routed to', async () => {
+  const fresh = await resolveSearch(HASH, probes({ account: account() }));
+  assert.deepEqual(searchOutcome(fresh), { kind: 'choose', matches: fresh });
+  const withTx = await resolveSearch(HASH, probes({ transaction: {}, account: account() }));
+  const routed = searchOutcome(withTx);
+  assert.equal(routed.kind, 'route');
+  assert.equal(routed.kind === 'route' && routed.match.kind, 'transaction');
+  const active = await resolveSearch(HASH, probes({ account: account({ nonce: 1n }) }));
+  assert.equal(searchOutcome(active).kind, 'route');
+  const both = await resolveSearch('00000001', probes({ blockBySlot: {}, token: {} }));
+  assert.equal(searchOutcome(both).kind, 'choose');
+  assert.deepEqual(searchOutcome([]), { kind: 'none' });
 });
 
 test('a tx hit is labelled in base58 and routed by hex', async () => {
