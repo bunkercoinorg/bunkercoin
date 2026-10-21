@@ -1,21 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import Header from '@/components/header';
 import { EntityPage, DetailRow, HashLink, NotFoundCard, ErrorCard, Loading } from '@/components/explorer-ui';
 import { useQueryParam } from '@/lib/use-query-param';
 import { useEntity } from '@/lib/use-entity';
-import { api, errorMessage, HOLDER_PAGE_SIZE } from '@/lib/api';
+import { api, errorMessage, HOLDER_PAGE_SIZE, isAbort } from '@/lib/api';
+import { appendHolders, emptyHolders, type HolderList } from '@/lib/holders';
+import { createGate } from '@/lib/request-gate';
 import { toBase58 } from '@/lib/codec';
 import { formatInteger } from '@/lib/amount';
 import { routes } from '@/lib/routes';
-import type { TokenHolder } from '@/lib/types';
 
 interface MoreHolders {
   key: string;
-  holders: TokenHolder[];
-  total: number | null;
+  list: HolderList;
   loading: boolean;
   error: string | null;
 }
@@ -25,27 +25,27 @@ export default function TokenPage() {
   const token = useEntity(id, (key, signal) => api.getToken(key, { signal }));
   const firstPage = useEntity(id, (key, signal) => api.getTokenHolders(key, 0, HOLDER_PAGE_SIZE, { signal }));
   const [more, setMore] = useState<MoreHolders | null>(null);
+  const [gate] = useState(createGate);
+
+  useEffect(() => () => gate.cancel(), [gate]);
 
   const extra = more && more.key === id ? more : null;
-  // Offset pages can overlap when balances shift between requests.
-  const holders = [
-    ...new Map([...(firstPage.data?.holders ?? []), ...(extra?.holders ?? [])].map((h) => [h.pubkey, h])).values(),
-  ];
-  const total = extra?.total ?? firstPage.data?.total ?? 0;
+  const first = firstPage.data ? appendHolders(emptyHolders, firstPage.data, HOLDER_PAGE_SIZE) : null;
+  const list = extra?.list ?? first;
+  const holders = list?.holders ?? [];
+  const total = list?.total ?? 0;
 
   const loadMore = async () => {
-    if (!id || extra?.loading) return;
-    const base = { key: id, holders: extra?.holders ?? [], total: extra?.total ?? null };
-    setMore({ ...base, loading: true, error: null });
+    if (!id || !list || list.done || gate.busy()) return;
+    const ticket = gate.begin();
+    setMore({ key: id, list, loading: true, error: null });
     try {
-      const page = await api.getTokenHolders(id, holders.length, HOLDER_PAGE_SIZE);
-      setMore((m) =>
-        m?.key === id
-          ? { ...base, holders: [...base.holders, ...(page?.holders ?? [])], total: page?.total ?? base.total, loading: false, error: null }
-          : m,
-      );
+      const page = await api.getTokenHolders(id, list.consumed, HOLDER_PAGE_SIZE, { signal: ticket.signal });
+      if (ticket.current()) setMore({ key: id, list: appendHolders(list, page, HOLDER_PAGE_SIZE), loading: false, error: null });
     } catch (e) {
-      setMore((m) => (m?.key === id ? { ...base, loading: false, error: errorMessage(e) } : m));
+      if (ticket.current() && !isAbort(e)) setMore({ key: id, list, loading: false, error: errorMessage(e) });
+    } finally {
+      gate.finish(ticket);
     }
   };
 
@@ -87,7 +87,7 @@ export default function TokenPage() {
                     </div>
                   ))}
                 </div>
-                {holders.length < total ? (
+                {list && !list.done ? (
                   <button
                     type="button"
                     onClick={loadMore}
