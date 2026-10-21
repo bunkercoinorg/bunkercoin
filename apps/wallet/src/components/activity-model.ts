@@ -3,6 +3,7 @@ import type { IconName } from '@bunkercoin/ui';
 import type { AccountHistory, ChainTransaction, TokenBalance, TokenMeta } from '@/lib/connection';
 import { hexToBase58 } from '@/lib/keys';
 import type { PendingTx } from '@/lib/pending';
+import { tokenIdentity } from '@/lib/send';
 import { count } from '@/components/assets';
 
 export type ItemStatus = 'pending' | 'unconfirmed' | 'uncertain' | 'failed' | 'final' | 'final-failed' | 'final-unknown';
@@ -28,7 +29,7 @@ export interface ActivityItem {
 
 type Tickers = Map<string, string>;
 
-const tokenLabel = (tickers: Tickers, id: string) => tickers.get(id) ?? `token ${id}`;
+const tokenLabel = (tickers: Tickers, id: string) => tokenIdentity({ tokenId: id, ticker: tickers.get(id) ?? null });
 
 export function tickerMap(tokens: TokenBalance[], registry: TokenMeta[] | null): Tickers {
   const m = new Map<string, string>();

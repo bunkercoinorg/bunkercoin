@@ -9,7 +9,7 @@
 .wl-bi { display: grid; justify-items: center; gap: 10px; padding: 28px 0 22px; border-bottom: 1px solid var(--line); }
 .wl-bi-row { display: flex; justify-content: center; gap: 10px; align-items: baseline; max-width: 100%; }
 .wl-bi input { width: 6.2ch; min-width: 2ch; max-width: 100%; border: 0; background: none; text-align: right; font: 580 60px/1 var(--sans); letter-spacing: -.045em; font-variant-numeric: tabular-nums; color: var(--fg); padding: 0; }
-.wl-bi input:focus-visible { outline: none; }
+.wl-bi input:focus-visible { outline: 2px solid var(--fg); outline-offset: 6px; }
 .wl-bi:focus-within { border-bottom-color: var(--fg); }
 .wl-bi .wl-u { font: 400 13px/1 var(--mono); letter-spacing: .1em; color: var(--dim); }
 @media (max-width: 40rem) { .wl-bi input { font-size: 46px; } }

@@ -12,12 +12,7 @@ export const NATIVE = 'BUNKER';
 export const bunker = (units: bigint) => formatUnits(units, 6);
 export const count = (units: bigint) => formatUnits(units, 0);
 
-/** `RADIO`, or `token 05000000` when the token has no ticker. */
-export const tokenName = (t: { tokenId: string; ticker: string | null }) => t.ticker ?? `token ${t.tokenId}`;
-
-/** `RADIO · 01000000`: tokens always show ticker and id. */
-export const tokenIdentity = (t: { tokenId: string; ticker: string | null }) =>
-  t.ticker ? `${t.ticker} · ${t.tokenId}` : `token ${t.tokenId}`;
+export { tokenIdentity } from '@/lib/send';
 
 export const registryEntry = (registry: TokenMeta[] | null, tokenId: string) => registry?.find((r) => r.id === tokenId) ?? null;
 
