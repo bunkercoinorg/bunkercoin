@@ -251,12 +251,9 @@ test('signed metadata update verifies and carries hex token id and hash', () => 
   assert.ok(ed25519.verify(bs58.decode(tx.signature), digest, publicKey));
 });
 
-test('the legacy metadataHash export is the canonical document hash', () => {
-  assert.equal(
-    Buffer.from(metadataHash({ name: 'BunkerCoin', description: '' })).toString('hex'),
-    '3fac357e74836eeb1811034d4c8b7381c54421ab04e73a6134d5cb7fe745d4fb',
-  );
-  assert.throws(() => metadataHash({ name: '', description: '' }));
+test('the pre-service metadataHash stays sha256 of JSON.stringify', () => {
+  const metadata = { name: 'Bunker Token', description: 'demo' };
+  assert.equal(Buffer.from(metadataHash(metadata)).toString('hex'), createHash('sha256').update(JSON.stringify(metadata)).digest('hex'));
 });
 
 test('metadata hash is stable and content-dependent', () => {

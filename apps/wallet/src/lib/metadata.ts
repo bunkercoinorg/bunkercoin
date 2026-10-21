@@ -10,7 +10,9 @@ import {
 export type { MetadataDocument, MetadataImage } from '@bunkercoin/chain-format';
 export { metadataHash, validateMetadata, METADATA_NAME_MAX, METADATA_DESCRIPTION_MAX };
 
-export const METADATA_URL = (process.env.NEXT_PUBLIC_METADATA_URL || 'https://metadata.bunkercoin.com').replace(/\/+$/, '');
+/** null until a metadata service is configured; every network call below is then a no-op. */
+export const METADATA_URL: string | null = process.env.NEXT_PUBLIC_METADATA_URL?.trim().replace(/\/+$/, '') || null;
+export const METADATA_ENABLED = METADATA_URL !== null;
 
 export const ICON_SIZE = 256;
 export const MAX_IMAGE_BYTES = 256 * 1024;
@@ -25,6 +27,7 @@ const COPY = {
   'not-allowed': 'The metadata service refused this site.',
   unavailable: 'Metadata service unavailable. Retry, or create without metadata.',
   mismatch: "The metadata service returned a document that doesn't match. Nothing was signed.",
+  disabled: 'Token metadata is not available on this network yet.',
 } as const;
 
 export type MetadataErrorCode = keyof typeof COPY;
@@ -68,6 +71,7 @@ export function metadataHashBytes(hex: string): Uint8Array {
 }
 
 export function metadataImageUrl(sha256: string): string {
+  if (!METADATA_URL) throw new MetadataError('disabled');
   if (!/^[0-9a-f]{64}$/.test(sha256)) throw new Error('image hash must be 64 lowercase hex characters');
   return `${METADATA_URL}/v1/images/${sha256}`;
 }
@@ -137,6 +141,7 @@ export async function uploadMetadata(
   signal?: AbortSignal,
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ hash: string; document: MetadataDocument }> {
+  if (!METADATA_URL) throw new MetadataError('disabled');
   const local = localDocument(input.name, input.description);
   if (metadataTextProblem(local.name, local.description)) throw new MetadataError('invalid');
   if (input.image && input.image.size >= MAX_IMAGE_BYTES) throw new MetadataError('image-too-large');
@@ -185,6 +190,7 @@ export async function uploadMetadata(
 const cache = new Map<string, Promise<MetadataDocument | null>>();
 
 async function fetchDocument(hash: string, signal: AbortSignal | undefined, fetchImpl: typeof fetch): Promise<MetadataDocument | null> {
+  if (!METADATA_URL) return null;
   const res = await fetchImpl(`${METADATA_URL}/v1/metadata/${hash}`, { signal, credentials: 'omit' });
   if (!res.ok) return null;
   const doc = validateMetadata(JSON.parse(await res.text()));
@@ -197,7 +203,7 @@ export async function fetchVerifiedMetadata(
   signal?: AbortSignal,
   fetchImpl: typeof fetch = fetch,
 ): Promise<MetadataDocument | null> {
-  if (!/^[0-9a-f]{64}$/.test(hash)) return null;
+  if (!METADATA_URL || !/^[0-9a-f]{64}$/.test(hash)) return null;
   const hit = cache.get(hash);
   if (hit) return hit;
   const pending = fetchDocument(hash, signal, fetchImpl).catch(() => null);
@@ -210,7 +216,7 @@ export async function fetchVerifiedMetadata(
 
 /** After the token is final, one GET makes the service publish the pending document. */
 export async function promoteMetadata(hash: string, fetchImpl: typeof fetch = fetch): Promise<void> {
-  if (!/^[0-9a-f]{64}$/.test(hash)) return;
+  if (!METADATA_URL || !/^[0-9a-f]{64}$/.test(hash)) return;
   cache.delete(hash);
   await fetchVerifiedMetadata(hash, undefined, fetchImpl);
 }

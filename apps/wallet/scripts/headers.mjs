@@ -7,7 +7,6 @@ import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const DEFAULT_RPC_URL = 'https://rpc.bunkercoin.com/';
-export const DEFAULT_METADATA_URL = 'https://metadata.bunkercoin.com';
 
 /** The env Next itself compiled in: same loader (resolved through next), same .env* files, production mode. */
 export function loadBuildEnv(dir) {
@@ -27,17 +26,18 @@ export function inlineScriptHashes(htmls) {
   return [...hashes].sort();
 }
 
-export function buildHeaders({ hashes, rpcUrl, metadataUrl = DEFAULT_METADATA_URL }) {
-  const metadata = new URL(metadataUrl).origin;
+/** Without a metadata URL the token metadata feature is off and its origin stays out of the CSP. */
+export function buildHeaders({ hashes, rpcUrl, metadataUrl }) {
+  const metadata = metadataUrl ? new URL(metadataUrl).origin : null;
   const csp = [
     "default-src 'self'",
     // hash-wasm compiles its Argon2 WebAssembly at runtime.
     `script-src 'self' 'wasm-unsafe-eval' ${hashes.join(' ')}`.trim(),
     "style-src 'self'",
     // blob: previews a picked token icon before upload.
-    `img-src 'self' data: blob: ${metadata}`,
+    metadata ? `img-src 'self' data: blob: ${metadata}` : "img-src 'self' data:",
     "font-src 'self'",
-    `connect-src 'self' ${[...new Set([new URL(rpcUrl).origin, metadata])].join(' ')}`,
+    `connect-src 'self' ${[...new Set([new URL(rpcUrl).origin, metadata].filter(Boolean))].join(' ')}`,
     "worker-src 'self'",
     "object-src 'none'",
     "base-uri 'none'",
@@ -66,7 +66,7 @@ function main(root = fileURLToPath(new URL('..', import.meta.url))) {
   const out = join(root, 'out');
   const env = loadBuildEnv(root);
   const rpcUrl = env.NEXT_PUBLIC_RPC_URL || DEFAULT_RPC_URL;
-  const metadataUrl = env.NEXT_PUBLIC_METADATA_URL || DEFAULT_METADATA_URL;
+  const metadataUrl = env.NEXT_PUBLIC_METADATA_URL?.trim() || null;
   const files = htmlFiles(out);
   const htmls = files.map((f) => readFileSync(f, 'utf8'));
   files.forEach((file, i) => {
@@ -83,7 +83,7 @@ function main(root = fileURLToPath(new URL('..', import.meta.url))) {
   }
   writeFileSync(join(out, '_headers'), buildHeaders({ hashes, rpcUrl, metadataUrl }));
   console.log(
-    `headers: wrote out/_headers with ${hashes.length} inline script hashes, connect-src ${new URL(rpcUrl).origin} ${new URL(metadataUrl).origin}`,
+    `headers: wrote out/_headers with ${hashes.length} inline script hashes, connect-src ${new URL(rpcUrl).origin}${metadataUrl ? ` ${new URL(metadataUrl).origin}` : ''}`,
   );
 }
 

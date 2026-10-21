@@ -29,8 +29,20 @@ test('inline scripts are hashed; external and empty ones are not', () => {
   const hashes = inlineScriptHashes([`<script src="/a.js"></script><script></script><script>${body}</script><script>${body}</script>`]);
   assert.deepEqual(hashes, [`'sha256-${createHash('sha256').update(body).digest('base64')}'`]);
   const headers = buildHeaders({ hashes, rpcUrl: 'https://node.example:8899/rpc' });
-  assert.match(headers, /connect-src 'self' https:\/\/node\.example:8899 https:\/\/metadata\.bunkercoin\.com;/);
-  assert.match(headers, /img-src 'self' data: blob: https:\/\/metadata\.bunkercoin\.com;/);
+  assert.match(headers, /connect-src 'self' https:\/\/node\.example:8899;/);
+  assert.match(headers, /img-src 'self' data:;/);
+  const enabled = buildHeaders({ hashes, rpcUrl: 'https://node.example:8899/rpc', metadataUrl: 'https://metadata.bunkercoin.com' });
+  assert.match(enabled, /connect-src 'self' https:\/\/node\.example:8899 https:\/\/metadata\.bunkercoin\.com;/);
+  assert.match(enabled, /img-src 'self' data: blob: https:\/\/metadata\.bunkercoin\.com;/);
+});
+
+test('an unset metadata URL keeps the metadata origin out of the written CSP', () => {
+  const root = app('<script>boot()</script>', { '.env.local': 'NEXT_PUBLIC_RPC_URL=https://custom.example:8899/\n' });
+  execFileSync(process.execPath, [SCRIPT, root], { env: cleanEnv(), stdio: 'pipe' });
+  const headers = readFileSync(join(root, 'out', '_headers'), 'utf8');
+  assert.match(headers, /connect-src 'self' https:\/\/custom\.example:8899;/);
+  assert.match(headers, /img-src 'self' data:;/);
+  assert.doesNotMatch(headers, /metadata|blob:/);
 });
 
 test('the metadata origin is listed once in connect-src and img-src', () => {

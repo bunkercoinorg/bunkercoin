@@ -1,11 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import {
+import type { MetadataDocument } from '../src/lib/metadata.ts';
+
+type MetadataLib = typeof import('../src/lib/metadata.ts');
+const load = async (url: string | undefined, tag: string): Promise<MetadataLib> => {
+  if (url === undefined) delete process.env.NEXT_PUBLIC_METADATA_URL;
+  else process.env.NEXT_PUBLIC_METADATA_URL = url;
+  return import(`../src/lib/metadata.ts?${tag}`);
+};
+const disabled = await load(undefined, 'off');
+const blank = await load('  ', 'blank');
+const {
   clearMetadataCache,
   encodeIcon,
   fetchVerifiedMetadata,
   localDocument,
+  METADATA_ENABLED,
   METADATA_URL,
   MetadataError,
   metadataHash,
@@ -15,8 +26,7 @@ import {
   promoteMetadata,
   squareCrop,
   uploadMetadata,
-  type MetadataDocument,
-} from '../src/lib/metadata.ts';
+} = await load('https://metadata.bunkercoin.com/', 'on');
 
 const VECTOR = '3fac357e74836eeb1811034d4c8b7381c54421ab04e73a6134d5cb7fe745d4fb';
 const doc: MetadataDocument = { v: 1, name: 'BunkerCoin', description: '', image: null };
@@ -35,8 +45,23 @@ function mockFetch(reply: (call: Call) => Response | Promise<Response>) {
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const isCode = (code: string) => (e: unknown) => e instanceof MetadataError && e.code === code && e.message.length > 0;
 
-test('defaults and pure helpers', async () => {
+test('without NEXT_PUBLIC_METADATA_URL the feature is off and never touches the network', async () => {
+  for (const lib of [disabled, blank]) {
+    assert.equal(lib.METADATA_URL, null);
+    assert.equal(lib.METADATA_ENABLED, false);
+    const { impl, calls } = mockFetch(() => json({}));
+    await assert.rejects(lib.uploadMetadata({ name: 'a', description: '' }, undefined, impl), (e: unknown) => e instanceof lib.MetadataError && e.code === 'disabled');
+    assert.equal(await lib.fetchVerifiedMetadata(VECTOR, undefined, impl), null);
+    await lib.promoteMetadata(VECTOR, impl);
+    assert.throws(() => lib.metadataImageUrl('ab'.repeat(32)), lib.MetadataError);
+    assert.equal(calls.length, 0);
+    assert.equal(await lib.metadataHash(lib.localDocument('BunkerCoin', '')), VECTOR);
+  }
+});
+
+test('configured URL and pure helpers', async () => {
   assert.equal(METADATA_URL, 'https://metadata.bunkercoin.com');
+  assert.equal(METADATA_ENABLED, true);
   assert.equal(metadataImageUrl('ab'.repeat(32)), `https://metadata.bunkercoin.com/v1/images/${'ab'.repeat(32)}`);
   assert.throws(() => metadataImageUrl('../x'));
   assert.equal(await metadataHash(localDocument('BunkerCoin', '')), VECTOR);

@@ -2,7 +2,7 @@ import { ed25519 } from '@noble/curves/ed25519.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
-import { base58ToBytes, bytesToBase58, bytesToHex, canonicalMetadataJson, decodeId, hexToBytes, isTokenId, U64_MAX } from '@bunkercoin/chain-format';
+import { base58ToBytes, bytesToBase58, bytesToHex, decodeId, hexToBytes, isTokenId, U64_MAX } from '@bunkercoin/chain-format';
 
 export { isTokenId };
 
@@ -195,10 +195,9 @@ export function mintSigningHash({
   );
 }
 
-/** @deprecated Use lib/metadata. Canonical hash of an image-less {name, description} document; throws when invalid. */
-export function metadataHash(metadata: { name: string; description: string }): Uint8Array {
-  const doc = { v: 1, name: metadata.name.normalize('NFC'), description: metadata.description.normalize('NFC'), image: null } as const;
-  return sha256(new TextEncoder().encode(canonicalMetadataJson(doc)));
+/** The pre-service hash, sha256(JSON.stringify(metadata)): what minting commits while no metadata service is configured. */
+export function metadataHash(metadata: unknown): Uint8Array {
+  return sha256(new TextEncoder().encode(JSON.stringify(metadata)));
 }
 
 // UpdateMetadata layout: sender ‖ nonce ‖ fee ‖ 0x09 ‖ token_id(4) ‖ metadata_hash(32).
