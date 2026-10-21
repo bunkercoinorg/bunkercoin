@@ -54,7 +54,7 @@ export default function Import({
       <div>
         <h1 className="bc-t1">Enter your 24 words.</h1>
       </div>
-      <Field id="recovery-phrase" label="recovery phrase" hint={count} error={error} announce={false}>
+      <Field id="recovery-phrase" label="recovery phrase" meta={count} error={error} announce={false}>
         <Textarea
           mono
           rows={4}

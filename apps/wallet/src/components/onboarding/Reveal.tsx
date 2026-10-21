@@ -18,16 +18,7 @@ export default function Reveal({ mnemonic, onBack, onNext }: { mnemonic: string;
         <p className="bc-lead">In order, on paper. Anyone with them controls the coins.</p>
       </div>
       {shown ? (
-        <Panel
-          title="recovery phrase"
-          meta={hidesIn(left)}
-          actions={
-            <Button variant="ghost" size="sm" onClick={hide}>
-              hide
-            </Button>
-          }
-          flush
-        >
+        <Panel title="recovery phrase" meta={hidesIn(left)} flush>
           <WordGrid words={mnemonic.split(' ')} />
         </Panel>
       ) : (
