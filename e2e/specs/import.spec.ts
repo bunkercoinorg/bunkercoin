@@ -15,9 +15,11 @@ test('import from phrase in a fresh context restores address and balance', async
 
 test('import rejects a phrase with a bad checksum', async ({ openWallet }) => {
   const wallet = await openWallet();
-  await wallet.button('Recover existing').click();
-  const card = wallet.card('Recover a wallet');
-  await card.getByRole('textbox').fill(Array(24).fill('abandon').join(' '));
-  await wallet.button('Continue', card).click();
-  await expect(card.getByText(/not a valid recovery phrase/)).toBeVisible();
+  await wallet.button(/^import a wallet/).click();
+  await wallet.page.getByLabel('recovery phrase', { exact: true }).fill(Array(24).fill('abandon').join(' '));
+  await expect(wallet.page.getByText('Checksum failed. Check the word order.', { exact: true })).toBeVisible();
+  await wallet.button('continue').click();
+  await expect(wallet.main.getByRole('alert')).toHaveText('Checksum failed. Check the word order.');
+  await expect(wallet.heading('Enter your 24 words.')).toBeVisible();
+  await expect(wallet.heading('Set a password.')).toHaveCount(0);
 });

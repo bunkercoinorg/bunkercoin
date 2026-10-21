@@ -1,4 +1,5 @@
 import { test, expect, PASSWORD } from '../harness/fixtures';
+import { WalletPage } from '../pages/wallet';
 
 test('lock and unlock: wrong password rejected, right one unlocks', async ({ openWallet }) => {
   const wallet = await openWallet();
@@ -26,7 +27,7 @@ test('session: reload resumes an unlocked tab, a locked or new tab needs the pas
   // sessionStorage is per tab: a second tab on the same profile starts locked.
   const tab = await wallet.page.context().newPage();
   await tab.goto('/');
-  await expect(tab.getByRole('heading', { name: 'Unlock your wallet' })).toBeVisible();
+  await expect(new WalletPage(tab).unlockScreen).toBeVisible();
   await tab.close();
 
   await wallet.lock();

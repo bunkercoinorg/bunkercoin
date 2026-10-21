@@ -16,11 +16,18 @@ test('create wallet: phrase, backup confirmation, password, dashboard', async ({
 
 test('create wallet: wrong backup words are rejected', async ({ openWallet }) => {
   const wallet = await openWallet();
-  await wallet.button('Create new wallet').click();
-  await wallet.button('I wrote them down').click();
-  const card = wallet.card('Confirm your phrase');
-  for (const input of await card.getByRole('textbox').all()) await input.fill('wrong');
-  await wallet.button('Continue', card).click();
-  await expect(card.getByText('One or more words do not match. Check your notes.')).toBeVisible();
-  await expect(wallet.card('Choose a password')).toHaveCount(0);
+  await wallet.button(/^create a wallet/).click();
+  const words = (await wallet.revealPhrase()).split(' ');
+  await wallet.button('i wrote them down').click();
+  for (const { picker, position } of await wallet.pickers()) {
+    const wrong = (await picker.getByRole('button').allTextContents()).find((w) => w !== words[position - 1])!;
+    await wallet.button(wrong, picker).click();
+    await expect(wallet.button(wrong, picker)).toHaveAttribute('aria-pressed', 'true');
+    const at = words.indexOf(wrong);
+    await expect(picker.getByRole('alert')).toHaveText(
+      at === -1 ? `Not word ${position}.` : `That is word ${at + 1}. Pick word ${position}.`,
+    );
+  }
+  await expect(wallet.button('continue')).toBeDisabled();
+  await expect(wallet.heading('Set a password.')).toHaveCount(0);
 });
