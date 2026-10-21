@@ -3,6 +3,7 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { pipeline } from 'node:stream';
 
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -67,9 +68,7 @@ export function serveStatic(dir: string): Server {
       res.end();
       return;
     }
-    createReadStream(target)
-      .on('error', () => res.destroy())
-      .pipe(res);
+    pipeline(createReadStream(target), res, () => {});
   });
 }
 

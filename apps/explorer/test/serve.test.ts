@@ -4,6 +4,8 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
+import { ReadStream } from 'node:fs';
+import { get } from 'node:http';
 import { candidates, serveStatic } from '../scripts/serve.ts';
 
 let dir = '';
@@ -18,7 +20,10 @@ before(async () => {
   await writeFile(join(dir, '404.html'), 'missing');
   await writeFile(join(dir, '_next', 'static', 'app.js'), 'js');
   const server = serveStatic(dir);
-  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   close = () => server.close();
 });
@@ -54,4 +59,28 @@ test('hashed assets are immutable and unknown paths get the 404 page', async () 
   assert.equal(missing.status, 404);
   assert.equal(await missing.text(), 'missing');
   assert.equal((await fetch(`${base}/`, { method: 'POST' })).status, 405);
+});
+
+test('disconnecting mid-download closes the file stream', { timeout: 5000 }, async (t) => {
+  const file = join(dir, 'large.bin');
+  await writeFile(file, Buffer.alloc(16 * 1024 * 1024));
+  const reads = t.mock.method(ReadStream.prototype, '_read');
+  const opened = () => reads.mock.calls.map((c) => c.this as ReadStream).filter((s) => s.path === file);
+  t.after(() => opened().forEach((s) => s.destroy()));
+  await new Promise<void>((resolve, reject) => {
+    const req = get(`${base}/large.bin`, (res) => {
+      res.once('data', () => {
+        res.destroy();
+        resolve();
+      });
+      res.once('error', reject);
+    });
+    req.once('error', reject);
+  });
+  const [stream] = opened();
+  assert.ok(stream);
+  assert.ok(stream.bytesRead < 16 * 1024 * 1024);
+  if (!stream.closed) await new Promise<void>((resolve) => stream.once('close', () => resolve()));
+  assert.equal(stream.closed, true);
+  assert.equal(stream.destroyed, true);
 });
