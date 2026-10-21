@@ -66,7 +66,7 @@ const maxSlot = (a: number | null, b: number | null) => (a === null ? b : b === 
 export function applyHead(view: ChainView, page: Block[], pageLimit: number, retain = MAX_RETAINED_BLOCKS): Applied {
   if (!page.length) return { view, finalized: [] };
   const bottom = page[page.length - 1].slot;
-  const gap = page.length >= pageLimit && view.restTop !== null && bottom > view.restTop;
+  const gap = page.length >= pageLimit && view.restTop !== null && bottom > view.restTop + 1;
   if (gap) {
     const fresh = merge({ ...emptyChain, blocks: view.blocks.filter((b) => b.slot >= bottom) }, page, retain);
     return { view: { ...fresh.view, restTop: top(page), exhausted: false }, finalized: fresh.finalized };
@@ -101,6 +101,13 @@ export const highestFinalized = (blocks: Block[]) =>
 
 export type PageFetcher = (offset: number, limit: number) => Promise<Block[]>;
 
+export interface OlderPage {
+  blocks: Block[];
+  exhausted: boolean;
+  // Offset just past the returned rows, the estimate for the next older page.
+  nextOffset: number;
+}
+
 export const CURSOR_OVERLAP = 5;
 const MAX_CURSOR_PROBES = 6;
 
@@ -112,19 +119,19 @@ export async function fetchOlderThan(
   estimate: number,
   limit: number,
   fetchPage: PageFetcher,
-): Promise<{ blocks: Block[]; exhausted: boolean }> {
+): Promise<OlderPage> {
   let offset = Math.max(0, estimate - CURSOR_OVERLAP);
   for (let probe = 0; probe < MAX_CURSOR_PROBES; probe++) {
     const page = await fetchPage(offset, limit);
     if (!page.length) {
-      if (offset === 0) return { blocks: [], exhausted: true };
+      if (offset === 0) return { blocks: [], exhausted: true, nextOffset: 0 };
       offset = Math.max(0, offset - limit);
       continue;
     }
     const newest = page[0].slot;
     const oldest = page[page.length - 1].slot;
     if (oldest >= cursor) {
-      if (page.length < limit) return { blocks: [], exhausted: true };
+      if (page.length < limit) return { blocks: [], exhausted: true, nextOffset: offset + page.length };
       offset += page.length - 1;
       continue;
     }
@@ -132,21 +139,28 @@ export async function fetchOlderThan(
       offset = Math.max(0, offset - limit);
       continue;
     }
-    return { blocks: page.filter((b) => b.slot < cursor), exhausted: page.length < limit };
+    return { blocks: page.filter((b) => b.slot < cursor), exhausted: page.length < limit, nextOffset: offset + page.length };
   }
   throw new Error('Could not locate the pagination cursor');
 }
 
-// Rows to keep so the cap never evicts what the list is currently showing.
-export function retainFor(blocks: Block[], displayCount: number, showSkipped: boolean, pageSize: number): number {
-  let seen = 0;
-  let last = blocks.length;
-  for (let i = 0; i < blocks.length; i++) {
-    if (!showSkipped && blocks[i].type === 'skip') continue;
-    if (++seen === displayCount) {
-      last = i;
-      break;
-    }
-  }
-  return Math.max(MAX_RETAINED_BLOCKS, last + 1 + pageSize);
+// Both the live cache and the rendered window are fixed; history beyond them
+// is paged explicitly instead of growing either one.
+export const MAX_RENDERED_ROWS = 100;
+
+export type LiveScroll = 'grow' | 'fetch' | 'browse' | 'end';
+
+// What reaching the bottom of the live list does, given `shown` rendered rows
+// out of `available` filtered rows in a cache of `cached` rows.
+export function liveScroll(
+  shown: number,
+  available: number,
+  cached: number,
+  exhausted: boolean,
+  pageSize: number,
+): LiveScroll {
+  if (shown < MAX_RENDERED_ROWS && shown < available) return 'grow';
+  if (shown < MAX_RENDERED_ROWS && !exhausted && cached + pageSize <= MAX_RETAINED_BLOCKS) return 'fetch';
+  if (exhausted && shown >= available) return 'end';
+  return 'browse';
 }

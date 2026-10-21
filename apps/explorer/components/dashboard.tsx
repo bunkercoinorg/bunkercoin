@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAtomValue, useSetAtom, useStore } from 'jotai';
 import {
   applyChainAtom,
@@ -14,7 +14,8 @@ import {
   wsStatusAtom,
 } from '@/lib/atoms';
 import { api, errorMessage, isAbort } from '@/lib/api';
-import { applyHead, applyOlder, cursorSlot, fetchOlderThan } from '@/lib/chain';
+import { applyHead, applyOlder, cursorSlot, fetchOlderThan, MAX_RETAINED_BLOCKS } from '@/lib/chain';
+import { createGate } from '@/lib/request-gate';
 import { usePoll } from '@/lib/use-poll';
 import { useWebSocket } from '@/lib/websocket';
 import NodeStatus from './node-status';
@@ -38,7 +39,7 @@ export default function Dashboard() {
   const setLoadingMore = useSetAtom(isLoadingMoreAtom);
   const setLoadMoreError = useSetAtom(loadMoreErrorAtom);
   const wsStatus = useAtomValue(wsStatusAtom);
-  const loadingOlder = useRef(false);
+  const [olderGate] = useState(createGate);
 
   useWebSocket();
 
@@ -48,8 +49,9 @@ export default function Dashboard() {
     try {
       const page = await api.getBlocks(0, BLOCK_PAGE_SIZE, { signal });
       if (signal.aborted) return;
-      applyChain((view, retain) => applyHead(view, page, BLOCK_PAGE_SIZE, retain));
+      applyChain((view) => applyHead(view, page, BLOCK_PAGE_SIZE));
       setBlocksFeed({ lastSuccess: Date.now(), error: null });
+      setLoadMoreError(null);
     } catch (e) {
       if (!isAbort(e)) setBlocksFeed((f) => ({ ...f, error: errorMessage(e) }));
     }
@@ -71,30 +73,39 @@ export default function Dashboard() {
     pollNodes();
   }, [pollBlocks, pollNodes]);
 
+  useEffect(
+    () => () => {
+      olderGate.cancel();
+      setLoadingMore(false);
+    },
+    [olderGate, setLoadingMore],
+  );
+
   // Resolves true once older rows (or the end of history) were merged.
   const loadOlder = useCallback(async (): Promise<boolean> => {
     const view = store.get(chainAtom);
     const cursor = cursorSlot(view);
-    if (loadingOlder.current || cursor === null || view.exhausted) return false;
-    loadingOlder.current = true;
+    if (olderGate.busy() || cursor === null || view.exhausted) return false;
+    if (view.blocks.length + BLOCK_PAGE_SIZE > MAX_RETAINED_BLOCKS) return false;
+    const ticket = olderGate.begin();
     setLoadingMore(true);
     setLoadMoreError(null);
     try {
       const older = await fetchOlderThan(cursor, view.blocks.length, BLOCK_PAGE_SIZE, (offset, limit) =>
-        api.getBlocks(offset, limit),
+        api.getBlocks(offset, limit, { signal: ticket.signal }),
       );
       // The head may have reset or the cap moved the cursor meanwhile.
-      if (cursorSlot(store.get(chainAtom)) !== cursor) return false;
-      applyChain((v, retain) => applyOlder(v, older.blocks, older.exhausted, retain));
+      if (!ticket.current() || cursorSlot(store.get(chainAtom)) !== cursor) return false;
+      applyChain((v) => applyOlder(v, older.blocks, older.exhausted));
       return true;
     } catch (e) {
-      setLoadMoreError(errorMessage(e));
+      if (ticket.current() && !isAbort(e)) setLoadMoreError(errorMessage(e));
       return false;
     } finally {
-      loadingOlder.current = false;
-      setLoadingMore(false);
+      if (ticket.current()) setLoadingMore(false);
+      olderGate.finish(ticket);
     }
-  }, [store, applyChain, setLoadingMore, setLoadMoreError]);
+  }, [store, olderGate, applyChain, setLoadingMore, setLoadMoreError]);
 
   return (
     <>

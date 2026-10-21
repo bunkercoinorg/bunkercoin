@@ -49,8 +49,8 @@ export function useWebSocket() {
         if (typeof event.data !== 'string') return;
         const msg = parseWsMessage(event.data, Date.now());
         if (!msg) return;
-        if (msg.kind === 'slot') applyChain((v, retain) => applyLive(v, msg.block, retain));
-        else if (msg.kind === 'status') applyChain((v, retain) => applyStatusChange(v, msg, retain));
+        if (msg.kind === 'slot') applyChain((v) => applyLive(v, msg.block));
+        else if (msg.kind === 'status') applyChain((v) => applyStatusChange(v, msg));
         else setRadioStats(msg.stats);
       };
       sock.onerror = () => sock.close();

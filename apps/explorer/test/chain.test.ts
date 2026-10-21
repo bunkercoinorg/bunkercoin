@@ -9,7 +9,8 @@ import {
   emptyChain,
   fetchOlderThan,
   highestFinalized,
-  retainFor,
+  liveScroll,
+  MAX_RENDERED_ROWS,
   MAX_RETAINED_BLOCKS,
   type ChainView,
 } from '../lib/chain.ts';
@@ -101,6 +102,14 @@ test('a full head page above the REST frontier resets to the head', () => {
   assert.equal(view.restTop, 40);
 });
 
+test('a full head page adjacent to the REST frontier is contiguous', () => {
+  let { view } = applyHead(emptyChain, range(10, 6), 5);
+  ({ view } = applyLive(view, blk(15, 'proposed')));
+  ({ view } = applyHead(view, range(15, 11), 5));
+  assert.deepEqual(slots(view), range(15, 6).map((b) => b.slot));
+  assert.equal(view.restTop, 15);
+});
+
 test('a short head page is the whole chain, never a gap', () => {
   let { view } = applyHead(emptyChain, range(3, 1), 20);
   ({ view } = applyHead(view, range(30, 28), 20));
@@ -113,13 +122,26 @@ test('highestFinalized ignores skips and pending rows', () => {
   assert.equal(highestFinalized([skip(1)]), null);
 });
 
-test('retainFor keeps every row up to the last displayed one', () => {
-  const rows = range(1000, 1);
-  assert.equal(retainFor(rows, 50, true, 20), MAX_RETAINED_BLOCKS);
-  assert.equal(retainFor(rows, 600, true, 20), 620);
-  const mixed = range(1000, 1, (s) => (s % 2 ? skip(s) : blk(s)));
-  assert.equal(retainFor(mixed, 300, false, 20), 619);
-  assert.equal(retainFor(mixed, 600, false, 20), 1021);
+test('retention stays fixed however far the list has scrolled', () => {
+  let { view } = applyHead(emptyChain, range(2000, 1981), 20);
+  for (let page = 0; page < 60; page++) {
+    const cursor = cursorSlot(view)!;
+    view = applyOlder(view, range(cursor - 1, cursor - 20), false).view;
+    assert.ok(view.blocks.length <= MAX_RETAINED_BLOCKS);
+  }
+  assert.equal(view.blocks.length, MAX_RETAINED_BLOCKS);
+  ({ view } = applyLive(view, blk(2001, 'proposed')));
+  assert.equal(view.blocks.length, MAX_RETAINED_BLOCKS);
+  assert.equal(view.blocks[0].slot, 2001);
+});
+
+test('live scrolling grows the window, then the cache, then hands off to history', () => {
+  assert.equal(liveScroll(20, 40, 40, false, 20), 'grow');
+  assert.equal(liveScroll(20, 20, 20, false, 20), 'fetch');
+  assert.equal(liveScroll(MAX_RENDERED_ROWS, 300, 300, false, 20), 'browse');
+  assert.equal(liveScroll(MAX_RENDERED_ROWS, 300, 300, true, 20), 'browse');
+  assert.equal(liveScroll(60, 60, MAX_RETAINED_BLOCKS, false, 20), 'browse');
+  assert.equal(liveScroll(30, 30, 30, true, 20), 'end');
 });
 
 // Simulated node: rows newest-first, paged only by offset.
@@ -157,7 +179,7 @@ test('fetchOlderThan handles slot gaps and the end of history', async () => {
   assert.deepEqual(r.blocks.map((b) => b.slot), [50, 49, 48, 47, 46, 45]);
   assert.equal(r.exhausted, true);
   const end = await fetchOlderThan(45, 17, 20, nodeWith(chain));
-  assert.deepEqual(end, { blocks: [], exhausted: true });
+  assert.deepEqual(end, { blocks: [], exhausted: true, nextOffset: 17 });
 });
 
 test('fetchOlderThan gives up instead of looping forever', async () => {
