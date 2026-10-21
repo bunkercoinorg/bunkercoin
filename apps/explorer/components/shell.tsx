@@ -2,8 +2,8 @@
 
 import NextLink from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState, type ReactNode } from 'react';
-import { AppShell, applyTheme, Footer, Link, LinkProvider, readTheme, Tag, ThemeControl, type Theme } from '@bunkercoin/ui';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { AppShell, applyTheme, Footer, Link, LinkProvider, readTheme, syncThemeColor, Tag, ThemeControl, type Theme } from '@bunkercoin/ui';
 import { SOURCE_URL, WALLET_URL } from '@/lib/config';
 import LiveFeed from './live-feed';
 import { HeaderSiteSearch } from './site-search';
@@ -21,9 +21,25 @@ const SECTION: Record<string, string> = { '/block': '/blocks', '/tx': '/blocks',
 
 function ExplorerTheme() {
   const [theme, setTheme] = useState<Theme>('dark');
-  useEffect(() => setTheme(readTheme('dark')), []);
+  const menu = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const t = readTheme('dark');
+    setTheme(t);
+    syncThemeColor(t);
+  }, []);
+  const close = () => {
+    if (!menu.current?.open) return;
+    menu.current.open = false;
+    menu.current.querySelector('summary')?.focus();
+  };
   return (
-    <details className="theme-menu">
+    <details
+      ref={menu}
+      className="theme-menu"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') close();
+      }}
+    >
       <summary>theme</summary>
       <div>
         <ThemeControl
@@ -31,6 +47,7 @@ function ExplorerTheme() {
           onChange={(t) => {
             setTheme(t);
             applyTheme(t);
+            close();
           }}
         />
       </div>
@@ -41,6 +58,9 @@ function ExplorerTheme() {
 export default function Shell({ children }: { children: ReactNode }) {
   const path = (usePathname() || '/').replace(/\/+$/, '') || '/';
   const section = SECTION[path] ?? path;
+  useEffect(() => {
+    document.querySelector('.bc-nav [aria-current="page"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [section]);
   return (
     <LinkProvider component={NextLink}>
       <AppShell
