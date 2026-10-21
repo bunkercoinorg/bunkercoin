@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { decryptMnemonic, loadKeystore } from '@/lib/keystore';
-import { copyText } from '@/lib/clipboard';
+import { decryptMnemonic, requireKeystore } from '@/lib/keystore';
+import { copySensitive } from '@/lib/clipboard';
 import { Button, Card, Divider, ErrorText, Input, Row, Warn, WordGrid } from '@/components/ui';
 
 export default function RecoveryPhrase() {
@@ -31,7 +31,7 @@ export default function RecoveryPhrase() {
     setBusy(true);
     setError('');
     try {
-      setPhrase(await decryptMnemonic(loadKeystore(), password));
+      setPhrase(await decryptMnemonic(requireKeystore(), password));
       setPassword('');
     } catch (e) {
       const msg = (e as Error).message;
@@ -91,14 +91,15 @@ export default function RecoveryPhrase() {
         <>
           <Warn>
             Anyone with these words controls your funds. Hide them as soon as you are done — they
-            disappear automatically after a minute.
+            disappear automatically after a minute, and a copied phrase is cleared from the clipboard
+            after 30 seconds.
           </Warn>
           <WordGrid words={phrase.split(' ')} />
           <Row>
             <Button
               variant="ghost"
               onClick={async () => {
-                await copyText(phrase);
+                await copySensitive(phrase);
                 setCopied(true);
                 setTimeout(() => setCopied(false), 1500);
               }}

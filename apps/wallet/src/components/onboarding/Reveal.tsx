@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { copyText } from '@/lib/clipboard';
+import { copySensitive } from '@/lib/clipboard';
 import { Button, Card, Row, Warn, WordGrid } from '@/components/ui';
 
 export default function Reveal({ mnemonic, onNext }: { mnemonic: string; onNext: () => void }) {
@@ -12,15 +12,16 @@ export default function Reveal({ mnemonic, onNext }: { mnemonic: string; onNext:
       sub="These 24 words are the only way to recover your wallet. Write them down in order and keep them offline."
     >
       <Warn>
-        Anyone with these words controls your funds. They are never sent anywhere and cannot be
-        shown again after setup.
+        Anyone with these words controls your funds. They are never sent anywhere. You can view
+        them again later from the wallet with your password. A copied phrase is cleared from the
+        clipboard after 30 seconds.
       </Warn>
       <WordGrid words={mnemonic.split(' ')} />
       <Row>
         <Button
           variant="ghost"
           onClick={async () => {
-            await copyText(mnemonic);
+            await copySensitive(mnemonic);
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
           }}
