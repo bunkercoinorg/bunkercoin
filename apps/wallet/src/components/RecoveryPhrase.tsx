@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { decryptMnemonic, requireKeystore } from '@/lib/keystore';
-import { copySensitive } from '@/lib/clipboard';
 import { Button, Card, Divider, ErrorText, Input, Row, Warn, WordGrid } from '@/components/ui';
 
 export default function RecoveryPhrase() {
@@ -11,7 +10,6 @@ export default function RecoveryPhrase() {
   const [phrase, setPhrase] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [copied, setCopied] = useState(false);
 
   const hide = useCallback(() => {
     setPhrase('');
@@ -46,7 +44,7 @@ export default function RecoveryPhrase() {
       {!open && !phrase && (
         <>
           <p className="mb-4 text-[13.5px] leading-relaxed text-muted">
-            View or copy the 24 words this wallet was created with.
+            View the 24 words this wallet was created with.
           </p>
           <Button variant="ghost" small onClick={() => setOpen(true)}>
             Show recovery phrase…
@@ -90,22 +88,11 @@ export default function RecoveryPhrase() {
       {phrase && (
         <>
           <Warn>
-            Anyone with these words controls your funds. Hide them as soon as you are done — they
-            disappear automatically after a minute, and a copied phrase is cleared from the clipboard
-            after 30 seconds.
+            Anyone with these words controls your funds. Hide them as soon as you are done; they
+            disappear automatically after a minute.
           </Warn>
           <WordGrid words={phrase.split(' ')} />
           <Row>
-            <Button
-              variant="ghost"
-              onClick={async () => {
-                await copySensitive(phrase);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 1500);
-              }}
-            >
-              {copied ? 'Copied' : 'Copy'}
-            </Button>
             <Button onClick={hide}>Hide</Button>
           </Row>
         </>
