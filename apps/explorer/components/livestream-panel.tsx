@@ -3,7 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { requestLabStatus, type LabStreamStatus } from '@/lib/explorer-api/lab-stream';
 import { HLS_URL, STREAM_IFRAME_HOSTS, WHEP_URL } from '@/lib/config';
-import { firstVariantUrl, isMasterPlaylist, liveEdge } from '@/lib/hls';
+import {
+  assessHls,
+  firstVariantUrl,
+  initialHlsWatch,
+  isMasterPlaylist,
+  isPlaylist,
+  liveEdge,
+  type HlsView,
+} from '@/lib/hls';
 import { allowedStreamUrl, withQuery } from '@/lib/stream-url';
 import StreamLikeButton from '@/components/stream-like-button';
 import R2StreamPlayer from '@/components/r2-stream-player';
@@ -25,17 +33,26 @@ export default function LivestreamPanel() {
   return <CloudflarePanel />;
 }
 
-async function fetchLiveEdge(src: string, signal: AbortSignal): Promise<number | null> {
+async function fetchLiveEdge(src: string, signal: AbortSignal): Promise<number | 'unknown'> {
   const get = async (url: string) => {
     const res = await fetch(url, { cache: 'no-store', signal });
     if (!res.ok) throw new Error(`playlist ${res.status}`);
-    return res.text();
+    const text = await res.text();
+    if (!isPlaylist(text)) throw new Error('not a playlist');
+    return text;
   };
   const top = await get(src);
   if (!isMasterPlaylist(top)) return liveEdge(top);
   const variant = firstVariantUrl(top, src);
-  return variant ? liveEdge(await get(variant)) : null;
+  return variant ? liveEdge(await get(variant)) : 'unknown';
 }
+
+const HLS_MESSAGES: Record<HlsView, string> = {
+  live: 'Live from the radio lab',
+  starting: 'Loading live view',
+  waiting: 'Waiting for live video',
+  unavailable: 'Live view is not available yet',
+};
 
 function R2Panel({ whep, hls }: { whep?: string; hls?: string }) {
   const [status, setStatus] = useState<StreamStatus>('loading');
@@ -45,9 +62,8 @@ function R2Panel({ whep, hls }: { whep?: string; hls?: string }) {
   const [session, setSession] = useState(0);
   const failures = useRef(0);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const [hlsPlayerKey, setHlsPlayerKey] = useState(0);
-  const hlsBroken = useRef(false);
-  const lastEdge = useRef<{ edge: number | null; at: number }>({ edge: null, at: 0 });
+  const watch = useRef(initialHlsWatch);
+  const [hlsPlayer, setHlsPlayer] = useState({ mounted: false, key: 0 });
   const lastProgress = useRef(0);
 
   useEffect(() => () => clearTimeout(retryTimer.current), []);
@@ -74,15 +90,22 @@ function R2Panel({ whep, hls }: { whep?: string; hls?: string }) {
     }, delay);
   }, [hls]);
 
-  const hlsProgress = useCallback(() => {
-    lastProgress.current = Date.now();
+  const showHls = useCallback((view: HlsView) => {
+    const { mounted, playerKey } = watch.current;
+    setHlsPlayer((p) => (p.mounted === mounted && p.key === playerKey ? p : { mounted, key: playerKey }));
+    setStatus(view === 'live' ? 'live' : view === 'starting' ? 'loading' : 'waiting');
+    setMessage(HLS_MESSAGES[view]);
   }, []);
 
+  const hlsProgress = useCallback(() => {
+    lastProgress.current = Date.now();
+    if (watch.current.mounted) showHls('live');
+  }, [showHls]);
+
   const hlsFatal = useCallback(() => {
-    hlsBroken.current = true;
-    setStatus('waiting');
-    setMessage('Waiting for live video');
-  }, []);
+    watch.current = { ...watch.current, brokenAt: Date.now(), mounted: false };
+    showHls('waiting');
+  }, [showHls]);
 
   useEffect(() => {
     if (mode !== 'hls' || !hls) return;
@@ -91,31 +114,18 @@ function R2Panel({ whep, hls }: { whep?: string; hls?: string }) {
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     async function poll() {
+      let edge: number | 'unknown' | null = null;
       try {
-        const edge = await fetchLiveEdge(src, ctrl.signal);
-        if (ctrl.signal.aborted) return;
-        const now = Date.now();
-        if (edge !== null && edge !== lastEdge.current.edge) {
-          lastEdge.current = { edge, at: now };
-          if (hlsBroken.current) {
-            hlsBroken.current = false;
-            setHlsPlayerKey((k) => k + 1);
-          }
-        }
-        const fresh = now - Math.max(lastEdge.current.at, lastProgress.current) < STALE_AFTER_MS;
-        if (fresh && !hlsBroken.current) {
-          setStatus('live');
-          setMessage('Live from the radio lab');
-        } else {
-          setStatus('waiting');
-          setMessage('Waiting for live video');
-        }
+        edge = await fetchLiveEdge(src, ctrl.signal);
       } catch {
-        if (ctrl.signal.aborted) return;
-        setStatus('waiting');
-        setMessage('Live view is not available yet');
+        // a failed probe is judged below as transient
       }
-      if (!ctrl.signal.aborted) timer = setTimeout(poll, MANIFEST_POLL_MS);
+      if (ctrl.signal.aborted) return;
+      const probe = edge === null ? ({ ok: false } as const) : ({ ok: true, edge } as const);
+      const r = assessHls(watch.current, probe, lastProgress.current, Date.now(), STALE_AFTER_MS);
+      watch.current = r.watch;
+      showHls(r.view);
+      timer = setTimeout(poll, MANIFEST_POLL_MS);
     }
 
     void poll();
@@ -123,13 +133,13 @@ function R2Panel({ whep, hls }: { whep?: string; hls?: string }) {
       ctrl.abort();
       clearTimeout(timer);
     };
-  }, [hls, mode]);
+  }, [hls, mode, showHls]);
 
   return (
     <PanelChrome status={status} message={message}>
       {mode === 'webrtc' && whep && <WhepPlayer key={session} src={whep} onLive={whepLive} onDown={whepDown} />}
-      {mode === 'hls' && status === 'live' && hls && (
-        <R2StreamPlayer key={hlsPlayerKey} src={hls} onProgress={hlsProgress} onFatal={hlsFatal} />
+      {mode === 'hls' && hlsPlayer.mounted && hls && (
+        <R2StreamPlayer key={hlsPlayer.key} src={hls} onProgress={hlsProgress} onFatal={hlsFatal} />
       )}
     </PanelChrome>
   );
