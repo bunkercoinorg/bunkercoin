@@ -1,7 +1,7 @@
 'use client';
 
 /** Derivation is slow on purpose — show it working instead of a dead button. */
-export default function KdfProgress({ label, elapsed }: { label: string; elapsed: number }) {
+export default function KdfProgress({ label, elapsed, fallback }: { label: string; elapsed: number; fallback?: boolean }) {
   return (
     <div className="mt-4.5" role="status" aria-live="polite">
       <div className="h-0.5 overflow-hidden rounded-xs bg-line">
@@ -11,6 +11,11 @@ export default function KdfProgress({ label, elapsed }: { label: string; elapsed
         <span>{label}</span>
         <span className="text-accent">{elapsed.toFixed(1)}s</span>
       </div>
+      {fallback && (
+        <p className="mt-2 text-[12.5px] leading-relaxed text-faint">
+          Slower fallback: the background worker did not respond, so this tab may stop responding until it finishes.
+        </p>
+      )}
     </div>
   );
 }

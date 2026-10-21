@@ -38,12 +38,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${inter.variable} ${plexMono.variable}`}>
       <body>
         {/* WebCrypto needs a secure context — hop to https before anything runs. */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html:
-              "if(location.protocol==='http:'&&!['localhost','127.0.0.1'].includes(location.hostname))location.replace(location.href.replace(/^http:/,'https:'));",
-          }}
-        />
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        <script src="/https-redirect.js" />
         {children}
       </body>
     </html>

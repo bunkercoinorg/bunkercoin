@@ -17,6 +17,10 @@ import {
   mintSigningHash,
   metadataHash,
   isValidTicker,
+  tokenIdBytes,
+  isTokenId,
+  assetKey,
+  NATIVE_ASSET,
 } from '../src/lib/keys.ts';
 
 test('generated mnemonic has 24 words and round-trips to a stable address', () => {
@@ -126,11 +130,11 @@ test('token_id is hashed as raw bytes, not a little-endian integer', () => {
 test('signed transfer verifies under the sender public key', () => {
   const { privateKey, publicKey, address } = keypairFromMnemonic(createMnemonic());
   const to = keypairFromMnemonic(createMnemonic()).address;
-  const tx = signTransfer({ privateKey, publicKey, to, amount: 12345, nonce: 0, fee: 100 });
+  const tx = signTransfer({ privateKey, publicKey, to, amount: 12345n, nonce: 0n, fee: 100n });
 
   assert.equal(tx.sender, address);
   assert.ok('Transfer' in tx.body);
-  assert.equal(tx.body.Transfer.amount, 12345);
+  assert.equal(tx.body.Transfer.amount, 12345n);
   const hash = transferSigningHash({
     sender: publicKey,
     nonce: 0,
@@ -144,7 +148,7 @@ test('signed transfer verifies under the sender public key', () => {
 test('a signature does not verify against a tampered amount', () => {
   const { privateKey, publicKey } = keypairFromMnemonic(createMnemonic());
   const to = keypairFromMnemonic(createMnemonic()).address;
-  const tx = signTransfer({ privateKey, publicKey, to, amount: 100, nonce: 0, fee: 100 });
+  const tx = signTransfer({ privateKey, publicKey, to, amount: 100n, nonce: 0n, fee: 100n });
 
   const tamperedHash = transferSigningHash({
     sender: publicKey,
@@ -206,7 +210,7 @@ test('ticker length prefix prevents a concatenation collision', () => {
 test('signed mint verifies and carries a hex metadata hash', () => {
   const { privateKey, publicKey, address } = keypairFromMnemonic(createMnemonic());
   const hash = metadataHash({ name: 'Bunker Token', description: 'demo' });
-  const tx = signMint({ privateKey, publicKey, ticker: 'BNKR', maxSupply: 500, metadataHash: hash, nonce: 0, fee: 100 });
+  const tx = signMint({ privateKey, publicKey, ticker: 'BNKR', maxSupply: 500n, metadataHash: hash, nonce: 0n, fee: 100n });
 
   assert.equal(tx.sender, address);
   assert.ok('Mint' in tx.body);
@@ -240,10 +244,38 @@ test('token transfer sends token_id as hex, as the node decodes it', () => {
     publicKey,
     to,
     tokenId: Uint8Array.from([2, 0, 0, 0]),
-    amount: 100,
-    nonce: 0,
-    fee: 100,
+    amount: 100n,
+    nonce: 0n,
+    fee: 100n,
   });
   assert.ok('TokenTransfer' in tx.body);
   assert.equal(tx.body.TokenTransfer.token_id, '02000000');
+});
+
+test('u64 fields above 2^53 sign exactly, and out-of-range values are refused', () => {
+  const { privateKey, publicKey } = keypairFromMnemonic(createMnemonic());
+  const to = keypairFromMnemonic(createMnemonic()).address;
+  const amount = 9007199254740993n;
+  const tx = signTransfer({ privateKey, publicKey, to, amount, nonce: 0n, fee: 100n });
+  assert.ok('Transfer' in tx.body);
+  assert.equal(tx.body.Transfer.amount, amount);
+  const hash = transferSigningHash({ sender: publicKey, nonce: 0n, fee: 100n, to: decodeAddress(to), amount });
+  assert.ok(ed25519.verify(bs58.decode(tx.signature), hash, publicKey));
+  assert.throws(() => signTransfer({ privateKey, publicKey, to, amount: 1n << 64n, nonce: 0n, fee: 100n }), /u64/);
+  assert.throws(() => signTransfer({ privateKey, publicKey, to, amount: -1n, nonce: 0n, fee: 100n }), /u64/);
+});
+
+test('tokenIdBytes decodes the node hex id as raw bytes and rejects anything else', () => {
+  assert.deepEqual(tokenIdBytes('01000000'), Uint8Array.from([1, 0, 0, 0]));
+  assert.deepEqual(tokenIdBytes('000000ff'), Uint8Array.from([0, 0, 0, 255]));
+  for (const bad of ['', '0100', '0100000000', 'zz000000', '0100000G', 'ABCDEF01']) {
+    assert.equal(isTokenId(bad), false, bad);
+    assert.throws(() => tokenIdBytes(bad), /Token id/);
+  }
+});
+
+test('asset identity never lets a token named like the native asset select native', () => {
+  const bunkerToken = { kind: 'token' as const, tokenId: '02000000' };
+  assert.notEqual(assetKey(bunkerToken), assetKey(NATIVE_ASSET));
+  assert.notEqual(assetKey(bunkerToken), assetKey({ kind: 'token', tokenId: '03000000' }));
 });

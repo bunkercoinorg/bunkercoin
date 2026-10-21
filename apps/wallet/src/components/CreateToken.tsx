@@ -2,19 +2,22 @@
 
 import { useState } from 'react';
 import type { BunkerConnection } from '@/lib/connection';
-import { signMint, metadataHash, isValidTicker, type Keypair } from '@/lib/keys';
-import { formatUnits } from '@/lib/format';
-import type { PendingTx } from '@/lib/pending';
+import { signMint, metadataHash, isValidTicker } from '@/lib/keys';
+import { formatUnits, parseCount } from '@/lib/format';
+import type { Signer } from '@/lib/signer';
+import type { SubmitSigned } from '@/components/Dashboard';
 import { Button, Card, Divider, ErrorText, Hint, Input, Label } from '@/components/ui';
 
 interface CreateTokenProps {
   conn: BunkerConnection;
-  keypair: Keypair;
-  balance: number | null;
-  onSubmitted: (entry: PendingTx) => void;
+  signer: Signer;
+  balance: bigint | null;
+  fee: bigint | null;
+  feeError: string;
+  submit: SubmitSigned;
 }
 
-export default function CreateToken({ conn, keypair, balance, onSubmitted }: CreateTokenProps) {
+export default function CreateToken({ conn, signer, balance, fee, feeError, submit }: CreateTokenProps) {
   const [open, setOpen] = useState(false);
   const [ticker, setTicker] = useState('');
   const [supply, setSupply] = useState('');
@@ -22,6 +25,7 @@ export default function CreateToken({ conn, keypair, balance, onSubmitted }: Cre
   const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
   const reset = () => {
     setTicker('');
@@ -32,22 +36,34 @@ export default function CreateToken({ conn, keypair, balance, onSubmitted }: Cre
     setOpen(false);
   };
 
-  const submit = async () => {
+  const create = async () => {
     setError('');
+    setNotice('');
     const symbol = ticker.trim().toUpperCase();
     if (!isValidTicker(symbol)) {
       setError('Use 3-8 letters or numbers, e.g. BNKR.');
       return;
     }
-    const total = Number(supply.replace(/[, ]/g, ''));
-    if (!Number.isInteger(total) || total <= 0) {
-      setError('Enter a whole number of tokens to create.');
+    let total: bigint;
+    try {
+      total = parseCount(supply);
+    } catch (e) {
+      const msg = (e as Error).message;
+      setError(msg.includes('large') ? 'That supply is too large.' : 'Enter a whole number of tokens to create.');
       return;
     }
-    if (total > Number.MAX_SAFE_INTEGER) {
-      setError('That supply is too large.');
+    if (fee === null) {
+      setError(feeError ? `Network fee unavailable: ${feeError}` : 'The network fee has not loaded yet.');
       return;
     }
+    // The fee on screen is the fee that gets signed.
+    const reviewedFee = fee;
+    if (balance !== null && balance < reviewedFee) {
+      setError('Not enough BUNKER to cover the network fee.');
+      return;
+    }
+    // The chain stores only this hash; the JSON itself is off-chain.
+    const hash = metadataHash({ name: name.trim() || symbol, description: description.trim() });
     setBusy(true);
     try {
       // Tickers are unique chain-wide and first-come; check before paying a fee.
@@ -56,25 +72,17 @@ export default function CreateToken({ conn, keypair, balance, onSubmitted }: Cre
         setError(`${symbol} is already taken. Try another symbol.`);
         return;
       }
-      const fee = await conn.getFee().catch(() => 100);
-      if (balance !== null && balance < fee) {
-        setError('Not enough BUNKER to cover the network fee.');
-        return;
-      }
-      const nonce = await conn.getNonce(keypair.address);
-      const tx = signMint({
-        privateKey: keypair.privateKey,
-        publicKey: keypair.publicKey,
-        ticker: symbol,
-        maxSupply: total,
-        // The chain stores only this hash; the JSON itself is off-chain.
-        metadataHash: metadataHash({ name: name.trim() || symbol, description: description.trim() }),
-        nonce,
-        fee,
-      });
-      const txId = await conn.sendTransaction(tx);
-      onSubmitted({ txId, kind: 'mint', amount: total, ticker: symbol, at: Date.now() });
+      const { txId, tracked } = await submit(
+        (nonce) =>
+          signer.use((privateKey, publicKey) =>
+            signMint({ privateKey, publicKey, ticker: symbol, maxSupply: total, metadataHash: hash, nonce, fee: reviewedFee }),
+          ),
+        { kind: 'mint', amount: total, ticker: symbol },
+      );
       reset();
+      if (!tracked) {
+        setNotice(`Submitted (${txId.slice(0, 6)}…). Tracking could not be saved on this device, so it will not survive a reload.`);
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -88,6 +96,7 @@ export default function CreateToken({ conn, keypair, balance, onSubmitted }: Cre
         <Button variant="ghost" small onClick={() => setOpen(true)}>
           Create a token…
         </Button>
+        {notice && <Hint>{notice}</Hint>}
       </Card>
     );
   }
@@ -137,14 +146,17 @@ export default function CreateToken({ conn, keypair, balance, onSubmitted }: Cre
         disabled={busy}
         onChange={(e) => setDescription(e.target.value)}
       />
-      <Hint>Network fee: {formatUnits(100)} BUNKER · takes a few minutes to confirm over radio</Hint>
+      <Hint>
+        Network fee: {fee !== null ? `${formatUnits(fee)} BUNKER` : `unavailable${feeError ? ` (${feeError})` : ''}`} · takes
+        a few minutes to confirm over radio
+      </Hint>
       {error && <ErrorText>{error}</ErrorText>}
       <Divider />
       <div className="flex gap-2.5 *:flex-1">
         <Button variant="ghost" disabled={busy} onClick={reset}>
           Cancel
         </Button>
-        <Button disabled={busy || !ticker || !supply} onClick={submit}>
+        <Button disabled={busy || !ticker || !supply || fee === null} onClick={create}>
           {busy ? 'Creating…' : 'Create token'}
         </Button>
       </div>

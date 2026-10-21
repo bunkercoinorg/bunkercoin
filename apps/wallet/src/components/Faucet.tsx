@@ -2,15 +2,15 @@
 
 import { useState } from 'react';
 import type { BunkerConnection } from '@/lib/connection';
-import type { PendingTx } from '@/lib/pending';
+import type { RecordSubmitted } from '@/components/Dashboard';
 import { Button, Card, ErrorText } from '@/components/ui';
 
-const FAUCET_UNITS = 1_000_000; // 1 BUNKER per tap
+const FAUCET_UNITS = 1_000_000n; // 1 BUNKER per tap
 
 interface FaucetProps {
   conn: BunkerConnection;
   address: string;
-  onSubmitted: (entry: PendingTx) => void;
+  onSubmitted: RecordSubmitted;
 }
 
 export default function Faucet({ conn, address, onSubmitted }: FaucetProps) {
@@ -22,7 +22,7 @@ export default function Faucet({ conn, address, onSubmitted }: FaucetProps) {
     setError('');
     try {
       const txId = await conn.requestAirdrop(address, FAUCET_UNITS);
-      onSubmitted({ txId, kind: 'faucet', amount: FAUCET_UNITS, at: Date.now() });
+      await onSubmitted(txId, { kind: 'faucet', amount: FAUCET_UNITS });
     } catch (e) {
       setError((e as Error).message);
     } finally {

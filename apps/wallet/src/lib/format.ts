@@ -1,21 +1,44 @@
 // 1 base unit = 1 µBUNKER (the RPC calls the field `lamports`).
-export const UNITS_PER_BUNKER = 1_000_000;
+export const UNITS_PER_BUNKER = 1_000_000n;
+const DECIMALS = 6;
+export const U64_MAX = (1n << 64n) - 1n;
 
-export function formatUnits(units: number | bigint): string {
-  const value = Number(units) / UNITS_PER_BUNKER;
-  return value.toLocaleString('en-US', { maximumFractionDigits: 6 });
+const group = (digits: string): string => digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+/** 1234500000n -> "1,234.5" (BUNKER, trailing zeros trimmed). */
+export function formatUnits(units: bigint): string {
+  const negative = units < 0n;
+  const abs = negative ? -units : units;
+  const whole = group((abs / UNITS_PER_BUNKER).toString());
+  const frac = (abs % UNITS_PER_BUNKER).toString().padStart(DECIMALS, '0').replace(/0+$/, '');
+  return `${negative ? '-' : ''}${whole}${frac ? `.${frac}` : ''}`;
 }
 
-/** "0.5" BUNKER -> 500000 units. Throws on malformed or sub-unit input. */
-export function parseBunker(text: string): number {
+/** Whole token counts: custom tokens have no decimals on-chain. */
+export function formatCount(count: bigint): string {
+  return count < 0n ? `-${group((-count).toString())}` : group(count.toString());
+}
+
+/** "0.5" BUNKER -> 500000n units. Throws on malformed, sub-unit, zero or over-u64 input. */
+export function parseBunker(text: string): bigint {
   const trimmed = String(text).trim();
   if (!/^\d+(\.\d+)?$/.test(trimmed)) throw new Error('Enter a positive amount');
   const [whole, frac = ''] = trimmed.split('.');
-  if (frac.length > 6) throw new Error('Smallest unit is 0.000001 BUNKER');
-  const units = BigInt(whole) * BigInt(UNITS_PER_BUNKER) + BigInt(frac.padEnd(6, '0') || '0');
+  if (frac.length > DECIMALS) throw new Error('Smallest unit is 0.000001 BUNKER');
+  const units = BigInt(whole) * UNITS_PER_BUNKER + BigInt(frac.padEnd(DECIMALS, '0'));
   if (units <= 0n) throw new Error('Enter a positive amount');
-  if (units > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('Amount too large');
-  return Number(units);
+  if (units > U64_MAX) throw new Error('Amount too large');
+  return units;
+}
+
+/** "1,000 000" -> 1000000n. Whole positive numbers that fit a u64 only. */
+export function parseCount(text: string): bigint {
+  const cleaned = String(text).replace(/[, ]/g, '');
+  if (!/^\d+$/.test(cleaned)) throw new Error('Enter a whole number');
+  const value = BigInt(cleaned);
+  if (value <= 0n) throw new Error('Enter a whole number');
+  if (value > U64_MAX) throw new Error('That number is too large');
+  return value;
 }
 
 export function shortAddress(address: string, chars = 4): string {

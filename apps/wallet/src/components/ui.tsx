@@ -89,7 +89,11 @@ export function Divider() {
 }
 
 export function ErrorText({ children }: { children: ReactNode }) {
-  return <p className="mt-2.5 text-[13.5px] text-danger">{children}</p>;
+  return (
+    <p role="alert" className="mt-2.5 text-[13.5px] text-danger">
+      {children}
+    </p>
+  );
 }
 
 export function Hint({ children }: { children: ReactNode }) {
