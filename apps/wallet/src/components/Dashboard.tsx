@@ -443,7 +443,7 @@ export default function Dashboard({ signer, onLock, onWalletRemoved, autoLockMin
     promotions.current.set(txId, hash);
   }, []);
 
-  const { status } = connectionStatus(fresh);
+  const { status, failing } = connectionStatus(fresh);
   const offline = status === 'offline' || status === 'stale';
   const historyState: WalletState['historyState'] =
     olderState !== 'idle' ? olderState : history?.end === 'exhausted' ? 'end' : 'idle';
@@ -494,7 +494,17 @@ export default function Dashboard({ signer, onLock, onWalletRemoved, autoLockMin
       flow={!tab}
       tools={
         <>
-          {offline ? <StatusTag status="offline" className="bc-net" /> : <Tag state="live" className="bc-net">testnet</Tag>}
+          {offline ? (
+            <StatusTag status="offline" className="bc-net" />
+          ) : status === 'partial' ? (
+            <Tag state="unknown" className="bc-net">
+              testnet · partial<span className="bc-sr">: {failing.join(', ')} unavailable</span>
+            </Tag>
+          ) : (
+            <Tag state={status === 'live' ? 'live' : 'neutral'} className="bc-net">
+              testnet
+            </Tag>
+          )}
           <AddressChip address={address} />
           <Button variant="ghost" size="sm" onClick={onLock} aria-label="lock">
             <Icon name="lock" />

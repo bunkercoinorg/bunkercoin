@@ -21,9 +21,8 @@ import { viewHref } from '@/hooks/useHashView';
 import { useVerifiedMetadata } from '@/hooks/useVerifiedMetadata';
 import { ActivityRow, useActivity } from '@/components/Activity';
 import { bunker, count, NATIVE, NativeMark, TokenMark } from '@/components/assets';
+import { ResourceState, STALE_MS } from '@/components/ResourceState';
 import type { WalletActions, WalletState } from '@/components/Dashboard';
-
-const STALE_MS = 60_000;
 
 function TokenRow({ token }: { token: TokenBalance }) {
   const doc = useVerifiedMetadata(token.metadataHash);
@@ -99,7 +98,11 @@ export default function Home({ state, actions }: { state: WalletState; actions: 
         )}
       </div>
       <section aria-labelledby="home-tokens">
-        <SectionHead label="tokens" id="home-tokens" />
+        <SectionHead
+          label="tokens"
+          id="home-tokens"
+          action={<ResourceState fresh={fresh.tokens} what="token balances" onRetry={() => void actions.refresh()} />}
+        />
         <List>
           <ListRow mark={<NativeMark />} title={NATIVE} sub="native" value={balance === null ? '–' : bunker(balance)} />
           {tokens.map((t) => (
@@ -115,9 +118,12 @@ export default function Home({ state, actions }: { state: WalletState; actions: 
             offline ? (
               <span className="bc-hint mono">checking paused</span>
             ) : (
-              <Link className="bc-mini" href={viewHref('activity')}>
-                all →
-              </Link>
+              <span className="bc-row">
+                <ResourceState fresh={fresh.history} what="history" onRetry={() => void actions.refresh()} />
+                <Link className="bc-mini" href={viewHref('activity')}>
+                  all →
+                </Link>
+              </span>
             )
           }
         />

@@ -20,6 +20,7 @@ import { viewHref } from '@/hooks/useHashView';
 import { activityItems, isOpen, tickerMap, type ActivityItem } from '@/components/activity-model';
 import { dayLabel, KindMark } from '@/components/assets';
 import type { WalletActions, WalletState } from '@/components/Dashboard';
+import { ResourceState } from '@/components/ResourceState';
 
 export function itemTag(item: ActivityItem, now: number) {
   if (item.status === 'pending') return <StatusTag status="confirming" detail={item.at ? relativeAge(item.at, now) : undefined} />;
@@ -80,6 +81,7 @@ export default function Activity({ state, actions }: { state: WalletState; actio
           onChange={setFilter}
         />
       </div>
+      {history !== null && <ResourceState fresh={fresh.history} what="history" onRetry={() => void actions.refresh()} />}
       {state.trackingLost && (
         <Notice tone="warn">Tracking could not be saved in this browser; open transactions are not followed after a reload.</Notice>
       )}
