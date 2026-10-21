@@ -1,53 +1,32 @@
-// 1 base unit = 1 µBUNKER (the RPC calls the field `lamports`).
-export const UNITS_PER_BUNKER = 1_000_000n;
-const DECIMALS = 6;
-export const U64_MAX = (1n << 64n) - 1n;
+import {
+  formatInteger,
+  formatUnits as formatScaled,
+  NATIVE_SCALE,
+  parseUnits,
+  relativeAge,
+  shortId,
+  TOKEN_SCALE,
+} from '@bunkercoin/chain-format';
 
-const group = (digits: string): string => digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+export { UNITS_PER_BUNKER, U64_MAX } from '@bunkercoin/chain-format';
 
 /** 1234500000n -> "1,234.5" (BUNKER, trailing zeros trimmed). */
-export function formatUnits(units: bigint): string {
-  const negative = units < 0n;
-  const abs = negative ? -units : units;
-  const whole = group((abs / UNITS_PER_BUNKER).toString());
-  const frac = (abs % UNITS_PER_BUNKER).toString().padStart(DECIMALS, '0').replace(/0+$/, '');
-  return `${negative ? '-' : ''}${whole}${frac ? `.${frac}` : ''}`;
-}
+export const formatUnits = (units: bigint): string => formatScaled(units, NATIVE_SCALE, { trim: true });
 
 /** Whole token counts: custom tokens have no decimals on-chain. */
-export function formatCount(count: bigint): string {
-  return count < 0n ? `-${group((-count).toString())}` : group(count.toString());
-}
+export const formatCount = formatInteger;
 
-/** "0.5" BUNKER -> 500000n units. Throws on malformed, sub-unit, zero or over-u64 input. */
-export function parseBunker(text: string): bigint {
-  const trimmed = String(text).trim();
-  if (!/^\d+(\.\d+)?$/.test(trimmed)) throw new Error('Enter a positive amount');
-  const [whole, frac = ''] = trimmed.split('.');
-  if (frac.length > DECIMALS) throw new Error('Smallest unit is 0.000001 BUNKER');
-  const units = BigInt(whole) * UNITS_PER_BUNKER + BigInt(frac.padEnd(DECIMALS, '0'));
-  if (units <= 0n) throw new Error('Enter a positive amount');
-  if (units > U64_MAX) throw new Error('Amount too large');
-  return units;
-}
+/** "0.5" BUNKER -> 500000n units. Throws AmountError (spec copy) on malformed, sub-unit, zero or over-u64 input. */
+export const parseBunker = (text: string): bigint => parseUnits(text, NATIVE_SCALE);
 
-/** "1,000 000" -> 1000000n. Whole positive numbers that fit a u64 only. */
-export function parseCount(text: string): bigint {
-  const cleaned = String(text).replace(/[, ]/g, '');
-  if (!/^\d+$/.test(cleaned)) throw new Error('Enter a whole number');
-  const value = BigInt(cleaned);
-  if (value <= 0n) throw new Error('Enter a whole number');
-  if (value > U64_MAX) throw new Error('That number is too large');
-  return value;
-}
+/** "1,000 000" -> 1000000n. Whole positive numbers that fit a u64 only; separators are typing aids. */
+export const parseCount = (text: string): bigint => parseUnits(String(text).replace(/[, ]/g, ''), TOKEN_SCALE);
 
-export function shortAddress(address: string, chars = 4): string {
+/** `8Ep5…suHx`, hex `7ffcc7…52bf`; `chars` overrides both ends. */
+export function shortAddress(address: string, chars?: number): string {
+  if (chars === undefined) return shortId(address);
   if (!address || address.length <= chars * 2 + 3) return address;
   return `${address.slice(0, chars)}…${address.slice(-chars)}`;
 }
 
-export function elapsedLabel(sinceMs: number): string {
-  const s = Math.floor((Date.now() - sinceMs) / 1000);
-  if (s < 60) return `${s}s`;
-  return `${Math.floor(s / 60)}m ${s % 60}s`;
-}
+export const elapsedLabel = (sinceMs: number): string => relativeAge(sinceMs, Date.now());

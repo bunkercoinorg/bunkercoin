@@ -1,6 +1,5 @@
-import { isObject, parseJson, stringifyJson, type Json } from './json.ts';
+import { isObject, parseJson, stringifyJson, U64_MAX, type Json } from '@bunkercoin/chain-format';
 import { hexToBase58, isTokenId, type SignedTransaction } from './keys.ts';
-import { U64_MAX } from './format.ts';
 
 export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc.bunkercoin.com/';
 

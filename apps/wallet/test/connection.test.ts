@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BunkerConnection, ConfirmTimeoutError, MAX_FEE_UNITS, RpcError } from '../src/lib/connection.ts';
-import { parseJson, stringifyJson } from '../src/lib/json.ts';
+import { parseJson, stringifyJson } from '@bunkercoin/chain-format';
 
 interface RpcCall {
   id: number;

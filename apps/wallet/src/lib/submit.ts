@@ -1,4 +1,4 @@
-import bs58 from 'bs58';
+import { base58ToBytes } from '@bunkercoin/chain-format';
 import {
   encodeTransaction,
   RpcError,
@@ -241,7 +241,9 @@ async function resolveLegacy(account: Account): Promise<PendingTx | null> {
   for (const p of account.entries().filter(isUnresolvedLegacy)) {
     let found;
     try {
-      found = await account.conn.getTransaction(toHex(bs58.decode(p.txId)));
+      const raw = base58ToBytes(p.txId);
+      if (!raw) return p;
+      found = await account.conn.getTransaction(toHex(raw));
     } catch {
       return p;
     }

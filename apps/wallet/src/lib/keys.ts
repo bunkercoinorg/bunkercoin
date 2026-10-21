@@ -2,8 +2,9 @@ import { ed25519 } from '@noble/curves/ed25519.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
-import bs58 from 'bs58';
-import { canonicalMetadataJson } from '@bunkercoin/chain-format';
+import { base58ToBytes, bytesToBase58, bytesToHex, canonicalMetadataJson, decodeId, hexToBytes, isTokenId, U64_MAX } from '@bunkercoin/chain-format';
+
+export { isTokenId };
 
 export const MNEMONIC_WORDS = 24;
 
@@ -38,13 +39,9 @@ export function assetKey(asset: Asset): string {
 }
 
 /** Token ids are 4 raw bytes, hex-encoded by the node ("01000000"). */
-export function isTokenId(id: unknown): id is string {
-  return typeof id === 'string' && /^[0-9a-f]{8}$/.test(id);
-}
-
 export function tokenIdBytes(id: string): Uint8Array {
   if (!isTokenId(id)) throw new Error('Token id must be 8 lowercase hex characters');
-  return Uint8Array.from(id.match(/../g)!.map((b) => parseInt(b, 16)));
+  return hexToBytes(id)!;
 }
 
 export function createMnemonic(): string {
@@ -67,31 +64,29 @@ export function keypairFromMnemonic(phrase: string, passphrase = ''): Keypair {
   const privateKey = seed.slice(0, 32);
   seed.fill(0);
   const publicKey = ed25519.getPublicKey(privateKey);
-  return { privateKey, publicKey, address: bs58.encode(publicKey) };
+  return { privateKey, publicKey, address: bytesToBase58(publicKey) };
 }
 
 export function addressFromPublicKey(publicKey: Uint8Array): string {
-  return bs58.encode(publicKey);
+  return bytesToBase58(publicKey);
 }
 
 /** Accepts base58 or hex, as the node does. */
 export function decodeAddress(address: string): Uint8Array {
-  const value = address.trim();
-  if (/^[0-9a-fA-F]{64}$/.test(value)) {
-    return Uint8Array.from(value.match(/../g)!.map((b) => parseInt(b, 16)));
-  }
-  const bytes = bs58.decode(value);
-  if (bytes.length !== 32) throw new Error('Address must be 32 bytes');
+  const bytes = decodeId(address, 32);
+  if (!bytes) throw new Error('Address must be 32 bytes');
   return bytes;
 }
 
 /** Node tx listings use hex; the wallet displays base58. */
 export function addressToHex(address: string): string {
-  return Array.from(decodeAddress(address), (b) => b.toString(16).padStart(2, '0')).join('');
+  return bytesToHex(decodeAddress(address));
 }
 
 export function hexToBase58(hex: string): string {
-  return bs58.encode(Uint8Array.from(hex.match(/../g)!.map((b) => parseInt(b, 16))));
+  const bytes = hexToBytes(hex);
+  if (!bytes) throw new Error('not hex');
+  return bytesToBase58(bytes);
 }
 
 export function isValidAddress(address: string): boolean {
@@ -102,8 +97,6 @@ export function isValidAddress(address: string): boolean {
     return false;
   }
 }
-
-const U64_MAX = (1n << 64n) - 1n;
 
 // setBigUint64 wraps silently; an out-of-range value must never sign as a different one.
 const u64le = (value: number | bigint): Uint8Array => {
@@ -207,15 +200,13 @@ export function updateMetadataSigningHash({
 
 /** Transaction::hash: sha256(sender ‖ nonce ‖ fee ‖ signature), base58 as the RPC returns it. Known before sending. */
 export function transactionId(tx: SignedTransaction): string {
-  const sender = bs58.decode(tx.sender);
-  const signature = bs58.decode(tx.signature);
-  if (sender.length !== 32 || signature.length !== 64) throw new Error('malformed signed transaction');
-  return bs58.encode(sha256(new Uint8Array([...sender, ...u64le(tx.nonce), ...u64le(tx.fee), ...signature])));
+  const sender = base58ToBytes(tx.sender, 32);
+  const signature = base58ToBytes(tx.signature, 64);
+  if (!sender || !signature) throw new Error('malformed signed transaction');
+  return bytesToBase58(sha256(new Uint8Array([...sender, ...u64le(tx.nonce), ...u64le(tx.fee), ...signature])));
 }
 
-export function toHex(bytes: Uint8Array): string {
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-}
+export const toHex = bytesToHex;
 
 export function isValidTicker(ticker: string): boolean {
   return /^[A-Z0-9]{3,8}$/.test(ticker);
@@ -247,10 +238,10 @@ export function signMint({
     metadataHash: hash,
   });
   return {
-    sender: bs58.encode(publicKey),
+    sender: bytesToBase58(publicKey),
     nonce,
     fee,
-    signature: bs58.encode(ed25519.sign(digest, privateKey)),
+    signature: bytesToBase58(ed25519.sign(digest, privateKey)),
     // The node's REST layer decodes metadata_hash from hex, not a byte array.
     body: { Mint: { ticker, max_supply: maxSupply, metadata_hash: toHex(hash) } },
   };
@@ -274,11 +265,11 @@ export function signTransfer({
   const recipient = decodeAddress(to);
   const hash = transferSigningHash({ sender: publicKey, nonce, fee, to: recipient, amount });
   return {
-    sender: bs58.encode(publicKey),
+    sender: bytesToBase58(publicKey),
     nonce,
     fee,
-    signature: bs58.encode(ed25519.sign(hash, privateKey)),
-    body: { Transfer: { to: bs58.encode(recipient), amount } },
+    signature: bytesToBase58(ed25519.sign(hash, privateKey)),
+    body: { Transfer: { to: bytesToBase58(recipient), amount } },
   };
 }
 
@@ -302,14 +293,14 @@ export function signTokenTransfer({
   const recipient = decodeAddress(to);
   const hash = tokenTransferSigningHash({ sender: publicKey, nonce, fee, to: recipient, tokenId, amount });
   return {
-    sender: bs58.encode(publicKey),
+    sender: bytesToBase58(publicKey),
     nonce,
     fee,
-    signature: bs58.encode(ed25519.sign(hash, privateKey)),
+    signature: bytesToBase58(ed25519.sign(hash, privateKey)),
     body: {
       TokenTransfer: {
         // The node's REST layer decodes token_id from hex, not a byte array.
-        to: bs58.encode(recipient),
+        to: bytesToBase58(recipient),
         token_id: toHex(tokenId),
         amount,
       },
@@ -334,10 +325,10 @@ export function signUpdateMetadata({
 }): SignedTransaction {
   const digest = updateMetadataSigningHash({ sender: publicKey, nonce, fee, tokenId, metadataHash: hash });
   return {
-    sender: bs58.encode(publicKey),
+    sender: bytesToBase58(publicKey),
     nonce,
     fee,
-    signature: bs58.encode(ed25519.sign(digest, privateKey)),
+    signature: bytesToBase58(ed25519.sign(digest, privateKey)),
     body: { UpdateMetadata: { token_id: toHex(tokenId), metadata_hash: toHex(hash) } },
   };
 }

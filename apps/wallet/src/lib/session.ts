@@ -1,5 +1,5 @@
 import { ed25519 } from '@noble/curves/ed25519.js';
-import bs58 from 'bs58';
+import { bytesToBase58 } from '@bunkercoin/chain-format';
 import type { Keypair } from './keys.ts';
 import type { Signer } from './signer.ts';
 
@@ -193,7 +193,7 @@ export async function loadSession(fingerprint: string): Promise<RestoredSession 
       return null;
     }
     const publicKey = ed25519.getPublicKey(privateKey);
-    return { keypair: { privateKey, publicKey, address: bs58.encode(publicKey) }, lastActivity: blob.at };
+    return { keypair: { privateKey, publicKey, address: bytesToBase58(publicKey) }, lastActivity: blob.at };
   } catch {
     await revokeSession();
     return null;
