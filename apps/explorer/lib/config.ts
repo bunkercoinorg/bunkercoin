@@ -16,3 +16,6 @@ export const STREAM_IFRAME_HOSTS = [
   ...DEFAULT_STREAM_HOSTS,
   ...parseHostList(process.env.NEXT_PUBLIC_STREAM_IFRAME_HOSTS),
 ];
+
+export const WALLET_URL = process.env.NEXT_PUBLIC_WALLET_URL || 'https://wallet.bunkercoin.com';
+export const SOURCE_URL = 'https://github.com/TheBunkerCoin/bunker_coin';

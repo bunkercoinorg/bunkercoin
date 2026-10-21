@@ -6,7 +6,7 @@ const VERSION = 'v2';
 const LEGACY_KEY = `${PREFIX}v1`;
 const MAX_ENTRIES = 20;
 
-export type PendingKind = 'faucet' | 'send' | 'mint' | 'token-send';
+export type PendingKind = 'faucet' | 'send' | 'mint' | 'token-send' | 'metadata';
 
 /**
  * 'uncertain': recorded before broadcast and not acknowledged by the node (yet).
@@ -22,9 +22,13 @@ export interface PendingTx {
   /** Null for transactions this wallet did not sign (faucet) or whose nonce is unknown (legacy). */
   nonce: bigint | null;
   state: PendingState;
+  /** Base units; absent on faucet requests and pre-fee entries. */
+  fee?: bigint;
   to?: string;
   ticker?: string;
   error?: string;
+  /** A `failed` entry the chain executed and failed (fee and nonce spent), as opposed to a broadcast the node refused. */
+  executed?: true;
 }
 
 /** A signed nonce that may still execute. Kept apart from Activity so dismissing or trimming never frees it. */
@@ -38,7 +42,7 @@ export interface Reservation {
   wire?: string;
 }
 
-const KINDS: PendingKind[] = ['faucet', 'send', 'mint', 'token-send'];
+const KINDS: PendingKind[] = ['faucet', 'send', 'mint', 'token-send', 'metadata'];
 const STATES: PendingState[] = ['uncertain', 'pending', 'unconfirmed', 'failed'];
 const DIGITS = /^\d+$/;
 
@@ -56,6 +60,7 @@ function decode(v: unknown): PendingTx | null {
   if (typeof e.txId !== 'string' || !KINDS.includes(e.kind as PendingKind) || !STATES.includes(e.state as PendingState)) return null;
   if (typeof e.amount !== 'string' || !DIGITS.test(e.amount) || typeof e.at !== 'number') return null;
   if (e.nonce !== null && (typeof e.nonce !== 'string' || !DIGITS.test(e.nonce))) return null;
+  if (e.fee !== undefined && (typeof e.fee !== 'string' || !DIGITS.test(e.fee))) return null;
   return {
     txId: e.txId,
     kind: e.kind as PendingKind,
@@ -63,13 +68,20 @@ function decode(v: unknown): PendingTx | null {
     at: e.at,
     nonce: e.nonce === null ? null : BigInt(e.nonce as string),
     state: e.state as PendingState,
+    ...(typeof e.fee === 'string' ? { fee: BigInt(e.fee) } : {}),
     ...(typeof e.to === 'string' ? { to: e.to } : {}),
     ...(typeof e.ticker === 'string' ? { ticker: e.ticker } : {}),
     ...(typeof e.error === 'string' ? { error: e.error } : {}),
+    ...(e.executed === true ? { executed: true as const } : {}),
   };
 }
 
-const encode = (p: PendingTx) => ({ ...p, amount: p.amount.toString(), nonce: p.nonce === null ? null : p.nonce.toString() });
+const encode = (p: PendingTx) => ({
+  ...p,
+  amount: p.amount.toString(),
+  nonce: p.nonce === null ? null : p.nonce.toString(),
+  fee: p.fee === undefined ? undefined : p.fee.toString(),
+});
 
 function decodeReservation(v: unknown): Reservation | null {
   if (typeof v !== 'object' || v === null) return null;

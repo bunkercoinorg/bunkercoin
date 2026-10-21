@@ -1,94 +1,98 @@
 'use client';
 
-import { useState } from 'react';
-import { decryptMnemonic, requireKeystore } from '@/lib/keystore';
+import { useEffect, useState } from 'react';
+import { BrandMark, Button, StepList } from '@bunkercoin/ui';
+import { decryptMnemonic, keystoreFingerprint, rememberAddress, requireKeystore } from '@/lib/keystore';
 import { keypairFromMnemonic } from '@/lib/keys';
-import type { FinishUnlock } from '@/lib/unlock';
+import { loadAutoLockMinutes, type AutoLockMinutes } from '@/lib/session';
+import { CHANGED_MEANWHILE, unlockErrorCopy, type FinishUnlock } from '@/lib/unlock';
 import { useElapsed } from '@/hooks/useElapsed';
-import KdfProgress from '@/components/KdfProgress';
-import { Button, ErrorText, Input } from '@/components/ui';
+import Onboarding from '@/components/Onboarding';
+import PasswordField from '@/components/onboarding/PasswordField';
 
-interface UnlockProps {
+export type LockReason = 'idle' | 'signing' | null;
+
+export interface UnlockProps {
   beginUnlock: () => FinishUnlock;
-  onReset: () => void;
+  /** Unused: a forgotten password leads to import with the record kept, never to an erase. */
+  onReset?: () => void;
+  lockReason?: LockReason;
 }
 
-export default function Unlock({ beginUnlock, onReset }: UnlockProps) {
+/** W08. Works offline: nothing here talks to the node. */
+export default function Unlock({ beginUnlock, lockReason = null }: UnlockProps) {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [confirmReset, setConfirmReset] = useState(false);
   const [fallback, setFallback] = useState(false);
+  const [forgot, setForgot] = useState(false);
+  const [minutes, setMinutes] = useState<AutoLockMinutes>(15);
   const elapsed = useElapsed(busy);
 
+  useEffect(() => setMinutes(loadAutoLockMinutes()), []);
+
+  if (forgot) return <Onboarding beginUnlock={beginUnlock} mode="import" onCancel={() => setForgot(false)} />;
+
   const submit = async () => {
+    if (busy || !password) return;
     setBusy(true);
     setError('');
     setFallback(false);
     const finish = beginUnlock();
     try {
       const record = requireKeystore();
-      const mnemonic = await decryptMnemonic(record, password, { onFallback: () => setFallback(true) });
-      if (!finish(keypairFromMnemonic(mnemonic), record)) throw new Error('The wallet on this device changed meanwhile.');
+      const keypair = keypairFromMnemonic(await decryptMnemonic(record, password, { onFallback: () => setFallback(true) }));
+      const address = keypair.address;
+      if (!finish(keypair, record)) throw new Error(CHANGED_MEANWHILE);
+      rememberAddress(keystoreFingerprint(record), address);
     } catch (e) {
-      const msg = (e as Error).message;
-      setError(msg === 'Incorrect password' ? 'Incorrect password.' : msg);
+      setError(unlockErrorCopy(e));
       setBusy(false);
     }
   };
 
-  return (
-    <div className="mx-auto w-full max-w-105">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/bunker-favicon.png" alt="" width={40} height={40} className="mx-auto mb-4.5 block rounded-lg" />
-      <h2 className="mb-2 text-center text-[21px] font-semibold tracking-tight">Unlock your wallet</h2>
-      <p className="mb-6.5 text-center text-[13.5px] leading-relaxed text-muted">
-        Keys stay on this device, decrypted only in memory.
-      </p>
+  const reason =
+    lockReason === 'idle' ? `Locked after ${minutes} min idle.` : lockReason === 'signing' ? 'Locked before signing. Nothing was sent.' : null;
 
-      <Input
-        type="password"
-        aria-label="Password"
-        placeholder="Password"
+  return (
+    <div className="mx-auto w-full max-w-[420px] wl-stack wl-gap24">
+      <div className="bc-ctr pt-6">
+        <BrandMark size={48} />
+        <h1 className="bc-t1">Unlock.</h1>
+        {reason && <p className="bc-hint mono">{reason}</p>}
+      </div>
+      <PasswordField
+        id="unlock-password"
         value={password}
-        autoFocus
-        disabled={busy}
-        onChange={(e) => {
-          setPassword(e.target.value);
+        onChange={(v) => {
+          setPassword(v);
           setError('');
         }}
-        onKeyDown={(e) => e.key === 'Enter' && password && !busy && submit()}
+        error={error}
+        disabled={busy}
+        autoFocus
+        onEnter={() => void submit()}
       />
-      {error && <ErrorText>{error}</ErrorText>}
-
-      {busy ? (
-        <KdfProgress label="Unlocking — checking your password" elapsed={elapsed} fallback={fallback} />
-      ) : (
-        <div className="mt-4.5">
-          <Button disabled={!password} onClick={submit}>
-            Unlock
-          </Button>
-        </div>
+      <Button block busy={busy} disabled={!busy && !password} onClick={() => void submit()}>
+        {busy ? 'unlocking…' : 'unlock'}
+      </Button>
+      {busy && (
+        <StepList
+          steps={[
+            {
+              label: 'deriving key',
+              state: 'active',
+              ms: elapsed * 1000,
+              detail: fallback ? 'The background worker did not answer; this tab may freeze until it finishes.' : undefined,
+            },
+          ]}
+        />
       )}
-
-      <p className="mt-8.5 text-center text-[12.5px] leading-relaxed text-faint">
-        Forgot the password? The only way back in is your 24-word recovery phrase.
-        <br />
-        {confirmReset ? (
-          <Button
-            variant="danger"
-            small
-            className="mt-2.5"
-            onClick={onReset}
-          >
-            Really erase this wallet from the device
-          </Button>
-        ) : (
-          <Button variant="link" onClick={() => setConfirmReset(true)}>
-            Erase and recover
-          </Button>
-        )}
-      </p>
+      <div className="text-center">
+        <Button variant="quiet" disabled={busy} onClick={() => setForgot(true)}>
+          forgot password
+        </Button>
+      </div>
     </div>
   );
 }

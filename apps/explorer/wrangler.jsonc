@@ -1,0 +1,14 @@
+// Static-assets deploy of the explorer export (out/). /block serves block.html.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "explorer",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./out",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  },
+  "routes": [{ "pattern": "explorer.bunkercoin.com", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": false
+}

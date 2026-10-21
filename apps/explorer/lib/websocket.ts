@@ -2,7 +2,8 @@
 
 import { useEffect } from 'react';
 import { useSetAtom } from 'jotai';
-import { applyChainAtom, radioStatsAtom, wsStatusAtom } from './atoms';
+import { applyChainAtom, radioSamplesAtom, radioStatsAtom, wsStatusAtom } from './atoms';
+import { appendSample } from './strip';
 import { applyLive, applyStatusChange } from './chain';
 import { NODE_WS_URL } from './config';
 import { backoffDelay, parseWsMessage } from './ws-protocol';
@@ -11,6 +12,7 @@ export function useWebSocket() {
   const applyChain = useSetAtom(applyChainAtom);
   const setStatus = useSetAtom(wsStatusAtom);
   const setRadioStats = useSetAtom(radioStatsAtom);
+  const setRadioSamples = useSetAtom(radioSamplesAtom);
 
   useEffect(() => {
     let disposed = false;
@@ -51,7 +53,10 @@ export function useWebSocket() {
         if (!msg) return;
         if (msg.kind === 'slot') applyChain((v) => applyLive(v, msg.block));
         else if (msg.kind === 'status') applyChain((v) => applyStatusChange(v, msg));
-        else setRadioStats(msg.stats);
+        else {
+          setRadioStats(msg.stats);
+          setRadioSamples((s) => appendSample(s, { at: msg.stats.received_at, bps: msg.stats.effective_throughput_bps_2s }));
+        }
       };
       sock.onerror = () => sock.close();
       sock.onclose = () => {
@@ -69,5 +74,5 @@ export function useWebSocket() {
       if (ws) detach(ws);
       ws = null;
     };
-  }, [applyChain, setStatus, setRadioStats]);
+  }, [applyChain, setStatus, setRadioStats, setRadioSamples]);
 }

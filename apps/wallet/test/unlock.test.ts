@@ -27,3 +27,16 @@ test('a current unlock hands its key on untouched', () => {
   assert.equal(got, keypair);
   assert.deepEqual(keypair.privateKey, before);
 });
+
+test('unlock and setup failures map to distinct copy', async () => {
+  const { unlockErrorCopy, setupErrorCopy } = await import('../src/lib/unlock.ts');
+  const { KeystoreError } = await import('../src/lib/keystore.ts');
+  assert.equal(unlockErrorCopy(new Error('Incorrect password')), 'Wrong password.');
+  assert.equal(unlockErrorCopy(new KeystoreError('corrupt', 'x')), 'Saved wallet is damaged. Import with your 24 words.');
+  assert.equal(unlockErrorCopy(new Error('Invalid recovery phrase')), 'Saved wallet is damaged. Import with your 24 words.');
+  assert.equal(unlockErrorCopy(new KeystoreError('unavailable', 'x')), 'This browser blocked storage.');
+  assert.equal(unlockErrorCopy(new RangeError('WebAssembly.Memory.grow(): Maximum memory size exceeded')), 'Out of memory. Close other tabs and retry.');
+  assert.equal(unlockErrorCopy(new Error('The wallet on this device changed meanwhile.')), 'The wallet on this device changed meanwhile.');
+  assert.equal(setupErrorCopy(new DOMException('full', 'QuotaExceededError')), 'Storage is full or blocked. Nothing was saved.');
+  assert.equal(setupErrorCopy(new Error('A wallet record already exists on this device')), 'A wallet record already exists on this device');
+});

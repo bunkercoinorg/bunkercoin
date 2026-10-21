@@ -30,7 +30,9 @@ export const nodePaths = {
   block: (hash: string) => buildPath(['block', hash]),
   blockBySlot: (slot: string) => buildPath(['block', 'slot', slot]),
   transaction: (hash: string) => buildPath(['transactions', hash]),
+  transactions: (offset: number, limit: number) => buildPath(['transactions'], { offset, limit }),
   account: (pubkey: string) => buildPath(['accounts', pubkey]),
+  tokens: () => buildPath(['tokens']),
   token: (id: string) => buildPath(['tokens', id]),
   tokenHolders: (id: string, offset: number, limit: number) =>
     buildPath(['tokens', id, 'holders'], { offset, limit }),
