@@ -203,6 +203,14 @@ test('status is text first', () => {
   assert.match(render('StatePanel'), /<section class="bc-spn" data-state="notfound"><h1 class="bc-t2">/);
 });
 
+test('pagination announces loading and errors, never its note', () => {
+  assert.match(render('Pagination'), /^<div class="bc-pg"><span class="bc-sr" aria-live="polite">Older entries unavailable<\/span><span class="bc-grow">loaded/);
+  const idle = renderToStaticMarkup(h(ui.Pagination, { state: 'idle', onMore: noop, note: 'checked 3s ago' }));
+  assert.match(idle, /<span class="bc-sr" aria-live="polite"><\/span>/);
+  assert.equal(idle.match(/aria-live/g)?.length, 1);
+  assert.match(renderToStaticMarkup(h(explorer.NewRowsBar, { onShow: noop, action: 'latest' }, 'older blocks')), />latest<\/button>/);
+});
+
 test('amounts are exact and unknown is a dash', () => {
   assert.equal(render('Amount'), '<div class="bc-bal">1,248<span class="bc-fr">.500000</span><span class="bc-u">BUNKER</span></div>');
   assert.match(render('BalanceHero'), /<span aria-hidden="true">–<\/span><span class="bc-sr">unknown<\/span>/);

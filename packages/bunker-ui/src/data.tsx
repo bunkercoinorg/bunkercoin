@@ -449,8 +449,12 @@ export function Pagination({
   note?: ReactNode;
   labels?: { more?: string; loading?: string; error?: string; end?: string };
 }) {
+  const announce = state === 'loading' ? (labels.loading ?? 'loading older…') : state === 'error' ? (labels.error ?? 'Older entries unavailable') : '';
   return (
-    <div className="bc-pg" aria-live="polite">
+    <div className="bc-pg">
+      <span className="bc-sr" aria-live="polite">
+        {announce}
+      </span>
       {note && <span className="bc-grow">{note}</span>}
       {state === 'idle' && (
         <Button variant="ghost" size="sm" onClick={onMore}>

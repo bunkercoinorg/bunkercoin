@@ -61,12 +61,12 @@ export function ShareBar({ fraction, label }: { fraction: number; label: string 
 }
 
 /** Buffered head rows: `3 new blocks · show`. */
-export function NewRowsBar({ children, onShow }: { children: ReactNode; onShow: () => void }) {
+export function NewRowsBar({ children, onShow, action = 'show' }: { children: ReactNode; onShow: () => void; action?: string }) {
   return (
     <div className="bc-newbar">
       <span className="bc-grow">{children}</span>
       <Button variant="quiet" size="sm" onClick={onShow}>
-        show
+        {action}
       </Button>
     </div>
   );
