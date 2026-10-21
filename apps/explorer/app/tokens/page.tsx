@@ -65,8 +65,8 @@ export default function TokensPage() {
           rowHref={(t) => routes.token(t.id)}
           phone={(t) => (
             <>
-              <span>{tokenLabel(t.id, t)}</span>
-              <span className="bc-hint mono">
+              <span className="block">{tokenLabel(t.id, t)}</span>
+              <span className="bc-hint mono block">
                 {t.id} · {supply(t)}
               </span>
             </>

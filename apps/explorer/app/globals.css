@@ -18,3 +18,5 @@
 .theme-menu > summary::-webkit-details-marker { display: none; }
 .theme-menu > summary:hover, .theme-menu[open] > summary { color: var(--fg); }
 .theme-menu > div { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; background: var(--bg); border: 1px solid var(--line); padding: 8px; }
+
+.bc-pn-f > .bc-pg { flex: 1; padding: 0; }

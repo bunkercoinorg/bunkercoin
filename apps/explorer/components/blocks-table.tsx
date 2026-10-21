@@ -60,15 +60,17 @@ export default function BlocksTable({
       rowState={(b) => ({ isNew: known !== null && known.size > 0 && !known.has(b.slot), dim: b.type === 'skip' })}
       phone={(b) => (
         <>
-          <span className="bc-row">
+          <span className="flex items-center gap-2.5">
             <span className="mono">{slotLabel(b.slot)}</span>
             <StatusTag status={blockStatus(b)} />
           </span>
-          <span className="bc-hint mono">
+          <span className="bc-hint mono block">
             {b.type === 'skip' ? 'skip certificate' : shortId(b.hash)}
             {b.producer !== undefined && ` · node ${b.producer}`}
           </span>
-          <Age block={b} now={now} />
+          <span className="bc-hint block">
+            <Age block={b} now={now} />
+          </span>
         </>
       )}
       state={loading ? 'loading' : 'ready'}

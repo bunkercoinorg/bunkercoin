@@ -22,8 +22,7 @@ export const metadata: Metadata = {
   
   // Favicon
   icons: {
-    icon: "/bunker-favicon.png",
-    shortcut: "/bunker-favicon.png",
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }, { url: "/bunker-favicon.png" }],
     apple: "/bunker-favicon.png",
   },
   
