@@ -197,8 +197,7 @@ const InteractiveGlobe = ({ onReady }: { onReady?: () => void }) => {
                 height={dims.height}
                 globeImageUrl={texture}
                 backgroundColor="rgba(0,0,0,0)"
-                atmosphereColor={'#006a55'}
-                atmosphereAltitude={0.3}
+                showAtmosphere={false}
                 
                 // Arcs
                 arcsData={arcsData}

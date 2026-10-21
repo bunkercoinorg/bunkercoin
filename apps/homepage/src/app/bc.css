@@ -155,7 +155,6 @@ body { margin: 0; background: var(--bg); color: var(--fg); }
 .bc-hp-how > * { min-height: 0; grid-template-rows: auto auto 1fr; }
 .bc-hp-bk { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: 48px; align-items: end; }
 .bc-hp-tk { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: 48px; align-items: start; }
-.bc-hp-tk .bc-acts { margin-top: 4px; }
 .bc-hp-disc { font-size: 12.5px; line-height: 1.55; color: var(--dim); max-width: 36rem; }
 @media (max-width: 56.25rem) {
   .bc-hp-hero, .bc-hp-bk, .bc-hp-tk { grid-template-columns: minmax(0, 1fr); gap: 24px; }
