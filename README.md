@@ -31,6 +31,20 @@ cargo run --bin node-api-radio-proto -- --pactor
 - `bunker_coin_sim`: Simulation scenarios and tools
 - `bunker_coin_rpc`: API & RPC (wip)
 
+### Apps
+
+The web apps live in a bun workspace under `apps/`:
+
+- `apps/explorer`: block explorer (Next.js)
+- `apps/wallet`: local-only web wallet (Next.js static export)
+
+```bash
+bun install
+bun run dev:explorer
+bun run dev:wallet
+bun run build
+```
+
 
 ## Radio Networking
 

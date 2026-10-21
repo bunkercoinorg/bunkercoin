@@ -15,3 +15,5 @@ TODO.md
 # RocksDB
 /data
 /data-backup
+# JS workspace
+node_modules

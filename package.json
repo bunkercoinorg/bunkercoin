@@ -1,0 +1,15 @@
+{
+  "name": "bunkercoin",
+  "private": true,
+  "packageManager": "bun@1.4.2",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:explorer": "bun run --filter @bunkercoin/explorer dev",
+    "dev:wallet": "bun run --filter @bunkercoin/wallet dev",
+    "build": "bun run --filter '*' build",
+    "typecheck": "bun run --filter '*' typecheck",
+    "test": "bun run --filter '*' test"
+  }
+}
