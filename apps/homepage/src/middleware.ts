@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { gate } from "@/lib/gate";
+import { gate, LIGHT_HEADER } from "@/lib/gate";
 
 export function middleware(request: NextRequest) {
     const decision = gate({
@@ -16,7 +16,10 @@ export function middleware(request: NextRequest) {
         url.pathname = decision.pathname;
         return NextResponse.rewrite(url);
     }
-    return NextResponse.next();
+    const headers = new Headers(request.headers);
+    headers.delete(LIGHT_HEADER);
+    if (decision.light) headers.set(LIGHT_HEADER, "1");
+    return NextResponse.next({ request: { headers } });
 }
 
 export const config = {

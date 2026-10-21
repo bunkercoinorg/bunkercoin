@@ -1,7 +1,8 @@
-export const BLOCKED_COUNTRIES = new Set(["DE"]);
+export const LIGHT_COUNTRIES = new Set(["DE"]);
 export const BYPASS_PARAM = "bnkr";
-export const BLOCKED_PATH = "/blocked";
-const EXEMPT_PATHS = ["/whitepaper", "/view"];
+export const LIGHT_HEADER = "x-bc-light";
+export const HIDDEN_PATH = "/__hidden";
+const BUNKER_DOCUMENTS = new Set(["land-registry", "trade-register"]);
 
 export type GateRequest = {
     url: string;
@@ -11,12 +12,14 @@ export type GateRequest = {
 };
 
 export type GateDecision =
-    | { action: "next" }
+    | { action: "next"; light: boolean }
     | { action: "rewrite"; pathname: string }
     | { action: "redirect"; url: string };
 
-const isExempt = (pathname: string) =>
-    EXEMPT_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+const isBunkerPath = (u: URL) =>
+    u.pathname === "/our-bunker" ||
+    u.pathname.startsWith("/our-bunker/") ||
+    (u.pathname === "/view" && BUNKER_DOCUMENTS.has(u.searchParams.get("file") ?? ""));
 
 export function isInternalHref(href: string): boolean {
     return href.startsWith("/") && !href.startsWith("//");
@@ -56,9 +59,7 @@ export function gate({ url, method, country, referer }: GateRequest): GateDecisi
         }
     }
 
-    const blocked = country !== null && BLOCKED_COUNTRIES.has(country);
-    if (blocked && !bypass && !isExempt(u.pathname) && u.pathname !== BLOCKED_PATH) {
-        return { action: "rewrite", pathname: BLOCKED_PATH };
-    }
-    return { action: "next" };
+    const light = !bypass && country !== null && LIGHT_COUNTRIES.has(country);
+    if (light && isBunkerPath(u)) return { action: "rewrite", pathname: HIDDEN_PATH };
+    return { action: "next", light };
 }

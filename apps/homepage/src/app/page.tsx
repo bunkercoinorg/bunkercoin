@@ -6,13 +6,14 @@ import { LiveFacts } from "@/components/bc/live-facts";
 import { Shell } from "@/components/bc/shell";
 import { XPixel } from "@/components/bc/x-pixel";
 import { MARKET_HIDDEN, SITE, TOKEN_CONTRACT } from "@/lib/site";
+import { LIGHT_HEADER } from "@/lib/gate";
 
 const LIVE = [
     { lbl: "explorer", tag: "live", title: "Every block, as it lands.", body: "Blocks, transactions, tokens and the radio link, read from the testnet.", href: SITE.explorer, go: "explorer.bunkercoin.com ↗" },
     { lbl: "wallet", tag: "live", title: "Send test BUNKER.", body: "Create a wallet in the browser, take coins from the faucet, send them, make a token.", href: SITE.wallet, go: "wallet.bunkercoin.com ↗" },
     { lbl: "radio lab", tag: "live", title: "Watch the radios.", body: "A live camera on the transceivers and modems that carry the chain.", href: SITE.stream, go: "watch on the explorer ↗" },
     { lbl: "whitepaper", tag: "pdf", title: "How it works, in full.", body: "The radio link, the consensus and the numbers behind them.", href: "/whitepaper", go: "read the paper →" },
-    { lbl: "source", tag: "open", title: "Read the code.", body: "Node, wallet and explorer, developed in public.", href: SITE.github, go: "github.com/bunkercoinorg ↗" },
+    { lbl: "source", tag: "open", title: "Read the code.", body: "Node, wallet and explorer, developed in public.", href: SITE.github, go: "github.com/bunkercoinorg/bunkercoin ↗" },
 ] as const;
 
 const HOW = [
@@ -21,13 +22,14 @@ const HOW = [
     { title: "Gateways for people.", body: "Wallets and the explorer reach the chain through internet gateways. The validators don't need the internet to agree." },
 ];
 
-async function showToken() {
-    if (MARKET_HIDDEN.size === 0) return true;
-    return !MARKET_HIDDEN.has((await headers()).get("cf-ipcountry") ?? "");
+async function audience() {
+    const h = await headers();
+    const light = h.get(LIGHT_HEADER) === "1";
+    return { light, token: !light && !MARKET_HIDDEN.has(h.get("cf-ipcountry") ?? "") };
 }
 
 export default async function Home() {
-    const token = await showToken();
+    const { light, token } = await audience();
     return (
         <Shell>
             <XPixel />
@@ -85,19 +87,21 @@ export default async function Home() {
                 </div>
             </section>
 
-            <section className="bc-rule bc-hp-sec" aria-labelledby="bunker">
-                <div className="bc-hp-bk">
-                    <div className="bc-stack bc-gap12">
-                        <span className="bc-lbl">bunker</span>
-                        <h2 className="bc-t2" id="bunker">We own a bunker in Germany.</h2>
-                        <p className="bc-small">A 70,000 m² tunnel complex near Halberstadt. It is planned as a site for radio nodes.</p>
+            {!light && (
+                <section className="bc-rule bc-hp-sec" aria-labelledby="bunker">
+                    <div className="bc-hp-bk">
+                        <div className="bc-stack bc-gap12">
+                            <span className="bc-lbl">bunker</span>
+                            <h2 className="bc-t2" id="bunker">We own a bunker in Germany.</h2>
+                            <p className="bc-small">A 70,000 m² tunnel complex near Halberstadt. It is planned as a site for radio nodes.</p>
+                        </div>
+                        <div className="bc-acts" data-align="end">
+                            <Link className="bc-btn" data-variant="ghost" href="/view?file=land-registry">land registry ↗</Link>
+                            <Link className="bc-btn" data-variant="ghost" href="/view?file=trade-register">trade register ↗</Link>
+                        </div>
                     </div>
-                    <div className="bc-acts" data-align="end">
-                        <Link className="bc-btn" data-variant="ghost" href="/view?file=land-registry">land registry ↗</Link>
-                        <Link className="bc-btn" data-variant="ghost" href="/view?file=trade-register">trade register ↗</Link>
-                    </div>
-                </div>
-            </section>
+                </section>
+            )}
 
             {token && (
                 <section className="bc-rule bc-hp-sec" aria-labelledby="token">
