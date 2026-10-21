@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3007",
-    "build": "next build",
+    "build": "next build && node scripts/headers.mjs",
     "test": "node --test 'test/*.test.ts'",
     "typecheck": "tsc --noEmit",
-    "postbuild": "test -f out/index.html || (echo 'export missing: out/ was not generated' && exit 1)"
+    "postbuild": "test -f out/index.html && test -f out/_headers || (echo 'export missing: out/ or out/_headers was not generated' && exit 1)"
   },
   "dependencies": {
     "@noble/curves": "^1.9.0",
