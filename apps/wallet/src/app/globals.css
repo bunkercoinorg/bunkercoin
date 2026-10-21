@@ -26,3 +26,6 @@
 .wl-file::file-selector-button { height: 32px; margin-right: 12px; padding: 0 12px; border: 1px solid var(--fg); background: transparent; color: var(--fg); font: 500 var(--t-ui)/1 var(--mono); cursor: pointer; }
 .wl-hero-sub { display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; }
 .bc-dlg { margin: auto; }
+.bc-pn-b > .bc-fx[data-variant="rows"] > div:last-child, .bc-more-b > .bc-fx[data-variant="rows"] > div:last-child { border-bottom: 0; }
+.wl-tx-amt .bc-bal { font-size: 44px; }
+@media (max-width: 40rem) { .wl-tx-amt .bc-bal { font-size: 36px; } }

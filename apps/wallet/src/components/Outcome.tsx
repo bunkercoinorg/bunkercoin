@@ -35,7 +35,7 @@ export function Rejected({ reason, onRetry, title = 'Not sent.' }: { reason: str
       <StatusTag status="failed" />
       <h1 className="bc-t1">{title}</h1>
       <p className="bc-small">
-        The chain rejected it: <span className="mono text-fg">{reason}</span>. Nothing moved.
+        The chain rejected it: <span className="mono text-fg">{reason.replace(/^[A-Za-z]+: /, '').replace(/\.$/, '')}</span>. Nothing moved.
       </p>
       <Button onClick={onRetry}>edit and retry</Button>
     </section>

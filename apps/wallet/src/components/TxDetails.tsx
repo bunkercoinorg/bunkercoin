@@ -67,7 +67,7 @@ export default function TxDetails({ txId, state, actions }: { txId: string; stat
         ) : (
           itemTag(item, now)
         )}
-        <h1 className="m-0">
+        <h1 className="wl-tx-amt m-0">
           {item.amount ? (
             <Amount units={item.amount.units} scale={item.amount.scale} sign={item.amount.sign} symbol={item.amount.unit} size="balance" />
           ) : (

@@ -182,7 +182,7 @@ export default function CreateToken({ state, actions, signer }: { state: WalletS
     <div className="wl-stack wl-gap24">
       <FlowBar title="create token" step={[1, 2]} onBack={() => actions.go('#home')} />
       <h1 className="bc-sr">Create token.</h1>
-      <Field id="token-symbol" label="symbol" hint={status.hint} error={status.error} announce={false}>
+      <Field id="token-symbol" label="symbol" hint={status.hint && <span className="mono">{status.hint}</span>} error={status.error} announce={false}>
         <TextInput
           mono
           value={symbol}
