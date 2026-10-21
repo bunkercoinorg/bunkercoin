@@ -28,6 +28,22 @@ test('history reports its end only when nothing was cut off', async () => {
   assert.equal(exact.exhausted, true);
 });
 
+test('history resumes after the head grows by 500 rows between pages', async () => {
+  const anchor = { cursor: 181, estimate: 20 };
+  const first = await fetchHistoryPage(anchor, 50, nodeWith(range(200, 1)));
+  const next = olderAnchor({ anchors: [anchor], ...first })!;
+  let calls = 0;
+  const grown = nodeWith(range(700, 1));
+  const second = await fetchHistoryPage(next, 50, (offset, limit) => {
+    assert.ok(++calls <= 48);
+    return grown(offset, limit);
+  });
+  assert.deepEqual(second.blocks.map((b) => b.slot), range(130, 81).map((b) => b.slot));
+  assert.equal(second.exhausted, false);
+  const newer = await fetchHistoryPage(anchor, 50, grown);
+  assert.deepEqual(newer.blocks, first.blocks);
+});
+
 test('the way back is bounded', () => {
   let anchors = [{ cursor: 0, estimate: 0 }];
   for (let i = 1; i <= MAX_HISTORY_ANCHORS + 10; i++) anchors = pushAnchor(anchors, { cursor: i, estimate: i });

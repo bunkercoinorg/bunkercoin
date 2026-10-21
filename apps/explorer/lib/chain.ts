@@ -109,7 +109,7 @@ export interface OlderPage {
 }
 
 export const CURSOR_OVERLAP = 5;
-const MAX_CURSOR_PROBES = 6;
+const MAX_CURSOR_PROBES = 24;
 
 // The node only pages by row offset from the head, which drifts as new slots
 // land. Probe from an estimate until a page straddles the cursor, then keep
@@ -121,25 +121,28 @@ export async function fetchOlderThan(
   fetchPage: PageFetcher,
 ): Promise<OlderPage> {
   let offset = Math.max(0, estimate - CURSOR_OVERLAP);
+  let lower = 0;
+  let upper: number | null = null;
+  let step = limit;
   for (let probe = 0; probe < MAX_CURSOR_PROBES; probe++) {
     const page = await fetchPage(offset, limit);
     if (!page.length) {
       if (offset === 0) return { blocks: [], exhausted: true, nextOffset: 0 };
-      offset = Math.max(0, offset - limit);
-      continue;
+      upper = offset;
+    } else {
+      const newest = page[0].slot;
+      const oldest = page[page.length - 1].slot;
+      if (oldest >= cursor) {
+        if (page.length < limit) return { blocks: [], exhausted: true, nextOffset: offset + page.length };
+        lower = offset + page.length - 1;
+      } else if (newest < cursor && offset > 0) {
+        upper = offset;
+      } else {
+        return { blocks: page.filter((b) => b.slot < cursor), exhausted: page.length < limit, nextOffset: offset + page.length };
+      }
     }
-    const newest = page[0].slot;
-    const oldest = page[page.length - 1].slot;
-    if (oldest >= cursor) {
-      if (page.length < limit) return { blocks: [], exhausted: true, nextOffset: offset + page.length };
-      offset += page.length - 1;
-      continue;
-    }
-    if (newest < cursor && offset > 0) {
-      offset = Math.max(0, offset - limit);
-      continue;
-    }
-    return { blocks: page.filter((b) => b.slot < cursor), exhausted: page.length < limit, nextOffset: offset + page.length };
+    offset = upper === null ? lower + step : Math.floor((lower + upper) / 2);
+    step *= 2;
   }
   throw new Error('Could not locate the pagination cursor');
 }
