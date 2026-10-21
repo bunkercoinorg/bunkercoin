@@ -1,164 +1,73 @@
-import { useEffect, useRef, useCallback } from 'react';
-import { useSetAtom, useAtom } from 'jotai';
-import { blocksAtom, wsConnectedAtom, nonFinalizedSlotsAtom, latestProducerAtom, highestFinalizedSlotAtom, recentlyFinalizedBlocksAtom, radioStatsAtom } from './atoms';
-import { Block } from './types';
+'use client';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-const WS_URL = API_URL.replace(/^http/, 'ws') + '/ws';
+import { useEffect } from 'react';
+import { useSetAtom } from 'jotai';
+import { applyChainAtom, radioStatsAtom, wsStatusAtom } from './atoms';
+import { applyLive, applyStatusChange } from './chain';
+import { NODE_WS_URL } from './config';
+import { backoffDelay, parseWsMessage } from './ws-protocol';
 
 export function useWebSocket() {
-  const [blocks, setBlocks] = useAtom(blocksAtom);
-  const setWsConnected = useSetAtom(wsConnectedAtom);
-  const setNonFinalizedSlots = useSetAtom(nonFinalizedSlotsAtom);
-  const setLatestProducer = useSetAtom(latestProducerAtom);
-  const setHighestFinalizedSlot = useSetAtom(highestFinalizedSlotAtom);
-  const setRecentlyFinalizedBlocks = useSetAtom(recentlyFinalizedBlocksAtom);
+  const applyChain = useSetAtom(applyChainAtom);
+  const setStatus = useSetAtom(wsStatusAtom);
   const setRadioStats = useSetAtom(radioStatsAtom);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const updateBlockStatus = useCallback((updatedBlock: Block) => {
-    setBlocks(prevBlocks => {
-      const newBlocks = prevBlocks.map(block => {
-        if (block.slot === updatedBlock.slot) {
-          return updatedBlock;
-        }
-        return block;
-      });
-
-      if (updatedBlock.status === 'finalized' && 
-          updatedBlock.type === 'block' && 
-          updatedBlock.producer !== undefined) {
-        
-        const previousBlock = prevBlocks.find(b => b.slot === updatedBlock.slot);
-        if (previousBlock && previousBlock.status !== 'finalized') {
-          setRecentlyFinalizedBlocks(prev => [
-            ...prev,
-            { 
-              slot: updatedBlock.slot, 
-              producer: updatedBlock.producer!, 
-              timestamp: Date.now() 
-            }
-          ]);
-          
-          setTimeout(() => {
-            setRecentlyFinalizedBlocks(prev => 
-              prev.filter(entry => Date.now() - entry.timestamp < 2000)
-            );
-          }, 2000);
-        }
-
-        const highestFinalized = newBlocks.find(block => 
-          block.status === 'finalized' && 
-          block.type === 'block' && 
-          block.producer !== undefined
-        );
-        
-        if (highestFinalized && highestFinalized.slot === updatedBlock.slot) {
-          setHighestFinalizedSlot(prevHighest => {
-            if (prevHighest === null || updatedBlock.slot > prevHighest) {
-              setLatestProducer(updatedBlock.producer!);
-              return updatedBlock.slot;
-            }
-            return prevHighest;
-          });
-        }
-      }
-
-      return newBlocks;
-    });
-
-    if (updatedBlock.status === 'finalized' || updatedBlock.type === 'skip') {
-      setNonFinalizedSlots(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(updatedBlock.slot);
-        return newSet;
-      });
-    }
-  }, [setBlocks, setNonFinalizedSlots, setHighestFinalizedSlot, setLatestProducer, setRecentlyFinalizedBlocks]);
-
-  const connect = useCallback(() => {
-    try {
-      const ws = new WebSocket(WS_URL);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        console.log('Connected to BunkerCoin WebSocket');
-        setWsConnected(true);
-        
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
-          reconnectTimeoutRef.current = null;
-        }
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          
-          if (message.type === 'update_slot' && message.UpdateSlot) {
-            updateBlockStatus(message.UpdateSlot);
-          } else if (message.type === 'radio_stats') {
-            setRadioStats({
-              packets_sent_2s: message.packets_sent_2s,
-              packets_dropped_2s: message.packets_dropped_2s,
-              packets_transmitted_2s: message.packets_transmitted_2s,
-              packets_queued: message.packets_queued,
-              bytes_transmitted_2s: message.bytes_transmitted_2s,
-              effective_throughput_bps_2s: message.effective_throughput_bps_2s,
-              packet_loss_rate_2s: message.packet_loss_rate_2s,
-              link_speed_level: message.link_speed_level ?? 0,
-              bytes_received_2s: message.bytes_received_2s ?? 0
-            });
-          }
-        } catch (error) {
-          console.error('Failed to parse WebSocket message:', error);
-        }
-      };
-
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-      };
-
-      ws.onclose = () => {
-        console.log('WebSocket disconnected');
-        setWsConnected(false);
-        wsRef.current = null;
-        
-        reconnectTimeoutRef.current = setTimeout(() => {
-          console.log('Attempting to reconnect...');
-          connect();
-        }, 3000);
-      };
-    } catch (error) {
-      console.error('Failed to connect WebSocket:', error);
-      
-      reconnectTimeoutRef.current = setTimeout(() => {
-        connect();
-      }, 3000);
-    }
-  }, [setWsConnected, updateBlockStatus, setRadioStats]);
 
   useEffect(() => {
-    connect();
+    let disposed = false;
+    let ws: WebSocket | null = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let attempt = 0;
 
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
+    const detach = (sock: WebSocket) => {
+      sock.onopen = sock.onmessage = sock.onerror = sock.onclose = null;
+      if (sock.readyState === WebSocket.CONNECTING || sock.readyState === WebSocket.OPEN) sock.close();
     };
-  }, [connect]);
 
-  useEffect(() => {
-    const nonFinalized = new Set<number>();
-    blocks.forEach(block => {
-      if (block.status !== 'finalized' && block.type !== 'skip') {
-        nonFinalized.add(block.slot);
+    const schedule = () => {
+      clearTimeout(timer);
+      if (!disposed) timer = setTimeout(connect, backoffDelay(attempt++));
+    };
+
+    function connect() {
+      if (disposed) return;
+      if (ws) detach(ws);
+      setStatus('connecting');
+      let sock: WebSocket;
+      try {
+        sock = new WebSocket(NODE_WS_URL);
+      } catch {
+        setStatus('closed');
+        schedule();
+        return;
       }
-    });
-    setNonFinalizedSlots(nonFinalized);
-  }, [blocks, setNonFinalizedSlots]);
-} 
+      ws = sock;
+      sock.onopen = () => {
+        attempt = 0;
+        setStatus('open');
+      };
+      sock.onmessage = (event) => {
+        if (typeof event.data !== 'string') return;
+        const msg = parseWsMessage(event.data, Date.now());
+        if (!msg) return;
+        if (msg.kind === 'slot') applyChain((v) => applyLive(v, msg.block));
+        else if (msg.kind === 'status') applyChain((v) => applyStatusChange(v, msg));
+        else setRadioStats(msg.stats);
+      };
+      sock.onerror = () => sock.close();
+      sock.onclose = () => {
+        if (ws !== sock) return;
+        ws = null;
+        setStatus('closed');
+        schedule();
+      };
+    }
+
+    connect();
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
+      if (ws) detach(ws);
+      ws = null;
+    };
+  }, [applyChain, setStatus, setRadioStats]);
+}

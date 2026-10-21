@@ -1,17 +1,45 @@
 'use client';
 
-import { useAtom, useSetAtom } from 'jotai';
-import { blocksAtom, blocksLoadingAtom, selectedBlockHashAtom, hasMoreBlocksAtom, isLoadingMoreAtom, initialLoadCompleteAtom, showSkippedSlotsAtom, displayCountAtom, highestFinalizedSlotAtom } from '@/lib/atoms';
+import { useAtom, useAtomValue, useSetAtom } from 'jotai';
+import {
+  blocksAtom,
+  blocksFeedAtom,
+  displayCountAtom,
+  hasMoreBlocksAtom,
+  highestFinalizedSlotAtom,
+  historyAtom,
+  historyLoadAtom,
+  isLoadingMoreAtom,
+  loadMoreErrorAtom,
+  selectedBlockHashAtom,
+  showSkippedSlotsAtom,
+  BLOCK_PAGE_SIZE,
+} from '@/lib/atoms';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { formatDistanceToNow } from 'date-fns';
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, Loader2, AlertTriangle } from 'lucide-react';
 import { Block } from '@/lib/types';
+import { liveScroll, MAX_RENDERED_ROWS } from '@/lib/chain';
+import { olderAnchor } from '@/lib/history';
+import { useHistory } from '@/lib/use-history';
 
 function truncateHash(hash: string) {
   return `${hash.slice(0, 6)}...${hash.slice(-4)}`;
+}
+
+function blockTiming(block: Block): string {
+  const parts: string[] = [];
+  if (block.type === 'block' && block.status === 'finalized' && block.finalized_timestamp) {
+    parts.push(`Finalized ${formatDistanceToNow(block.finalized_timestamp, { addSuffix: true })}`);
+  }
+  if (block.proposed_timestamp) {
+    const ago = formatDistanceToNow(block.proposed_timestamp, { addSuffix: true });
+    parts.push(block.type === 'block' ? `Proposed ${ago}` : ago);
+  }
+  return parts.join(', ');
 }
 
 function StatusIndicator({ status, type }: { status: string; type: 'block' | 'skip' }) {
@@ -47,69 +75,62 @@ function StatusIndicator({ status, type }: { status: string; type: 'block' | 'sk
   );
 }
 
-export default function BlockList() {
-  const [blocks] = useAtom(blocksAtom);
-  const [loading] = useAtom(blocksLoadingAtom);
-  const [hasMore] = useAtom(hasMoreBlocksAtom);
-  const [isLoadingMore] = useAtom(isLoadingMoreAtom);
-  const [initialLoadComplete] = useAtom(initialLoadCompleteAtom);
+export default function BlockList({ onLoadMore }: { onLoadMore: () => Promise<boolean> }) {
+  const blocks = useAtomValue(blocksAtom);
+  const feed = useAtomValue(blocksFeedAtom);
+  const hasMore = useAtomValue(hasMoreBlocksAtom);
+  const isLoadingMore = useAtomValue(isLoadingMoreAtom);
+  const loadMoreError = useAtomValue(loadMoreErrorAtom);
   const [showSkippedSlots, setShowSkippedSlots] = useAtom(showSkippedSlotsAtom);
   const [displayCount, setDisplayCount] = useAtom(displayCountAtom);
-  const [highestFinalizedSlot] = useAtom(highestFinalizedSlotAtom);
+  const highestFinalizedSlot = useAtomValue(highestFinalizedSlotAtom);
   const setSelectedBlockHash = useSetAtom(selectedBlockHashAtom);
-  
-  const observerTarget = useRef<HTMLDivElement>(null);
-  const loadMoreTriggered = useRef(false);
 
-  const handleBlockClick = (block: Block) => {
-    setSelectedBlockHash(block.hash);
-  };
+  const history = useAtomValue(historyAtom);
+  const historyLoad = useAtomValue(historyLoadAtom);
+  const pager = useHistory();
 
-  const filteredBlocks = showSkippedSlots 
-    ? blocks 
-    : blocks.filter(block => block.type !== 'skip');
-    
-  const displayBlocks = filteredBlocks.slice(0, displayCount);
-  
-  const needsMoreFromAPI = displayCount >= filteredBlocks.length && hasMore;
-  
-  const canShowMore = displayCount < filteredBlocks.length;
+  const [sentinel, setSentinel] = useState<HTMLDivElement | null>(null);
+  const [atEnd, setAtEnd] = useState(false);
 
-  const handleObserver = useCallback((entries: IntersectionObserverEntry[]) => {
-    const [target] = entries;
-    if (target.isIntersecting && !isLoadingMore && !loading) {
-      if (canShowMore) {
-        setDisplayCount(prev => Math.min(prev + 20, filteredBlocks.length));
-      } else if (needsMoreFromAPI && !loadMoreTriggered.current) {
-        loadMoreTriggered.current = true;
-        window.dispatchEvent(new CustomEvent('loadMoreBlocks'));
-        
-        setTimeout(() => {
-          loadMoreTriggered.current = false;
-          setDisplayCount(prev => prev + 20);
-        }, 500);
-      }
-    }
-  }, [canShowMore, needsMoreFromAPI, isLoadingMore, loading, filteredBlocks.length, setDisplayCount]);
+  const visible = (rows: Block[]) => (showSkippedSlots ? rows : rows.filter((block) => block.type !== 'skip'));
+  const filteredBlocks = visible(blocks);
+  const liveBlocks = filteredBlocks.slice(0, Math.min(displayCount, MAX_RENDERED_ROWS));
+  const displayBlocks = history ? visible(history.blocks) : liveBlocks;
+  const loading = feed.lastSuccess === null && feed.error === null && blocks.length === 0;
+  const action = liveScroll(liveBlocks.length, filteredBlocks.length, blocks.length, !hasMore, BLOCK_PAGE_SIZE);
+  const autoPage = !history && (action === 'grow' || action === 'fetch');
 
   useEffect(() => {
-    const element = observerTarget.current;
-    if (!element) return;
-
-    const observer = new IntersectionObserver(handleObserver, {
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(([entry]) => setAtEnd(entry.isIntersecting), {
       threshold: 0.1,
       rootMargin: '100px',
     });
+    observer.observe(sentinel);
+    return () => {
+      observer.disconnect();
+      setAtEnd(false);
+    };
+  }, [sentinel]);
 
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [handleObserver]);
+  // Re-evaluated after every load, so a page of hidden skips keeps paging.
+  useEffect(() => {
+    if (!atEnd || !autoPage || isLoadingMore || loading) return;
+    if (action === 'grow') setDisplayCount((n) => Math.min(n + BLOCK_PAGE_SIZE, MAX_RENDERED_ROWS));
+    else if (!loadMoreError) void onLoadMore();
+  }, [atEnd, autoPage, action, isLoadingMore, loading, loadMoreError, filteredBlocks.length, onLoadMore, setDisplayCount]);
+
+  const browseOlder = () => {
+    const last = liveBlocks[liveBlocks.length - 1];
+    if (last) pager.open({ cursor: last.slot, estimate: blocks.indexOf(last) + 1 });
+  };
 
   return (
     <section>
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-xl font-bold mb-1 tracking-tight">Recent Blocks</h2>
+          <h2 className="text-xl font-bold mb-1 tracking-tight">{history ? 'Older Blocks' : 'Recent Blocks'}</h2>
           <p className="text-sm text-muted-foreground">Latest blocks produced by the network. Click them to view details.</p>
         </div>
         <div className="flex shrink-0 items-center gap-2 pl-4">
@@ -125,7 +146,7 @@ export default function BlockList() {
       </div>
       
       <div className="flex flex-col">
-        {loading && !initialLoadComplete ? (
+        {loading ? (
           [...Array(5)].map((_, i) => (
             <div key={i} className="rounded-lg bg-card/50 backdrop-blur px-4 py-3 flex flex-col gap-1 mb-2">
               <Skeleton className="h-4 w-24 mb-1" />
@@ -135,10 +156,11 @@ export default function BlockList() {
         ) : (
           <>
             {displayBlocks.map((block) => (
-              <div
+              <button
+                type="button"
                 key={block.slot}
-                onClick={() => handleBlockClick(block)}
-                className={`group rounded-lg backdrop-blur px-4 py-3 flex items-center justify-between gap-4 hover:bg-card/70 transition-all duration-200 cursor-pointer mb-2 ${
+                onClick={() => setSelectedBlockHash(block.hash)}
+                className={`group w-full text-left rounded-lg backdrop-blur px-4 py-3 flex items-center justify-between gap-4 hover:bg-card/70 transition-all duration-200 cursor-pointer mb-2 ${
                   block.type === 'skip' 
                     ? 'bg-red-900/10 border border-red-900/20' 
                     : 'bg-card/50'
@@ -166,16 +188,7 @@ export default function BlockList() {
                           <span className="opacity-60">•</span>
                         </>
                       )}
-                      <span>
-                        {block.type === 'block' && block.status === 'finalized' && block.finalized_timestamp
-                          ? `Finalized ${formatDistanceToNow(block.finalized_timestamp, { addSuffix: true })}, `
-                          : ''}
-                        {block.type === 'block' && block.proposed_timestamp ? 'Proposed ' : ''}
-                        {formatDistanceToNow(
-                          block.proposed_timestamp || block.timestamp,
-                          { addSuffix: true },
-                        )}
-                      </span>
+                      <span>{blockTiming(block)}</span>
                     </div>
                   </div>
                 </div>
@@ -185,14 +198,12 @@ export default function BlockList() {
                     <span className="text-muted-foreground text-xs">→</span>
                   </div>
                 </div>
-              </div>
+              </button>
             ))}
             
-            {(canShowMore || (needsMoreFromAPI && hasMore)) && (
-              <div ref={observerTarget} className="h-20" />
-            )}
-            
-            {isLoadingMore && (
+            {autoPage && <div ref={setSentinel} className="h-20" />}
+
+            {isLoadingMore && !history && (
               <div className="flex justify-center py-4">
                 <div className="flex gap-2 items-center text-sm text-muted-foreground">
                   <div className="animate-spin h-4 w-4 border-2 border-muted-foreground border-t-transparent rounded-full" />
@@ -200,8 +211,46 @@ export default function BlockList() {
                 </div>
               </div>
             )}
-            
-            {!hasMore && !canShowMore && displayBlocks.length > 0 && (
+
+            {loadMoreError && !history && (
+              <div className="flex justify-center gap-2 py-4 text-sm text-red-400">
+                Could not load older blocks.
+                <button type="button" onClick={() => void onLoadMore()} className="underline">
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {history ? (
+              <div className="flex flex-wrap justify-center gap-4 py-4 text-sm">
+                <button type="button" onClick={pager.newer} disabled={historyLoad.loading} className="underline disabled:opacity-50">
+                  Newer
+                </button>
+                {olderAnchor(history) && (
+                  <button type="button" onClick={pager.older} disabled={historyLoad.loading} className="underline disabled:opacity-50">
+                    Older
+                  </button>
+                )}
+                <button type="button" onClick={pager.close} className="underline">
+                  Back to latest
+                </button>
+              </div>
+            ) : action === 'browse' && displayBlocks.length > 0 ? (
+              <div className="flex justify-center py-4 text-sm">
+                <button type="button" onClick={browseOlder} disabled={historyLoad.loading} className="underline disabled:opacity-50">
+                  Browse older blocks
+                </button>
+              </div>
+            ) : null}
+
+            {historyLoad.loading && (
+              <div className="flex justify-center py-2 text-sm text-muted-foreground">Loading blocks...</div>
+            )}
+            {historyLoad.error && (
+              <div className="flex justify-center py-2 text-sm text-red-400">Could not load older blocks: {historyLoad.error}</div>
+            )}
+
+            {(history ? history.exhausted : action === 'end') && displayBlocks.length > 0 && (
               <div className="text-center py-4 text-sm text-muted-foreground">
                 No more blocks to load
               </div>

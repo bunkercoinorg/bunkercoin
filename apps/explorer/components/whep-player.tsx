@@ -8,24 +8,51 @@ interface WhepPlayerProps {
   onDown: () => void;
 }
 
-// Sub-second live view over WebRTC (WHEP). On any failure the panel falls
-// back to the HLS player, so this component only ever reports up or down.
+const ICE_GATHER_MS = 1000;
+const CONNECT_DEADLINE_MS = 15_000;
+
+// Sub-second live view over WebRTC (WHEP). Reports up or down exactly once per
+// failure; the panel decides whether to retry or fall back to HLS.
 export default function WhepPlayer({ src, onLive, onDown }: WhepPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const onLiveRef = useRef(onLive);
+  const onDownRef = useRef(onDown);
+
+  useEffect(() => {
+    onLiveRef.current = onLive;
+    onDownRef.current = onDown;
+  });
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     let closed = false;
+    const ctrl = new AbortController();
     const pc = new RTCPeerConnection();
     const stream = new MediaStream();
+    let iceTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const teardown = () => {
+      closed = true;
+      ctrl.abort();
+      clearTimeout(iceTimer);
+      clearTimeout(deadline);
+      pc.ontrack = pc.onconnectionstatechange = pc.onicegatheringstatechange = null;
+      pc.getReceivers().forEach((r) => r.track?.stop());
+      pc.close();
+      stream.getTracks().forEach((t) => t.stop());
+      video.srcObject = null;
+    };
 
     const fail = () => {
       if (closed) return;
-      closed = true;
-      pc.close();
-      onDown();
+      teardown();
+      onDownRef.current();
     };
+
+    const deadline = setTimeout(() => {
+      if (pc.connectionState !== 'connected') fail();
+    }, CONNECT_DEADLINE_MS);
 
     pc.addTransceiver('video', { direction: 'recvonly' });
     pc.addTransceiver('audio', { direction: 'recvonly' });
@@ -35,7 +62,10 @@ export default function WhepPlayer({ src, onLive, onDown }: WhepPlayerProps) {
       void video.play().catch(() => {});
     };
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'connected') onLive();
+      if (pc.connectionState === 'connected') {
+        clearTimeout(deadline);
+        onLiveRef.current();
+      }
       if (['failed', 'disconnected', 'closed'].includes(pc.connectionState)) fail();
     };
 
@@ -45,18 +75,20 @@ export default function WhepPlayer({ src, onLive, onDown }: WhepPlayerProps) {
         // WHEP is trickle-less here: wait briefly for ICE gathering to finish.
         await new Promise<void>((resolve) => {
           if (pc.iceGatheringState === 'complete') return resolve();
-          const timer = setTimeout(resolve, 1000);
+          iceTimer = setTimeout(resolve, ICE_GATHER_MS);
           pc.onicegatheringstatechange = () => {
             if (pc.iceGatheringState === 'complete') {
-              clearTimeout(timer);
+              clearTimeout(iceTimer);
               resolve();
             }
           };
         });
+        if (closed) return;
         const res = await fetch(src, {
           method: 'POST',
           headers: { 'content-type': 'application/sdp' },
           body: pc.localDescription?.sdp,
+          signal: ctrl.signal,
         });
         if (!res.ok) throw new Error(`whep ${res.status}`);
         const answer = await res.text();
@@ -67,11 +99,8 @@ export default function WhepPlayer({ src, onLive, onDown }: WhepPlayerProps) {
       }
     })();
 
-    return () => {
-      closed = true;
-      pc.close();
-    };
-  }, [src, onLive, onDown]);
+    return teardown;
+  }, [src]);
 
   return (
     <video

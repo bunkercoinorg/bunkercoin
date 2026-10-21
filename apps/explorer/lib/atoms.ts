@@ -1,65 +1,49 @@
 import { atom } from 'jotai';
-import { Block, Node, BlockDetails } from './types';
+import { emptyChain, highestFinalized, type Applied, type ChainView } from './chain.ts';
+import type { HistoryWindow } from './history.ts';
+import type { Node, RadioStats } from './types.ts';
 
-const rawBlocksAtom = atom<Block[]>([]);
+export const BLOCK_PAGE_SIZE = 20;
+export const INITIAL_DISPLAY_COUNT = 50;
 
-export const blocksAtom = atom(
-  (get) => {
-    const blocks = get(rawBlocksAtom);
-    const blockMap = new Map<number, Block>();
-    
-    blocks.forEach(block => {
-      blockMap.set(block.slot, block);
-    });
-    
-    return Array.from(blockMap.values()).sort((a, b) => b.slot - a.slot);
-  },
-  (get, set, update: Block[] | ((prev: Block[]) => Block[])) => {
-    const currentBlocks = get(rawBlocksAtom);
-    const newBlocks = typeof update === 'function' ? update(currentBlocks) : update;
-    set(rawBlocksAtom, newBlocks);
-  }
-);
+export interface FeedState {
+  lastSuccess: number | null;
+  error: string | null;
+}
+
+const idleFeed: FeedState = { lastSuccess: null, error: null };
+
+export const chainAtom = atom<ChainView>(emptyChain);
+export const blocksAtom = atom((get) => get(chainAtom).blocks);
+export const hasMoreBlocksAtom = atom((get) => !get(chainAtom).exhausted);
+export const highestFinalizedSlotAtom = atom((get) => highestFinalized(get(blocksAtom))?.slot ?? null);
+
+export const blocksFeedAtom = atom<FeedState>(idleFeed);
+export const nodesFeedAtom = atom<FeedState>(idleFeed);
+export const loadMoreErrorAtom = atom<string | null>(null);
+export const isLoadingMoreAtom = atom(false);
 
 export const nodesAtom = atom<Node[]>([]);
 
-export const blocksLoadingAtom = atom(true);
-export const nodesLoadingAtom = atom(true);
-
-export const selectedBlockHashAtom = atom<string | null>(null);
-export const selectedBlockDetailsAtom = atom<BlockDetails | null>(null);
-export const blockDetailsLoadingAtom = atom(false);
-
-export const latestProducerAtom = atom<number | null>(null);
-
-export const currentOffsetAtom = atom(0);
-export const hasMoreBlocksAtom = atom(true);
-export const isLoadingMoreAtom = atom(false);
-
-export const initialLoadCompleteAtom = atom(false);
+export type WsStatus = 'connecting' | 'open' | 'closed';
+export const wsStatusAtom = atom<WsStatus>('connecting');
+export const radioStatsAtom = atom<RadioStats | null>(null);
 
 export const showSkippedSlotsAtom = atom(false);
+export const displayCountAtom = atom(INITIAL_DISPLAY_COUNT);
+// Set while the list pages through history below the live window.
+export const historyAtom = atom<HistoryWindow | null>(null);
+export const historyLoadAtom = atom<{ loading: boolean; error: string | null }>({ loading: false, error: null });
+export const selectedBlockHashAtom = atom<string | null>(null);
 
-export const displayCountAtom = atom(50);
+// Producers of blocks that just turned finalized; `seq` makes each batch distinct.
+export const finalizedFlashAtom = atom<{ seq: number; producers: number[] }>({ seq: 0, producers: [] });
 
-export const lowestFetchedSlotAtom = atom<number | null>(null);
-
-export const highestFinalizedSlotAtom = atom<number | null>(null);
-
-export const wsConnectedAtom = atom(false);
-
-export const nonFinalizedSlotsAtom = atom<Set<number>>(new Set<number>());
-
-export const recentlyFinalizedBlocksAtom = atom<Array<{ slot: number; producer: number; timestamp: number }>>([]);
-
-export const radioStatsAtom = atom<{
-  packets_sent_2s: number;
-  packets_dropped_2s: number;
-  packets_transmitted_2s: number;
-  packets_queued: number;
-  bytes_transmitted_2s: number;
-  effective_throughput_bps_2s: number;
-  packet_loss_rate_2s: number;
-  link_speed_level: number;
-  bytes_received_2s: number;
-} | null>(null); 
+export const applyChainAtom = atom(null, (get, set, step: (view: ChainView) => Applied) => {
+  const view = get(chainAtom);
+  const { view: next, finalized } = step(view);
+  if (next !== view) set(chainAtom, next);
+  if (finalized.length) {
+    set(finalizedFlashAtom, { seq: get(finalizedFlashAtom).seq + 1, producers: finalized.map((f) => f.producer) });
+  }
+});

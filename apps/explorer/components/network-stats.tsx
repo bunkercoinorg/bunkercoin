@@ -1,18 +1,14 @@
 'use client';
 
-import { useAtom } from 'jotai';
-import { radioStatsAtom } from '@/lib/atoms';
+import { useAtomValue } from 'jotai';
+import { radioStatsAtom, wsStatusAtom } from '@/lib/atoms';
 import { Skeleton } from '@/components/ui/skeleton';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { Activity, Wifi } from 'lucide-react';
+import { Activity } from 'lucide-react';
+import { useNow } from '@/lib/use-now';
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const NETWORK_CONFIG = {
-  bandwidth_bps: 4800,
-  packet_loss_percent: 15,
-  latency_ms: 250,
-  jitter_ms: 50
-};
+// The sampler publishes every 2s; a few missed frames means the feed is stale.
+const RADIO_STALE_MS = 10_000;
+const RETRY_WARN_PERCENT = 10;
 
 function formatBps(bps: number): string {
   if (bps >= 1000000) {
@@ -33,7 +29,11 @@ function formatBytes(bytes: number): string {
 }
 
 export default function NetworkStats() {
-  const [radioStats] = useAtom(radioStatsAtom);
+  const radioStats = useAtomValue(radioStatsAtom);
+  const wsStatus = useAtomValue(wsStatusAtom);
+  const now = useNow();
+  const live = radioStats !== null && wsStatus === 'open' && now - radioStats.received_at < RADIO_STALE_MS;
+  const retryPercent = radioStats ? radioStats.packet_loss_rate_2s * 100 : 0;
 
   return (
     <section className="mb-10">
@@ -45,38 +45,13 @@ export default function NetworkStats() {
       </p>
 
       <div className="grid grid-cols-1 gap-4">
-        {/* <div className="rounded-lg bg-card/50 backdrop-blur p-4">
-          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2 text-muted-foreground">
-            <Wifi size={16} />
-            Network Configuration
-          </h3>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between items-center">
-              <span className="text-muted-foreground">Global Bandwidth</span>
-              <span className="font-mono">{formatBps(NETWORK_CONFIG.bandwidth_bps)}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-muted-foreground">Packet Loss</span>
-              <span className="font-mono">{NETWORK_CONFIG.packet_loss_percent}%</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-muted-foreground">Latency</span>
-              <span className="font-mono">{NETWORK_CONFIG.latency_ms} ms</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-muted-foreground">Jitter</span>
-              <span className="font-mono">{NETWORK_CONFIG.jitter_ms} ms</span>
-            </div>
-          </div>
-        </div> */}
-
         <div className="rounded-lg bg-card/50 backdrop-blur p-4">
           <h3 className="text-sm font-semibold mb-3 flex items-center gap-2 text-muted-foreground">
-            <Activity size={16} className={radioStats ? 'text-emerald-400' : ''} />
-            Live Radio Network Stats (Last 30 Seconds)
+            <Activity size={16} className={live ? 'text-emerald-400' : ''} />
+            {live ? 'Live Radio Network Stats (Last 30 Seconds)' : 'Radio Network Stats (Not Live)'}
           </h3>
           {radioStats ? (
-            <div className="space-y-2 text-sm">
+            <div className={`space-y-2 text-sm ${live ? '' : 'opacity-60'}`}>
               <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">Packets</span>
                 <div className="flex items-center gap-3 font-mono text-xs">
@@ -86,10 +61,10 @@ export default function NetworkStats() {
                   </span>
                   <span className="flex items-center gap-1">
                     <span className="text-muted-foreground">Sent:</span>
-                    <span className="text-emerald-400">{radioStats.packets_transmitted_2s}</span>
+                    <span className="text-emerald-400">{radioStats.packets_sent_2s}</span>
                   </span>
                   <span className="flex items-center gap-1">
-                    <span className="text-muted-foreground">Dropped:</span>
+                    <span className="text-muted-foreground">Retried:</span>
                     <span className="text-red-400">{radioStats.packets_dropped_2s}</span>
                   </span>
                 </div>
@@ -107,12 +82,14 @@ export default function NetworkStats() {
                 <span className="font-mono text-emerald-400">{formatBps(radioStats.effective_throughput_bps_2s)}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Packet Loss Rate (ARQ-corrected)</span>
-                <span className={`font-mono ${radioStats.packet_loss_rate_2s > 10 ? 'text-red-400' : ''}`}>
-                  {radioStats.packet_loss_rate_2s.toFixed(1)}%
+                <span className="text-muted-foreground">Retry Rate (ARQ)</span>
+                <span className={`font-mono ${retryPercent > RETRY_WARN_PERCENT ? 'text-red-400' : ''}`}>
+                  {retryPercent.toFixed(1)}%
                 </span>
               </div>
             </div>
+          ) : wsStatus === 'closed' ? (
+            <p className="text-sm text-muted-foreground">Radio telemetry is unavailable while the node connection is down.</p>
           ) : (
             <div className="space-y-2">
               {[...Array(4)].map((_, i) => (

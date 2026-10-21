@@ -1,32 +1,42 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787';
+import { EXPLORER_API_URL } from '../config.ts';
+import { obj, str } from '../guards.ts';
+import { parseJson } from '../json.ts';
+import { buildPath, joinUrl } from '../routes.ts';
 
 export type LabStreamStatus = {
-  labStreamSlug: string;
-  title: string;
   inputId: string | null;
-  createdAt: string | null;
   live: boolean | null;
   activeVideoUid: string | null;
-  playback: {
-    iframeUrl: string;
-    hlsUrl: string | null;
-  } | null;
+  iframeUrl: string | null;
 };
 
-type LabStatusResponse = {
-  data: LabStreamStatus;
-};
+const optStr = (v: unknown, path: string) => (v === null || v === undefined ? null : str(v, path));
 
-export async function requestLabStatus(): Promise<LabStreamStatus> {
-  const response = await fetch(`${API_URL.replace(/\/$/, '')}/api/lab/status`, {
-    cache: 'no-store',
-  });
-
-  const payload = (await response.json()) as LabStatusResponse | { error?: string };
-  if (!response.ok) {
-    throw new Error('error' in payload && payload.error ? payload.error : `Explorer API failed with ${response.status}`);
-  }
-
-  return (payload as LabStatusResponse).data;
+function asLabStatus(v: unknown): LabStreamStatus {
+  const data = obj(obj(v, 'response').data, 'data');
+  const playback = data.playback === null || data.playback === undefined ? null : obj(data.playback, 'data.playback');
+  return {
+    inputId: optStr(data.inputId, 'data.inputId'),
+    live: typeof data.live === 'boolean' ? data.live : null,
+    activeVideoUid: optStr(data.activeVideoUid, 'data.activeVideoUid'),
+    iframeUrl: playback ? optStr(playback.iframeUrl, 'data.playback.iframeUrl') : null,
+  };
 }
 
+export async function requestLabStatus(signal?: AbortSignal): Promise<LabStreamStatus> {
+  const response = await fetch(joinUrl(EXPLORER_API_URL, buildPath(['api', 'lab', 'status'])), {
+    cache: 'no-store',
+    signal,
+  });
+  let payload: unknown = null;
+  try {
+    payload = parseJson(await response.text());
+  } catch {
+    payload = null;
+  }
+  if (!response.ok) {
+    const err = payload && typeof payload === 'object' && 'error' in payload ? (payload as { error: unknown }).error : null;
+    throw new Error(typeof err === 'string' && err ? err : `Explorer API failed with ${response.status}`);
+  }
+  return asLabStatus(payload);
+}

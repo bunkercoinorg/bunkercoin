@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
-import { Check, Copy } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { formatDistanceToNow } from 'date-fns';
+import { Check, Copy, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function truncate(value: string, head = 8, tail = 8) {
@@ -10,18 +11,27 @@ export function truncate(value: string, head = 8, tail = 8) {
   return `${value.slice(0, head)}…${value.slice(-tail)}`;
 }
 
+const COPIED_MS = 1200;
+
 export function CopyButton({ value, className }: { value: string; className?: string }) {
   const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
   return (
     <button
       type="button"
       aria-label="Copy"
-      onClick={(e) => {
+      onClick={async (e) => {
         e.preventDefault();
         e.stopPropagation();
-        navigator.clipboard?.writeText(value);
+        try {
+          await navigator.clipboard.writeText(value);
+        } catch {
+          return;
+        }
         setCopied(true);
-        setTimeout(() => setCopied(false), 1200);
+        clearTimeout(timer.current);
+        timer.current = setTimeout(() => setCopied(false), COPIED_MS);
       }}
       className={cn('text-muted-foreground hover:text-foreground transition-colors', className)}
     >
@@ -137,6 +147,53 @@ export function NotFoundCard({ what, id }: { what: string; id: string }) {
         It may not have reached the chain yet — transactions can take a few minutes to
         finalize over the radio link.
       </p>
+    </div>
+  );
+}
+
+export function ErrorCard({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 p-6">
+      <p className="text-sm text-red-300">{message}</p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-3 rounded-md bg-red-500/20 px-3 py-1 text-xs font-medium text-red-300 hover:bg-red-500/30"
+      >
+        Retry
+      </button>
+    </div>
+  );
+}
+
+// Cached data stays on screen when a refresh fails; this says how old it is.
+export function RefreshNotice({
+  error,
+  lastSuccess,
+  onRetry,
+}: {
+  error: string | null;
+  lastSuccess: number | null;
+  onRetry: () => void;
+}) {
+  if (!error) return null;
+  return (
+    <div role="alert" className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-300">
+      <span>
+        Refresh failed: {error}
+        {lastSuccess ? ` Showing data from ${formatDistanceToNow(lastSuccess, { addSuffix: true })}.` : ''}
+      </span>
+      <button type="button" onClick={onRetry} className="underline">
+        Retry
+      </button>
+    </div>
+  );
+}
+
+export function Loading() {
+  return (
+    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <Loader2 size={15} className="animate-spin" /> Loading…
     </div>
   );
 }
