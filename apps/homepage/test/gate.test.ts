@@ -6,30 +6,32 @@ const ORIGIN = 'https://bunkercoin.com';
 const req = (path: string, country: string | null, referer: string | null = null, method = 'GET') =>
   gate({ url: `${ORIGIN}${path}`, method, country, referer });
 
-test('DE is rewritten to /blocked', () => {
-  assert.deepEqual(req('/', 'DE'), { action: 'rewrite', pathname: '/blocked' });
-  assert.deepEqual(req('/legal/imprint', 'DE'), { action: 'rewrite', pathname: '/blocked' });
-  assert.deepEqual(req('/our-bunker', 'DE'), { action: 'rewrite', pathname: '/blocked' });
+test('DE gets the light site, not a block page', () => {
+  assert.deepEqual(req('/', 'DE'), { action: 'next', light: true });
+  assert.deepEqual(req('/legal/imprint', 'DE'), { action: 'next', light: true });
+  assert.deepEqual(req('/whitepaper', 'DE'), { action: 'next', light: true });
+  assert.deepEqual(req('/view?file=technical-whitepaper', 'DE'), { action: 'next', light: true });
 });
 
-test('DE with bnkr passes, with or without a value', () => {
-  assert.deepEqual(req('/?bnkr', 'DE'), { action: 'next' });
-  assert.deepEqual(req('/?bnkr=1', 'DE'), { action: 'next' });
-  assert.deepEqual(req('/legal/imprint?x=2&bnkr=', 'DE'), { action: 'next' });
-});
-
-test('other EU countries and unknown countries pass', () => {
-  for (const c of ['AT', 'FR', 'NL', 'US', 'XX', 'T1', null]) {
-    assert.deepEqual(req('/', c), { action: 'next' }, String(c));
+test('bunker pages and documents are hidden from DE', () => {
+  for (const path of ['/our-bunker', '/our-bunker/x', '/view?file=land-registry', '/view?file=trade-register']) {
+    assert.deepEqual(req(path, 'DE'), { action: 'rewrite', pathname: '/__hidden' }, path);
   }
+  assert.deepEqual(req('/our-bunkerx', 'DE'), { action: 'next', light: true });
 });
 
-test('whitepaper and view stay reachable from DE', () => {
-  assert.deepEqual(req('/whitepaper', 'DE'), { action: 'next' });
-  assert.deepEqual(req('/whitepaper/bunker_coin.pdf', 'DE'), { action: 'next' });
-  assert.deepEqual(req('/view?file=land-registry', 'DE'), { action: 'next' });
-  assert.deepEqual(req('/whitepaperx', 'DE'), { action: 'rewrite', pathname: '/blocked' });
-  assert.deepEqual(req('/blocked', 'DE'), { action: 'next' });
+test('DE with bnkr gets the whole site, with or without a value', () => {
+  assert.deepEqual(req('/?bnkr', 'DE'), { action: 'next', light: false });
+  assert.deepEqual(req('/?bnkr=1', 'DE'), { action: 'next', light: false });
+  assert.deepEqual(req('/our-bunker?bnkr', 'DE'), { action: 'next', light: false });
+  assert.deepEqual(req('/view?file=land-registry&bnkr', 'DE'), { action: 'next', light: false });
+});
+
+test('other countries get the whole site', () => {
+  for (const c of ['AT', 'FR', 'NL', 'US', 'XX', 'T1', null]) {
+    assert.deepEqual(req('/', c), { action: 'next', light: false }, String(c));
+    assert.deepEqual(req('/our-bunker', c), { action: 'next', light: false }, String(c));
+  }
 });
 
 test('same-origin referer with bnkr redirects to the same URL with bnkr', () => {
@@ -44,11 +46,11 @@ test('same-origin referer with bnkr redirects to the same URL with bnkr', () => 
 });
 
 test('referer propagation needs same origin, a bnkr param and a safe method', () => {
-  assert.deepEqual(req('/', 'DE', 'https://evil.example/?bnkr'), { action: 'rewrite', pathname: '/blocked' });
-  assert.deepEqual(req('/', 'DE', `${ORIGIN}/whitepaper`), { action: 'rewrite', pathname: '/blocked' });
-  assert.deepEqual(req('/', 'DE', 'not a url'), { action: 'rewrite', pathname: '/blocked' });
-  assert.deepEqual(req('/', 'US', `${ORIGIN}/?bnkr`, 'POST'), { action: 'next' });
-  assert.deepEqual(req('/?bnkr=2', 'DE', `${ORIGIN}/?bnkr=1`), { action: 'next' });
+  assert.deepEqual(req('/', 'DE', 'https://evil.example/?bnkr'), { action: 'next', light: true });
+  assert.deepEqual(req('/', 'DE', `${ORIGIN}/whitepaper`), { action: 'next', light: true });
+  assert.deepEqual(req('/', 'DE', 'not a url'), { action: 'next', light: true });
+  assert.deepEqual(req('/', 'US', `${ORIGIN}/?bnkr`, 'POST'), { action: 'next', light: false });
+  assert.deepEqual(req('/?bnkr=2', 'DE', `${ORIGIN}/?bnkr=1`), { action: 'next', light: false });
 });
 
 test('withBypass keeps bnkr on internal hrefs only', () => {

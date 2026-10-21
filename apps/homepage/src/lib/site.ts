@@ -2,7 +2,7 @@ export const SITE = {
     explorer: "https://explorer.bunkercoin.com",
     stream: "https://explorer.bunkercoin.com/stream",
     wallet: "https://wallet.bunkercoin.com",
-    github: "https://github.com/bunkercoinorg",
+    github: "https://github.com/bunkercoinorg/bunkercoin",
     x: "https://x.com/bunkercoin_io",
     telegram: "https://t.me/bunkercoin_io",
     discord: "https://discord.gg/DGBqm92VQm",

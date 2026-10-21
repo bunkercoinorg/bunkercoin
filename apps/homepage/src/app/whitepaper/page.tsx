@@ -17,7 +17,7 @@ export default function Whitepaper() {
                 </div>
                 <dl className="bc-fx">
                     <div><dt>format</dt><dd>pdf <span className="bc-s">· opens in the browser</span></dd></div>
-                    <div><dt>source</dt><dd><a className="bc-lnk" href={SITE.github}>github.com/bunkercoinorg</a></dd></div>
+                    <div><dt>source</dt><dd><a className="bc-lnk" href={SITE.github}>github.com/bunkercoinorg/bunkercoin</a></dd></div>
                 </dl>
                 <div className="bc-acts">
                     <a className="bc-btn" href={SITE.paper}>open the pdf ↗</a>
