@@ -19,10 +19,17 @@ export function readTheme(fallback: Theme): Theme {
   }
 }
 
+/** Points every `theme-color` meta at the theme that is actually showing. */
+export function syncThemeColor(theme: Theme): void {
+  const dark = theme === 'system' ? window.matchMedia('(prefers-color-scheme: dark)').matches : theme === 'dark';
+  for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute('content', dark ? THEME_COLORS.dark : THEME_COLORS.light);
+}
+
 export function applyTheme(theme: Theme): void {
   const root = document.documentElement;
   if (theme === 'system') root.removeAttribute('data-theme');
   else root.setAttribute('data-theme', theme);
+  syncThemeColor(theme);
   try {
     localStorage.setItem(THEME_STORAGE_KEY, theme);
   } catch {

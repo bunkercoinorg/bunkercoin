@@ -84,4 +84,4 @@ export { WordGrid, WordGridHidden, WordPicker } from './words.tsx';
 export { QrCode } from './qr-code.tsx';
 export { encodeQr, type QrEcl, type QrMatrix } from './qr.ts';
 export { Dialog } from './dialog.tsx';
-export { applyTheme, readTheme, THEME_COLORS, THEME_STORAGE_KEY, themeInitScript, type Theme } from './theme.ts';
+export { applyTheme, readTheme, syncThemeColor, THEME_COLORS, THEME_STORAGE_KEY, themeInitScript, type Theme } from './theme.ts';
