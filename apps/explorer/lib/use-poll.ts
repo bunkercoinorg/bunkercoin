@@ -1,9 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
+import { createPoller } from './poller';
 
-// Single-flight polling: the next run is scheduled only after the previous one
-// settles, and unmount aborts the in-flight request. `poke` runs immediately.
+// Polls `task` every `intervalMs` while mounted; the returned callback runs it now.
 export function usePoll(task: (signal: AbortSignal) => Promise<void>, intervalMs: number) {
   const taskRef = useRef(task);
   const intervalRef = useRef(intervalMs);
@@ -15,32 +15,12 @@ export function usePoll(task: (signal: AbortSignal) => Promise<void>, intervalMs
   });
 
   useEffect(() => {
-    let disposed = false;
-    let inFlight = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let ctrl: AbortController | null = null;
-
-    const run = async () => {
-      clearTimeout(timer);
-      if (disposed || inFlight) return;
-      inFlight = true;
-      ctrl = new AbortController();
-      try {
-        await taskRef.current(ctrl.signal);
-      } catch {
-        // tasks record their own failures
-      } finally {
-        inFlight = false;
-      }
-      if (!disposed) timer = setTimeout(run, intervalRef.current);
-    };
-
-    pokeRef.current = () => void run();
-    void run();
+    const poller = createPoller((signal) => taskRef.current(signal), () => intervalRef.current);
+    pokeRef.current = poller.poke;
+    poller.poke();
     return () => {
-      disposed = true;
-      clearTimeout(timer);
-      ctrl?.abort();
+      pokeRef.current = () => {};
+      poller.dispose();
     };
   }, []);
 
