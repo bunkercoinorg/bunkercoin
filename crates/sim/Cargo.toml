@@ -1,0 +1,41 @@
+[package]
+name = "bunker_coin_sim"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "radio_sim"
+path = "src/bin/radio_sim.rs"
+
+[[bin]]
+name = "pactor_consensus"
+path = "src/bin/pactor_consensus.rs"
+
+[dependencies]
+bunker_coin_core = { workspace = true }
+bunker_coin_radio = { workspace = true }
+bunkerglow = { workspace = true }
+scs_pactor = { path = "../scs_pactor" }
+
+tokio = { workspace = true }
+tokio-util = "0.7"
+async-trait = "0.1"
+serde = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+rand = { workspace = true }
+
+indicatif = "0.17"
+colored = "2" 
+
+clap = { version = "4", features = ["derive"] }
+tokio-serial = "5"
+hex = "0.4"
+bincode = "2"
+wincode = { version = "0.2", features = ["derive"] }
+
+rpc = { path = "../rpc" }
+ed25519-dalek = { version = "2", default-features = false, features = ["std"] }

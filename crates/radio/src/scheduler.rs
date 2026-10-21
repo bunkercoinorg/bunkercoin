@@ -1,0 +1,161 @@
+//! Radio transmission scheduler for 5-minute windows
+
+use log::{debug, info};
+use std::collections::VecDeque;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tokio::time::{sleep, sleep_until, Duration, Instant};
+
+use crate::{RadioConfig, RadioFrame};
+
+pub struct RadioScheduler {
+    config: RadioConfig,
+    frame_queue: Arc<Mutex<VecDeque<RadioFrame>>>,
+    stats: Arc<Mutex<SchedulerStats>>,
+}
+
+#[derive(Debug, Default)]
+struct SchedulerStats {
+    windows_completed: u64,
+    frames_transmitted: u64,
+    frames_queued: u64,
+}
+
+impl RadioScheduler {
+    pub fn new(config: RadioConfig) -> Self {
+        Self {
+            config,
+            frame_queue: Arc::new(Mutex::new(VecDeque::new())),
+            stats: Arc::new(Mutex::new(SchedulerStats::default())),
+        }
+    }
+
+    pub async fn queue_frames(&self, frames: Vec<RadioFrame>) {
+        let mut queue = self.frame_queue.lock().await;
+        let mut stats = self.stats.lock().await;
+
+        for frame in frames {
+            queue.push_back(frame);
+            stats.frames_queued += 1;
+        }
+
+        debug!("Queued {} frames for transmission", stats.frames_queued);
+    }
+
+    pub async fn run<F>(&self, mut transmit_fn: F)
+    where
+        F: FnMut(&RadioFrame) -> bool + Send,
+    {
+        let window_duration = self.config.transmission_window;
+        let mut next_window = Instant::now() + window_duration;
+
+        loop {
+            info!("Starting transmission window");
+            let window_start = Instant::now();
+
+            let frames_to_send = {
+                let mut queue = self.frame_queue.lock().await;
+                let frames: Vec<_> = queue.drain(..).collect();
+                frames
+            };
+
+            let mut transmitted = 0;
+            for frame in frames_to_send {
+                if Instant::now() > next_window - Duration::from_secs(10) {
+                    self.queue_frames(vec![frame]).await;
+                    break;
+                }
+
+                if transmit_fn(&frame) {
+                    transmitted += 1;
+
+                    let frame_size =
+                        bincode::serde::encode_to_vec(&frame, bincode::config::standard())
+                            .unwrap()
+                            .len();
+                    let transmit_time = Duration::from_secs_f64(
+                        (frame_size * 8) as f64 / self.config.bandwidth_bps as f64,
+                    );
+                    sleep(transmit_time).await;
+                } else {
+                    self.queue_frames(vec![frame]).await;
+                }
+            }
+
+            {
+                let mut stats = self.stats.lock().await;
+                stats.frames_transmitted += transmitted;
+                stats.windows_completed += 1;
+            }
+
+            info!(
+                "Transmission window complete: {} frames sent in {:?}",
+                transmitted,
+                window_start.elapsed()
+            );
+
+            sleep_until(next_window).await;
+            next_window += window_duration;
+        }
+    }
+
+    pub async fn get_stats(&self) -> (u64, u64, u64) {
+        let stats = self.stats.lock().await;
+        (
+            stats.windows_completed,
+            stats.frames_transmitted,
+            stats.frames_queued,
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bunkerglow::Slot;
+
+    fn frame(slot: u64, frame_index: usize, data: Vec<u8>) -> RadioFrame {
+        RadioFrame {
+            slot: Slot::new(slot),
+            shred_index: 0,
+            frame_index,
+            total_frames: 2,
+            data,
+        }
+    }
+
+    #[tokio::test]
+    async fn scheduler_queuing() {
+        let config = RadioConfig::default();
+        let scheduler = RadioScheduler::new(config);
+
+        let frames = vec![frame(1, 0, vec![0u8; 100]), frame(1, 1, vec![1u8; 100])];
+
+        scheduler.queue_frames(frames).await;
+
+        let (_, _, queued) = scheduler.get_stats().await;
+        assert_eq!(queued, 2);
+    }
+
+    #[tokio::test]
+    async fn scheduler_stats_start_at_zero() {
+        let scheduler = RadioScheduler::new(RadioConfig::default());
+        let (windows, transmitted, queued) = scheduler.get_stats().await;
+        assert_eq!(windows, 0);
+        assert_eq!(transmitted, 0);
+        assert_eq!(queued, 0);
+    }
+
+    #[tokio::test]
+    async fn scheduler_queue_multiple_batches() {
+        let scheduler = RadioScheduler::new(RadioConfig::default());
+
+        scheduler.queue_frames(vec![frame(1, 0, vec![0; 50])]).await;
+        scheduler
+            .queue_frames(vec![frame(2, 0, vec![1; 50]), frame(2, 1, vec![2; 50])])
+            .await;
+
+        let (_, _, queued) = scheduler.get_stats().await;
+        assert_eq!(queued, 3);
+    }
+}

@@ -1,0 +1,389 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{parskip}
+\usepackage{hyperref}
+\setcounter{secnumdepth}{3}
+
+\title{BunkerCoin: A Low Bandwidth, Shortwave Radio-Compatible Blockchain Protocol}
+\author{Anatoly Yakovenko\thanks{Parts of the abstract and most core concepts by Anatoly Yakovenko. This paper is currently expanded and maintained by the BunkerCoin Team and external contributors, i.e. do not automatically expect content (especially beyond the abstract) to be endorsed by Anatoly.} \and{Elia Hilse} \and{BunkerCoin Team}}
+\date{September 12, 2026\\Version 0.2.0 \\[1em] \textbf{--- WORKING DOCUMENT ---}}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+BunkerCoin is a blockchain protocol designed for low-bandwidth networks, including shortwave radio links. Its consensus engine, Bunkerglow, adapts Alpenglow~\cite{alpenglow} to the constraints of radio communication.
+
+The proposed network architecture combines reliable P2P links, opportunistic broadcasts, and a location-aware routing service called Sherpa. Sherpa maintains topology and peer information to support block propagation and voting. A central design challenge is aggregating BLS multi-signatures along radio paths to reduce voting traffic. The design targets a 300-byte Maximum Transmission Unit (MTU), with 32:96 erasure coding for broadcast data and reliable ARQ links for P2P transfers.
+\end{abstract}
+
+\noindent\textbf{Implementation status.} This working document describes both the current BunkerCoin prototype and proposed protocol extensions. The private testnet implements Bunkerglow consensus and transaction processing over PACTOR radio links. The bridge, verified messaging, and location-attestation mechanisms remain under development.
+
+%------------------------------------------------------------
+\section{Physical (Network) Layer}
+\label{sec:physical}
+
+This section outlines the low-bandwidth communication substrate that enables BunkerCoin to propagate blocks, votes and other data across the globe, even under contested or spectrum-constrained conditions.
+
+\subsection{Reliability over Throughput: P2P vs. Broadcast}
+
+A fundamental requirement for BunkerCoin's transport layer is a reliable peer-to-peer (P2P) network that serves as a robust foundation. This mesh of acknowledged, 1:1 links guarantees that any node can eventually retrieve any piece of data it needs. Upon this foundation, two distinct strategies for block and vote propagation can be implemented, presenting a trade-off between simplicity and peak performance.
+
+The first strategy is P2P-first. In this model, blocks and other data (such as votes) are disseminated primarily through the reliable P2P links. It is inherently predictable and robust. Opportunistic broadcasts can be introduced as a throughput-accelerating optimization, but they are not required for the network's core operation. This offers a simpler implementation path.
+
+The second strategy is broadcast-first. This model leverages wide-area, connectionless broadcasts for the initial, high-speed dissemination of erasure-coded block and vote data. The P2P network serves purely as a fallback mechanism for nodes to request specific missing fragments needed for reconstruction ("repair traffic"). While this approach promises higher raw throughput under ideal conditions, it is operationally more complex, as it requires a seamless and difficult-to-manage interplay between multiple broadcasts and P2P modes, as well as better optimization of frequencies chosen for local broadcasts (there's far more free frequencies for a narrow link compared to a wide broadcast). It is also more susceptible to volatile ionospheric conditions, where widespread packet loss could create network storms as many nodes fall back to the P2P network for repairs simultaneously.
+
+Given these considerations, the current BunkerCoin specification prioritizes the P2P-first strategy. This ensures a baseline of predictable and robust performance. Unreliable, opportunistic broadcasts are therefore treated as an enhancement for throughput acceleration (see Section~\ref{sec:opportunistic_broadcasts}), not as the primary means of dissemination.
+
+This preliminary choice was made based on pessimistic assumptions about the availability of global spectrum, and will be validated through real-world testing.
+
+\subsubsection{Sherpa: A Location-Aware Routing Layer}
+
+To manage the complexity of routing data across a dynamic global network, both block and vote propagation protocols rely on an underlying service called \textbf{Sherpa}. This layer is responsible for maintaining a map of the network topology, including peer locations and connections. By abstracting this logic into a shared service, higher-level protocols like Votor and Radiotor can simply request optimal routing paths without needing to implement this complex state management themselves.
+
+\subsubsection{Opportunistic Broadcasts as a Throughput Accelerator}
+\label{sec:opportunistic_broadcasts}
+
+While the P2P mesh provides a reliable baseline, network throughput can be significantly increased by layering opportunistic broadcasts on top. When spectrum conditions permit, a node can choose to broadcast erasure-coded block data to all listening peers in its vicinity instead of initiating multiple, sequential P2P links.
+
+This hybrid model allows a node to significantly accelerate propagation. After broadcasting the erasure-coded data, the node can check in with its designated P2P peers. If a peer does not respond promptly, it can be assumed to have successfully received the broadcast and is already busy forwarding it to its own neighbors. If a peer does respond, it signifies that it requires repair traffic via a standard ARQ link. This "silence is golden" approach minimizes latency, as nodes do not have to wait for explicit acknowledgements before continuing the propagation chain.
+
+Crucially, this allows for dynamic optimization at the individual node level. Each node can independently assess network conditions and decide whether broadcasting or initiating direct P2P transmissions is the more efficient strategy at any given moment, creating a resilient and adaptive data propagation fabric.
+
+\subsection{Proof of Location}
+\label{sec:proof_of_location}
+
+Accurate validator locations are essential for Sherpa's routing decisions. To prevent location spoofing, validators must obtain cryptographic attestations from neighboring nodes:
+
+\begin{enumerate}
+    \item \textbf{Location Claim:} A validator announces its approximate location (precision ~50km).
+    \item \textbf{Neighbor Attestations:} At least min(3, total validators) existing validators within radio range must sign attestations. Attesters must have held stake for at least one prior epoch to prevent collusion attacks. Each attestation confirms:
+        \begin{itemize}
+            \item Successful bidirectional radio contact
+            \item Propagation delay consistent with claimed distance
+            \item Signal characteristics matching expected ionospheric conditions
+        \end{itemize}
+    \item \textbf{Verification:} The attestations are submitted during epoch transitions and verified by the network.
+\end{enumerate}
+
+Radio physics makes location fraud extremely difficult—signal delay, strength, and skip patterns are inherently tied to geographic distance. This natural constraint provides strong sybil resistance while ensuring Sherpa has reliable topology data.
+
+\subsection{Radio Data Protocols}
+
+\subsubsection{PACTOR-IV}
+
+PACTOR-IV represents the state-of-the-art in high-frequency (HF) digital modems. It is a hardware-based solution requiring a dedicated SCS Dragon modem, but offers the highest publicly documented throughput, particularly under challenging and variable ionospheric conditions. A key advantage of this platform is its mature ``2G ALE'' functionality, which enables fully automated link establishment and management, allowing nodes to connect on autopilot. While the modem can be programmatically controlled for all essential operations, it does not offer the same low-level access as a software-defined radio (SDR) solution. PACTOR protocols have historically supported broadcast via Forward Error Correction (FEC), though documentation suggests this is primarily a feature of older, lower-speed versions (e.g., PACTOR-I), and its utility at PACTOR-IV speeds is not well-documented.
+
+\subsubsection{VARA HF}
+
+VARA HF offers a compelling alternative as a flexible, software-based modem. Its primary advantage is accessibility; it is significantly cheaper to deploy and can run on standard computing hardware. VARA natively supports both reliable ARQ links and an unreliable ``unproto'' broadcast mode, making it well-suited for a hybrid P2P/broadcast network architecture. When paired with an SDR, VARA provides extensive low-level control over the physical layer, but this flexibility comes with increased responsibility. For instance, a custom ALE solution would need to be developed and integrated, as VARA's native link management is not as field-proven as PACTOR's. While highly capable, VARA is generally not considered as performant or robust as PACTOR-IV under the most demanding HF conditions.
+
+\subsubsection{Summary and Outlook}
+\label{sec:phys_summary}
+
+The choice between PACTOR-IV and VARA HF presents a classic trade-off. PACTOR-IV is expected to deliver superior throughput and reliability across the board, backed by its robust hardware and mature ALE system, but at the cost of higher expense and less flexibility. Conversely, VARA offers a cheaper, more flexible software-based path, but is likely less performant in adverse conditions and places a greater implementation burden on the project.
+
+Ultimately, a definitive decision requires data. To this end, the project will establish a testnet incorporating nodes that utilize both PACTOR-IV and VARA HF stacks. A series of real-world benchmarks must be conducted to compare the two protocols, specifically evaluating their performance in both reliable P2P (ARQ) and broadcast (FEC/unproto) modes under a variety of ionospheric conditions. The results of these tests will inform the final choice for BunkerCoin's physical layer.
+
+%------------------------------------------------------------
+\subsection{Last-Mile Access via LoRa}
+\label{sec:lora}
+
+While HF links connect validators over intercontinental distances, the network also requires a resilient, accessible ``last mile'' so users can originate transactions without relying on the public internet. BunkerCoin therefore supports LoRa-based uplinks in license-free ISM bands as an ingress path operated by community or private gateways. This complements the long-haul radio backbone and preserves the protocol’s end-to-end assumptions: authenticated messages, eventual delivery over a reliable P2P mesh, and tolerance of intermittent connectivity and asymmetric links.
+
+\subsubsection{Access Models}
+
+Two representative models are envisioned, selected per deployment context rather than mandated by the protocol:
+\begin{itemize}
+    \item \textbf{LoRaWAN Class~A:} Uses existing gateway infrastructure where available. Downlink capacity is scarce; the protocol treats LoRaWAN primarily as a best-effort uplink for user submissions.
+    \item \textbf{Raw LoRa:} Self-managed gateways for communities or operators without LoRaWAN coverage. Link parameters and channel plans follow regional regulations and are left to deployment guidance.
+\end{itemize}
+
+Where public LoRa deployments exist (e.g., Helium), the project will explore optional interoperability to opportunistically extend coverage. However, such networks depend on internet-connected network servers and backhaul; the last-mile design therefore remains self-sufficient by default. Deployments must not assume public infrastructure availability, and gateways should function without IP reachability, using HF or private backhaul when necessary.
+
+\subsubsection{Submission Model}
+
+User transactions are wrapped into compact, authenticated envelopes (\emph{capsules}) suitable for low-power radios. Capsules may be submitted as a single transmission or as a small set of fragments when needed. Gateways can verify authenticity and de-duplicate submissions without accessing any confidential payload beyond what is necessary for admission control. The on-air representation is intentionally minimal and agnostic to the underlying access model.
+
+\subsubsection{Gateway Responsibilities}
+
+Gateways act as stateless ingress relays between the LoRa access and validator-facing network paths. Their responsibilities are:
+\begin{itemize}
+    \item \textbf{Admission and Validation:} Check capsule integrity and authenticity; discard malformed or obviously replayed submissions.
+    \item \textbf{Forwarding:} On acceptance, relay toward validators via HF backhaul or IP when available, conforming to the core 300-byte MTU framing and P2P-first policy.
+    \item \textbf{Fairness and Resilience:} Apply simple, stake-agnostic fairness to share limited airtime and gateway queues; provide optional best-effort acknowledgements when a downlink opportunity exists.
+    \item \textbf{Privacy:} Avoid retaining user content beyond what is required for routing and de-duplication.
+\end{itemize}
+
+\subsubsection{Interoperability and Backhaul}
+
+The last-mile path does not alter the semantics of transactions or consensus. Capsules are forwarded unchanged into the validator mempool and subject to the same fee, ordering, and slashing rules as IP- or HF-originated traffic. Gateways must cooperate with back-pressure from the validator-facing P2P network to avoid congestion collapse; when in doubt, buffering and eventual repair over reliable links take precedence over retries on the access side.
+
+\subsubsection{Deployment Considerations}
+
+Deployments must adhere to local spectrum rules and duty-cycle constraints in the chosen ISM bands. Community gateways can be co-located with validators or placed opportunistically in population centers; private gateways may be used by institutions with specific availability requirements. Gateways are not consensus participants and do not require stake; they may optionally register coarse location with Sherpa for operational visibility without affecting routing decisions.
+
+\subsubsection{Evaluation Plan}
+
+The reference implementation will be validated through field trials across urban and rural settings. Measurements will focus on submission success under varying link qualities, time-to-mempool for single- and multi-fragment capsules, and energy usage on handheld devices. Results will inform parameter recommendations and any future access extensions without changing core consensus assumptions.
+
+%------------------------------------------------------------
+\section{Consensus Layer}
+\label{sec:consensus}
+
+BunkerCoin adopts Alpenglow~\cite{alpenglow}, a consensus protocol originally proposed for the Solana blockchain, to achieve block finality under constrained network conditions. Alpenglow replaces Proof of History and Tower BFT with separate voting and block-dissemination components.
+
+\subsection{Staking and Validator Selection}
+\label{sec:staking}
+
+BunkerCoin employs a stake-weighted validator system where the natural barrier of expensive radio equipment limits participation. All validators with sufficient stake participate in consensus, with voting power proportional to their total stake (self-bonded plus delegations). Stake changes only activate at epoch boundaries to maintain a stable validator set throughout each epoch.
+
+\subsubsection{Stake Lifecycle} 
+\label{sec:stake_lifecycle}
+
+Stake (either self-bonded or delegated) follows a simple two–step lifecycle that is tightly coupled to the fixed–length epoch schedule:
+\begin{itemize}
+    \item \textbf{Bonding:} A {\em bond} transaction locks the indicated amount immediately, but the stake becomes \emph{active} only at the next epoch boundary~$(T+1)$.  Until then it is counted as ``pending stake'' and is not eligible for rewards or voting power.
+    \item \textbf{Unbonding:} A {\em retire} transaction flags the stake for withdrawal.  It becomes \emph{inactive} at the next epoch boundary and then enters a fixed unbonding delay of~$U$ epochs (parameterised, default $U=2$).  During the delay the tokens remain locked and subject to slashing.  After $U$ epochs the owner may withdraw them with a {\em withdraw} transaction.
+\end{itemize}
+
+Validators must maintain a minimum self-bond (parameter \texttt{MIN\_SELF\_STAKE}).  Falling below this threshold—whether by withdrawal or slashing—causes automatic deactivation at the next epoch boundary.
+
+\subsubsection{Reward Accrual and Distribution}
+\label{sec:stake_rewards}
+
+Epoch rewards are \emph{fee-driven}: the native protocol does not mint inflationary rewards; instead it redistributes the contents of the three fee pools described in Section~\ref{sec:fees}.  The distribution procedure at the end of each epoch is:
+
+\begin{enumerate}
+    \item Split each fee pool \emph{pro-rata by active stake} across all validators who are \texttt{ACTIVE} at the instant the epoch ends.  Validators that were jailed at any time during the epoch receive no reward.
+    \item Apply the validator’s self-declared commission rate (bounded to $\le 20\%$ and changeable only at epoch boundaries).  Delegators receive the remainder proportionally to their stake.
+    \item Rewards below a dust threshold of $1\,\mu$BUNKER are rolled over to the next epoch to avoid radio transmissions for micro-rewards.
+\end{enumerate}
+
+\subsubsection{Slashing and Jailing}
+\label{sec:slashing}
+
+Misbehaviour is deterred through stake slashing and temporary exclusion (\emph{jailing}).  Only two slashable offences are recognised to keep the protocol lightweight:
+
+\begin{center}
+\begin{tabular}{l c c}
+\textbf{Offence} & \textbf{Slash} & \textbf{Jail}\;\\\hline
+Double-vote / equivocation & 100\% & until re-stake \\
+Excessive downtime ($>$20\% votes missed in an epoch) & 0\% & 1 epoch \\
+\end{tabular}
+\end{center}
+
+Slash evidence is a pair of conflicting vote signatures in the case of double-signing. Upon inclusion of valid evidence, the protocol burns the slashed stake and moves the validator to the \texttt{JAILED} state.  After the jail period elapses the operator may send an \emph{un-jail} transaction at any time; their stake becomes active again at the following epoch boundary provided the minimum self-stake is satisfied.
+
+\subsection{Fee Distribution}
+\label{sec:fees}
+
+Network fees are collected into three separate pools, each rewarding different network contributions:
+\begin{itemize}
+    \item \textbf{Transaction Pool:} Fees from regular transactions, distributed to all active validators proportionally by stake.
+    \item \textbf{Message Pool:} Fees from the messaging service, distributed only to validators who participated in message relay during the epoch.
+    \item \textbf{Bridge Pool:} Fees from bridge operations, preferentially rewarding validators with stable internet connectivity who can produce Bridge Certificates.
+\end{itemize}
+
+\subsection{Votor: Voting and Finalization Engine}
+
+Votor handles block notarization and finalization through a concurrent dual-path voting system. If a block receives $\geq 80\%$ stake approval in the first round, it is immediately finalized with a Fast-Finalization Certificate. If it secures only $\geq 60\%$ approval, a second round begins; upon reaching $\geq 60\%$ again, a Finalized Certificate is issued. Both paths run in parallel, ensuring rapid consensus even under partial network participation. To adapt this to a high-latency environment, Votor relies on the Sherpa service for the "in-flight" aggregation of BLS signatures across geographically dispersed radio links, minimizing the amount of data that needs to be transmitted for voting.
+
+\subsection{Radiotor: Location-Aware Block Propagation}
+
+Radiotor is BunkerCoin's adaptation of Alpenglow's Rotor protocol, tailored specifically for block dissemination over shortwave radio. It follows an approach similar to Solana's Turbine, where each node forwards erasure-coded block shreds to multiple downstream peers. Radiotor leverages the Sherpa service to select geographically distinct paths, enabling multiple, parallel data transfers across different HF links and frequencies to maximize throughput. While opportunistic broadcasts (as described in Section \ref{sec:opportunistic_broadcasts}) can accelerate this process, Radiotor's multi-path forwarding is the primary mechanism for robust block propagation.
+
+\subsection{Epoch Transitions}
+\label{sec:epoch_transitions}
+
+At each epoch boundary, the network pauses block production to execute critical maintenance tasks. During this window, submitted transactions remain queued at their originating nodes while the following operations occur in sequence:
+
+\begin{enumerate}
+    \item \textbf{State Snapshot:} Validators compute and sign the Merkle root of the current state (see Section~\ref{sec:transaction_state}).
+    \item \textbf{Validator Set Update:} Pending stake changes are processed, and the new validator set is finalized. A Validator Set Update Certificate (VSCert) is generated for the bridge (see Section~\ref{sec:bridge}).
+    \item \textbf{Location Attestations:} New validators submit proof-of-location claims, and existing validators may need to refresh their attestations (see Section~\ref{sec:proof_of_location}).
+    \item \textbf{Fee Distribution:} The three fee pools are distributed according to each validator's contributions during the ending epoch.
+    \item \textbf{Epoch Transition Block:} A special block containing all transition metadata is produced and voted on.
+\end{enumerate}
+
+Once the transition block achieves consensus, normal block production resumes with the new validator set and updated network state.
+
+\subsection{Fault Tolerance}
+
+BunkerCoin is engineered for resilience in contested and unreliable network environments. Its fault tolerance model is built on redundancy at every layer of the stack, from physical data transmission to consensus.
+
+\begin{itemize}
+    \item \textbf{Network Partitions and Link Failure:} The protocol's P2P-first strategy (see Section~\ref{sec:physical}) provides the baseline transport. If direct links fail, the Sherpa routing service seeks alternative paths through the multi-hop radio mesh. Erasure coding in broadcast modes and ARQ for P2P links protect against transient packet loss. During a network partition, finalization requires sufficient communicating stake to form the required quorums, under the consensus protocol's fault assumptions. Nodes in segments without a quorum pause finalization and repair missing data once connectivity is restored.
+
+    \item \textbf{Validator Downtime:} While Fast-Finalization requires $\geq 80\%$ stake approval, the standard finalization path uses two rounds of $\geq 60\%$ stake approval. Progress depends on Alpenglow's Byzantine-fault and network assumptions~\cite{alpenglow}; quorum thresholds alone do not specify the protocol's fault tolerance.
+
+    \item \textbf{Catastrophic Data Loss:} The epoch-end state snapshot mechanism is the ultimate backstop for data integrity. A validator that suffers a catastrophic failure (e.g., total data loss) does not need to synchronize the entire blockchain history over a low-bandwidth link. Instead, it can bootstrap from the latest multi-signed state snapshot, verifying data chunks with Merkle proofs, enabling rapid and secure recovery.
+
+    \item \textbf{Bridge Pauses:} In the proposed bridge, a Bridge Certificate (BCert) requires signatures representing at least two-thirds of the total staked weight authorized by the latest Validator Set Update Certificate (VSCert). If insufficient stake is reachable to meet this threshold, bridge transfers pause. Loss of internet connectivity does not reduce the required signing threshold.
+\end{itemize}
+
+%------------------------------------------------------------
+\section{Transaction and State Model}
+\label{sec:transaction_state}
+
+\subsection{Account Model}
+\label{sec:account_model}
+
+BunkerCoin uses a simplified account model with no smart contracts. Each account is identified by a public key and contains:
+
+\begin{itemize}
+    \item \textbf{Native Balance:} Amount of native BunkerCoin tokens for fees and staking.
+    \item \textbf{Token Balances:} A sparse array mapping token IDs to amounts. Only non-zero balances are stored.
+    \item \textbf{Nonce:} Transaction replay prevention counter.
+\end{itemize}
+
+\subsection{Token System}
+\label{sec:tokens}
+
+Tokens are created via special mint transactions that assign a unique 4-byte token ID. Each token stores minimal on-chain data:
+
+\begin{itemize}
+    \item \textbf{Token ID:} Unique 4-byte identifier
+    \item \textbf{Supply:} Current and maximum supply
+    \item \textbf{Ticker:} 3-8 character symbol (e.g., "USDC")
+    \item \textbf{Metadata Hash:} SHA-256 of off-chain JSON file containing name, description, logo, etc.
+\end{itemize}
+
+This design keeps account entries compact—most accounts will hold only 1-5 different tokens. A fixed-width token balance entry requires 12 bytes (4 for the ID and 8 for the amount), excluding container and serialization overhead.
+
+\subsection{State Snapshots for Network Bootstrapping}
+
+Due to the low-bandwidth constraints of shortwave radio, full blockchain synchronization is infeasible for new nodes joining the network. To address this, BunkerCoin implements epoch-end state snapshots.
+
+At the conclusion of each epoch, validators collectively compute the current state and construct a Merkle tree over it. The Merkle root is included in a special ``snapshot block,'' which is then voted on and multi-signed using Votor's BLS aggregation mechanism via Sherpa routing.
+
+This signed Merkle root ensures network-wide agreement on the state.
+
+New nodes bootstrap by first obtaining the signed snapshot block containing the Merkle root. They then request portions of the state data from peers, verifying each subset against the root using Merkle proofs. This allows efficient, verifiable synchronization without transmitting the entire history.
+
+Additionally, zero-knowledge proofs could be employed to further compress these Merkle proofs, reducing bandwidth requirements for state verification (e.g. when new nodes joining load chunks of the state with the related Merkle proofs).
+
+%------------------------------------------------------------
+\section{Verified Offline Messaging}
+\label{sec:messaging}
+
+Beyond its primary function as a financial ledger, the BunkerCoin network is designed to support verified, asynchronous, and censorship-resistant messaging, even when direct, real-time connections (such as internet) are not possible. This is achieved through a deprioritized store-and-forward protocol that leverages the existing node infrastructure.
+
+\subsection{Store-and-Forward Transport}
+
+Messaging data is treated as lower-priority traffic compared to consensus votes and block/transaction data. When a node has available bandwidth after handling its critical consensus duties, it must accept and relay message packets as part of its core network responsibilities. Messages are passed from node to node opportunistically, stored temporarily at each hop until a suitable forward path becomes available.
+
+This store-and-forward model ensures that messages can eventually reach their destination even in highly partitioned or intermittent networks. To enable cryptographic verification of the relay path, each handoff between nodes generates a signed BLS receipt. These receipts are designed to be efficiently combined into a single, compact aggregate signature, which forms the basis for the final proof of delivery. This creates a verifiable chain of custody for the message as it traverses the network.
+
+\subsection{On-Chain Anchoring and Verification}
+
+To provide an immutable, on-chain proof of a message's existence and size, the sender broadcasts an anchor transaction. This transaction contains two key components: (1) the public key of the intended destination, and (2) a Zero-Knowledge (ZK) proof. The ZK proof is critical for the fee mechanism, as it cryptographically attests to the message's exact byte-length without revealing the content itself. This allows the protocol to calculate a fair, size-based fee. For efficiency, a compact proof system like Groth16 (288 bytes) can be used.
+
+\subsection{Fee and Incentive Structure}
+
+To be viable in a low-throughput environment, the messaging system's economic incentives must minimize on-chain traffic. The protocol therefore uses a streamlined two-transaction model: one to anchor the message and one to wrap up delivery.
+
+\begin{enumerate}
+    \item \textbf{Message Anchor Transaction:} The sender broadcasts the anchor transaction, containing the destination's public key and the ZK proof of length. The protocol verifies the proof and charges a messaging fee proportional to the proven length, which is then deposited into the epoch reward pool.
+    \item \textbf{Delivery Wrap-up Transaction:} Once the message is delivered, any node can submit a wrap-up transaction containing: (1) an aggregated BLS signature encompassing all handoff receipts from the relay chain, and (2) the destination's acknowledgement signature. The protocol verifies the destination's signature against the public key from the anchor transaction, and upon success, marks the message as complete. This design prioritizes verification simplicity and low computational overhead while maintaining cryptographic integrity.
+\end{enumerate}
+
+This model treats messaging as a public good that strengthens the entire network. By automatically pooling messaging fees, it incentivizes all nodes to maintain good connectivity and participate in forwarding. To ensure accountability, one could have the epoch reward pool distributing only to those validators who can prove they participated in at least one valid message relay during the epoch, 
+preventing free-riders from benefiting without contributing.
+
+%------------------------------------------------------------
+\section{Bridging and Interoperability}
+\label{sec:bridge}
+
+One of BunkerCoin's primary value propositions is serving as a resilient custody layer for digital assets during periods of internet instability or outright failure. To fulfill this role, the protocol must support asset transfers between BunkerCoin and high-throughput networks like Solana or similar chains. This section describes a proposed bridge architecture that derives signing authority from BunkerCoin's validator set.
+
+\subsection{A Native Consensus Bridge}
+
+The bridge is not an external or secondary system; it is a native extension of the core protocol. Its security model is two-tiered, separating the slow, deliberate process of validator set authentication from the high-frequency task of attesting to individual asset transfers. This ensures the bridge's root of trust is always anchored to the full, radio-capable consensus. The system comprises:
+
+\begin{enumerate}
+    \item \textbf{The Full Validator Set}, which uses the core radio-based consensus mechanism at each epoch boundary to produce a signed \emph{Validator Set Update Certificate} (VSCert). This certificate is the ultimate source of authority for the bridge.
+    \item \textbf{An Internet-Connected Validator Subset}, composed of validators with stable IP connectivity. This dynamic subset is authorized---as per its stake recorded in the most recent VSCert---to produce and sign \emph{Bridge Certificates} (BCerts) for individual asset transfers, keeping this high-volume traffic off the radio network.
+    \item \textbf{An Immutable On-Chain Program} on the target chain (e.g., Solana) that verifies both certificate types. It only accepts a BCert if its signers represent at least two-thirds of the total staked weight authorized by the most recent VSCert.
+    \item \textbf{A Permissionless Relayer Network}, composed of off-chain actors who submit these certificates to the destination chain. Relayers are trusted for liveness only.
+\end{enumerate}
+
+\subsection{Certificate-Based Verification and Versioning}
+To allow for future upgrades without compromising the security of existing deployments, all certificates are versioned. An on-chain program can support multiple certificate versions, allowing for a seamless transition to new bridge contracts over time while ensuring old, immutable contracts remain fully functional and secure.
+
+\subsubsection{Validator Set Update Certificates (VSCerts)}
+The bridge's root of trust is established by VSCerts. At the end of each epoch, as part of the main state snapshot process, validators certify a message containing the version, the complete list of public keys, and stake weights for the upcoming epoch through the core radio-based consensus. The certificate is ratified under the consensus rules of the previous validator set; it does not require every validator to be online. A relayer submits this VSCert to the on-chain program, which verifies it against the previous validator set to rotate the authorized set for the new epoch.
+
+\subsubsection{Bridge Certificates (BCerts)}
+BCerts authorize individual asset transfers, primarily to facilitate the movement of external assets onto BunkerCoin for secure custody. For example, when a user locks native \texttt{SOL} in the bridge program on Solana, internet-connected validators observe the event and produce a BCert to authorize the minting of wrapped \texttt{SOL} on BunkerCoin. Conversely, when a user burns wrapped \texttt{SOL} on BunkerCoin, the validators generate a BCert to authorize the release of the native \texttt{SOL} on Solana. This signed message contains the certificate version and transfer details (amount, asset, source, destination, nonce). The receiving chain verifies the BCert's signatures and requires its signers to represent at least two-thirds of the total staked weight authorized by the most recent VSCert. If valid, the mint or release is executed. If insufficient stake has internet connectivity to meet this threshold, bridge transfers pause until connectivity is restored.
+
+\subsection{Relationship to Federated Models}
+Federated bridge models delegate signing authority to a separate committee. BunkerCoin's proposed bridge instead derives that authority from the validator set ratified by its radio-based consensus. Although only internet-reachable validators participate in BCert signing, each BCert must represent at least two-thirds of the total staked weight authorized by the latest VSCert. Transfers pause if this threshold cannot be met.
+
+The BCert signing threshold is distinct from Alpenglow's Byzantine-fault assumptions~\cite{alpenglow}. It does not establish a universal attack-cost bound or, by itself, prove security equivalent to the base chain. Bridge security also depends on correct certificate verification, validator-set rotation, and source-chain finality.
+
+\subsection{Merkle Root Anchoring for Enhanced Security}
+Beyond basic asset transfers, the bridge could \emph{optionally} leverage BunkerCoin's existing state snapshot mechanism (Section~\ref{sec:transaction_state}) to post periodic commitments on external chains. These Merkle root anchors serve a dual purpose:
+
+\begin{enumerate}
+    \item \textbf{Checkpoint Verification:} A state root finalized on an external chain provides an independently verifiable checkpoint. Using it to reject conflicting BunkerCoin histories requires explicit rules for selecting and enforcing trusted checkpoints; those rules remain to be specified.
+    \item \textbf{Generalized State Proofs:} Applications can verify arbitrary BunkerCoin state claims using Merkle proofs against these anchored roots, enabling complex cross-chain protocols beyond simple transfers.
+\end{enumerate}
+
+The same internet-connected validator subset that produces BCerts can generate these checkpoint certificates, reusing the existing BLS aggregation infrastructure without additional complexity.
+
+%------------------------------------------------------------
+%------------------------------------------------------------
+\section{Security Considerations}
+\label{sec:security}
+
+The protocol's security model assumes a sophisticated adversary capable of both on-chain and physical-layer attacks. This section outlines key risks and their mitigations.
+
+\begin{itemize}
+    \item \textbf{Location Spoofing and Sybil Attacks:} The Proof of Location mechanism (Section~\ref{sec:proof_of_location}) is the primary defense against Sybil attacks. An adversary cannot easily fake a geographic location due to the physical constraints of radio wave propagation. Signal delay, multipath characteristics, and strength are difficult to forge and must be attested to by established, staked neighbors, making it computationally and logistically expensive to create a cluster of fake nodes in one location.
+
+    \item \textbf{Physical Layer Attacks:} An adversary may attempt to disrupt the network through jamming or spoofing.
+        \begin{itemize}
+            \item \textbf{Jamming:} While targeted jamming can disrupt specific links, the global, decentralized nature of the network provides inherent resilience. Sherpa can route around localized interference. Because each P2P link can operate on a different frequency, an attacker must jam a wide portion of the HF spectrum to cause large-scale disruption. Furthermore, the use of licensed amateur radio bands in some regions provides a layer of legal protection and regulatory recourse against malicious interference, a deterrent not present in unlicensed bands.
+            \item \textbf{Spoofing:} Cryptographic authentication at every layer prevents spoofed data from being accepted. All peer-to-peer links are authenticated, and all consensus messages (blocks, votes) are signed. An attacker cannot inject false data without compromising a validator's private keys.
+        \end{itemize}
+
+    \item \textbf{Censorship Resistance:} Censorship can be attempted at multiple points.
+        \begin{itemize}
+            \item \textbf{Gateway Level:} LoRa gateways (Section~\ref{sec:lora}) could attempt to censor user transactions. However, since gateways are numerous and operated by independent entities, a user can simply submit their transaction via a different gateway or directly to a validator if they have HF capability.
+            \item \textbf{Validator Level:} A cabal of validators could attempt to censor transactions by refusing to include them in blocks. Because block producers are selected on a rotating basis, this would require sustained collusion. Furthermore, the store-and-forward messaging system (Section~\ref{sec:messaging}) provides a parallel, albeit slower, path for data propagation that is difficult to censor system-wide.
+        \end{itemize}
+
+    \item \textbf{Long-Range and Re-org Attacks:} Consensus safety depends on Alpenglow's fault assumptions~\cite{alpenglow}. Nodes bootstrapping from snapshots also need an authenticated validator history or a trusted checkpoint. Roots anchored on an external chain (Section~\ref{sec:bridge}) can support checkpoint verification. Protection against long-range rewrites requires explicit rules for selecting and enforcing checkpoints.
+
+    \item \textbf{Bridge Security:} The proposed bridge derives its validator-set authority from radio-based consensus and requires each BCert to represent at least two-thirds of the total staked weight authorized by the latest VSCert. This threshold remains fixed during connectivity loss. Correct certificate verification, validator-set rotation, and source-chain finality are also required for bridge security; these mechanisms remain under development.
+\end{itemize}
+
+\section{Future Work}
+\label{sec:future}
+
+The core protocol is intentionally extensible. Two directions may be explored without altering L1 security:
+
+\subsection{Geo-Anchored L2s}
+
+In crises, usage concentrates locally rather than across continents. A geo-anchored L2 executing regional transactions and periodically anchoring a concise state root to BunkerCoin L1, effective throughput could be increased by orders of magnitude. The security implications of delayed anchoring and regional execution must be assessed before adoption.
+
+\subsection{LEO Bent-Pipe Relay}
+
+LEO satellites can serve as transparent 1:1 bridges: receive a BunkerCoin frame and immediately re-transmit it within the current footprint. There is no buffering or store-and-forward; satellites are untrusted transport only and do not participate in consensus. This predictable alternate path can bypass poor HF propagation, increasing network reliability and throughput. With declining launch costs, bent-pipe relays are a practical, optional operational enhancement.
+
+%------------------------------------------------------------
+\section{Call for Contribution}
+
+This paper serves as a working foundation for the BunkerCoin protocol and is under active development. We welcome contributions from the community to expand, refine, and challenge the concepts outlined here. For further information on how to contribute, and to join the ongoing technical discussions, please join our community on Discord: \url{https://discord.gg/DGBqm92VQm}.
+
+\begin{thebibliography}{1}
+\bibitem{alpenglow}
+Quentin Kniep, Jakub Sliwinski, and Roger Wattenhofer.
+\emph{Solana Alpenglow Consensus: Increased Bandwidth, Reduced Latency}.
+White paper, version 1.1, July 22, 2025.
+\url{https://www.anza.xyz/alpenglow-1-1}.
+\end{thebibliography}
+
+\end{document}

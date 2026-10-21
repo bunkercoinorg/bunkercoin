@@ -1,0 +1,536 @@
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+
+use crate::types::{Amount, Nonce, PublicKey, Signature, TokenId};
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RelayReceiptData {
+    pub relay_node: PublicKey,
+    pub hop_index: u8,
+    #[serde(with = "crate::types::serde_signature")]
+    pub signature: Signature,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocationAttestationData {
+    pub attester: PublicKey,
+    pub propagation_delay_ms: u32,
+    #[serde(with = "crate::types::serde_signature")]
+    pub signature: Signature,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Transaction {
+    pub sender: PublicKey,
+    pub nonce: Nonce,
+    pub fee: Amount,
+    pub body: TransactionBody,
+    #[serde(with = "crate::types::serde_signature")]
+    pub signature: Signature,
+}
+
+impl Transaction {
+    pub fn hash(&self) -> [u8; 32] {
+        let mut hasher = Sha256::new();
+        hasher.update(self.sender);
+        hasher.update(self.nonce.to_le_bytes());
+        hasher.update(self.fee.to_le_bytes());
+        hasher.update(self.signature);
+        hasher.finalize().into()
+    }
+
+    /// deterministic hash of sender + nonce + fee + body (excludes signature)
+    pub fn signing_hash(&self) -> [u8; 32] {
+        let mut hasher = Sha256::new();
+        hasher.update(self.sender);
+        hasher.update(self.nonce.to_le_bytes());
+        hasher.update(self.fee.to_le_bytes());
+
+        match &self.body {
+            TransactionBody::Transfer { to, amount } => {
+                hasher.update([0u8]);
+                hasher.update(to);
+                hasher.update(amount.to_le_bytes());
+            }
+            TransactionBody::TokenTransfer {
+                to,
+                token_id,
+                amount,
+            } => {
+                hasher.update([1u8]);
+                hasher.update(to);
+                hasher.update(token_id);
+                hasher.update(amount.to_le_bytes());
+            }
+            TransactionBody::Mint {
+                ticker,
+                max_supply,
+                metadata_hash,
+            } => {
+                hasher.update([2u8]);
+                hasher.update((ticker.len() as u32).to_le_bytes());
+                hasher.update(ticker.as_bytes());
+                hasher.update(max_supply.to_le_bytes());
+                hasher.update(metadata_hash);
+            }
+            TransactionBody::Bond { validator, amount } => {
+                hasher.update([3u8]);
+                hasher.update(validator);
+                hasher.update(amount.to_le_bytes());
+            }
+            TransactionBody::Retire { validator, amount } => {
+                hasher.update([4u8]);
+                hasher.update(validator);
+                hasher.update(amount.to_le_bytes());
+            }
+            TransactionBody::Withdraw { validator } => {
+                hasher.update([5u8]);
+                hasher.update(validator);
+            }
+            TransactionBody::UnJail => {
+                hasher.update([6u8]);
+            }
+            TransactionBody::SetCommission { rate } => {
+                hasher.update([7u8]);
+                hasher.update(rate.to_le_bytes());
+            }
+            TransactionBody::Burn { token_id, amount } => {
+                hasher.update([8u8]);
+                hasher.update(token_id);
+                hasher.update(amount.to_le_bytes());
+            }
+            TransactionBody::UpdateMetadata {
+                token_id,
+                metadata_hash,
+            } => {
+                hasher.update([9u8]);
+                hasher.update(token_id);
+                hasher.update(metadata_hash);
+            }
+            TransactionBody::LocationClaim {
+                lat,
+                lon,
+                attestations,
+            } => {
+                hasher.update([10u8]);
+                hasher.update(lat.to_le_bytes());
+                hasher.update(lon.to_le_bytes());
+                for att in attestations {
+                    hasher.update(att.attester);
+                    hasher.update(att.propagation_delay_ms.to_le_bytes());
+                    hasher.update(att.signature);
+                }
+            }
+            TransactionBody::MessageAnchor {
+                destination,
+                length_proof,
+                deposit,
+            } => {
+                hasher.update([11u8]);
+                hasher.update(destination);
+                hasher.update(length_proof.as_slice());
+                hasher.update(deposit.to_le_bytes());
+            }
+            TransactionBody::DeliveryWrapup {
+                anchor_hash,
+                relay_receipts,
+                destination_ack,
+            } => {
+                hasher.update([12u8]);
+                hasher.update(anchor_hash);
+                for receipt in relay_receipts {
+                    hasher.update(receipt.relay_node);
+                    hasher.update([receipt.hop_index]);
+                    hasher.update(receipt.signature);
+                }
+                hasher.update(destination_ack);
+            }
+        }
+
+        hasher.finalize().into()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TransactionBody {
+    Transfer {
+        to: PublicKey,
+        amount: Amount,
+    },
+    TokenTransfer {
+        to: PublicKey,
+        token_id: TokenId,
+        amount: Amount,
+    },
+    Mint {
+        ticker: String,
+        max_supply: Amount,
+        metadata_hash: [u8; 32],
+    },
+    Bond {
+        validator: PublicKey,
+        amount: Amount,
+    },
+    Retire {
+        validator: PublicKey,
+        amount: Amount,
+    },
+    Withdraw {
+        validator: PublicKey,
+    },
+    UnJail,
+    SetCommission {
+        rate: u16,
+    },
+    Burn {
+        token_id: TokenId,
+        amount: Amount,
+    },
+    UpdateMetadata {
+        token_id: TokenId,
+        metadata_hash: [u8; 32],
+    },
+    LocationClaim {
+        lat: i32,
+        lon: i32,
+        attestations: Vec<LocationAttestationData>,
+    },
+    MessageAnchor {
+        destination: PublicKey,
+        #[serde(with = "crate::types::serde_proof288")]
+        length_proof: Box<[u8; 288]>,
+        deposit: Amount,
+    },
+    DeliveryWrapup {
+        anchor_hash: [u8; 32],
+        relay_receipts: Vec<RelayReceiptData>,
+        #[serde(with = "crate::types::serde_signature")]
+        destination_ack: Signature,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pk(n: u8) -> PublicKey {
+        let mut key = [0u8; 32];
+        key[0] = n;
+        key
+    }
+
+    fn dummy_tx(body: TransactionBody) -> Transaction {
+        Transaction {
+            sender: pk(1),
+            nonce: 0,
+            fee: 10,
+            body,
+            signature: [0u8; 64],
+        }
+    }
+
+    #[test]
+    fn signing_hash_deterministic() {
+        let tx = dummy_tx(TransactionBody::Transfer {
+            to: pk(2),
+            amount: 100,
+        });
+        let h1 = tx.signing_hash();
+        let h2 = tx.signing_hash();
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn signing_hash_differs_by_body_type() {
+        let transfer = dummy_tx(TransactionBody::Transfer {
+            to: pk(2),
+            amount: 100,
+        });
+        let bond = dummy_tx(TransactionBody::Bond {
+            validator: pk(2),
+            amount: 100,
+        });
+        assert_ne!(transfer.signing_hash(), bond.signing_hash());
+    }
+
+    #[test]
+    fn signing_hash_differs_by_amount() {
+        let tx1 = dummy_tx(TransactionBody::Transfer {
+            to: pk(2),
+            amount: 100,
+        });
+        let tx2 = dummy_tx(TransactionBody::Transfer {
+            to: pk(2),
+            amount: 200,
+        });
+        assert_ne!(tx1.signing_hash(), tx2.signing_hash());
+    }
+
+    #[test]
+    fn signing_hash_differs_by_recipient() {
+        let tx1 = dummy_tx(TransactionBody::Transfer {
+            to: pk(2),
+            amount: 100,
+        });
+        let tx2 = dummy_tx(TransactionBody::Transfer {
+            to: pk(3),
+            amount: 100,
+        });
+        assert_ne!(tx1.signing_hash(), tx2.signing_hash());
+    }
+
+    #[test]
+    fn signing_hash_differs_by_nonce() {
+        let tx1 = Transaction {
+            nonce: 0,
+            ..dummy_tx(TransactionBody::Transfer {
+                to: pk(2),
+                amount: 100,
+            })
+        };
+        let tx2 = Transaction {
+            nonce: 1,
+            ..dummy_tx(TransactionBody::Transfer {
+                to: pk(2),
+                amount: 100,
+            })
+        };
+        assert_ne!(tx1.signing_hash(), tx2.signing_hash());
+    }
+
+    #[test]
+    fn signing_hash_differs_by_fee() {
+        let tx1 = Transaction {
+            fee: 10,
+            ..dummy_tx(TransactionBody::Transfer {
+                to: pk(2),
+                amount: 100,
+            })
+        };
+        let tx2 = Transaction {
+            fee: 20,
+            ..dummy_tx(TransactionBody::Transfer {
+                to: pk(2),
+                amount: 100,
+            })
+        };
+        assert_ne!(tx1.signing_hash(), tx2.signing_hash());
+    }
+
+    #[test]
+    fn signing_hash_excludes_signature() {
+        let tx1 = Transaction {
+            signature: [0u8; 64],
+            ..dummy_tx(TransactionBody::Transfer {
+                to: pk(2),
+                amount: 100,
+            })
+        };
+        let tx2 = Transaction {
+            signature: [0xFF; 64],
+            ..dummy_tx(TransactionBody::Transfer {
+                to: pk(2),
+                amount: 100,
+            })
+        };
+        assert_eq!(tx1.signing_hash(), tx2.signing_hash());
+    }
+
+    #[test]
+    fn hash_includes_signature() {
+        let tx1 = Transaction {
+            signature: [0u8; 64],
+            ..dummy_tx(TransactionBody::Transfer {
+                to: pk(2),
+                amount: 100,
+            })
+        };
+        let tx2 = Transaction {
+            signature: [0xFF; 64],
+            ..dummy_tx(TransactionBody::Transfer {
+                to: pk(2),
+                amount: 100,
+            })
+        };
+        assert_ne!(tx1.hash(), tx2.hash());
+    }
+
+    #[test]
+    fn signing_hash_each_body_variant() {
+        let variants = vec![
+            TransactionBody::Transfer {
+                to: pk(2),
+                amount: 50,
+            },
+            TransactionBody::TokenTransfer {
+                to: pk(2),
+                token_id: [0, 0, 0, 1],
+                amount: 50,
+            },
+            TransactionBody::Mint {
+                ticker: "BNK".into(),
+                max_supply: 1000,
+                metadata_hash: [0xAB; 32],
+            },
+            TransactionBody::Bond {
+                validator: pk(2),
+                amount: 500,
+            },
+            TransactionBody::Retire {
+                validator: pk(2),
+                amount: 500,
+            },
+            TransactionBody::Withdraw { validator: pk(2) },
+            TransactionBody::UnJail,
+            TransactionBody::SetCommission { rate: 500 },
+            TransactionBody::Burn {
+                token_id: [0, 0, 0, 1],
+                amount: 100,
+            },
+            TransactionBody::UpdateMetadata {
+                token_id: [0, 0, 0, 1],
+                metadata_hash: [0xCD; 32],
+            },
+            TransactionBody::LocationClaim {
+                lat: 48_856,
+                lon: 2_352,
+                attestations: vec![LocationAttestationData {
+                    attester: pk(3),
+                    propagation_delay_ms: 50,
+                    signature: [0xEE; 64],
+                }],
+            },
+            TransactionBody::MessageAnchor {
+                destination: pk(4),
+                length_proof: Box::new([0xAA; 288]),
+                deposit: 5_000,
+            },
+            TransactionBody::DeliveryWrapup {
+                anchor_hash: [0xBB; 32],
+                relay_receipts: vec![RelayReceiptData {
+                    relay_node: pk(5),
+                    hop_index: 0,
+                    signature: [0xCC; 64],
+                }],
+                destination_ack: [0xDD; 64],
+            },
+        ];
+
+        let hashes: Vec<[u8; 32]> = variants
+            .iter()
+            .map(|body| dummy_tx(body.clone()).signing_hash())
+            .collect();
+
+        // all hashes must be unique
+        for i in 0..hashes.len() {
+            for j in (i + 1)..hashes.len() {
+                assert_ne!(
+                    hashes[i], hashes[j],
+                    "variant {i} and {j} produced same hash"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn transaction_serde_roundtrip() {
+        let tx = dummy_tx(TransactionBody::Transfer {
+            to: pk(2),
+            amount: 100,
+        });
+        let json = serde_json::to_string(&tx).unwrap();
+        let deserialized: Transaction = serde_json::from_str(&json).unwrap();
+        assert_eq!(tx, deserialized);
+    }
+
+    #[test]
+    fn all_body_variants_serde_roundtrip() {
+        let variants = vec![
+            TransactionBody::Transfer {
+                to: pk(2),
+                amount: 50,
+            },
+            TransactionBody::TokenTransfer {
+                to: pk(2),
+                token_id: [0, 0, 0, 1],
+                amount: 50,
+            },
+            TransactionBody::Mint {
+                ticker: "BNK".into(),
+                max_supply: 1000,
+                metadata_hash: [0xAB; 32],
+            },
+            TransactionBody::Bond {
+                validator: pk(2),
+                amount: 500,
+            },
+            TransactionBody::Retire {
+                validator: pk(2),
+                amount: 500,
+            },
+            TransactionBody::Withdraw { validator: pk(2) },
+            TransactionBody::UnJail,
+            TransactionBody::SetCommission { rate: 500 },
+            TransactionBody::Burn {
+                token_id: [0, 0, 0, 1],
+                amount: 100,
+            },
+            TransactionBody::UpdateMetadata {
+                token_id: [0, 0, 0, 1],
+                metadata_hash: [0xCD; 32],
+            },
+            TransactionBody::LocationClaim {
+                lat: 48_856,
+                lon: 2_352,
+                attestations: vec![LocationAttestationData {
+                    attester: pk(3),
+                    propagation_delay_ms: 50,
+                    signature: [0xEE; 64],
+                }],
+            },
+            TransactionBody::MessageAnchor {
+                destination: pk(4),
+                length_proof: Box::new([0xAA; 288]),
+                deposit: 5_000,
+            },
+            TransactionBody::DeliveryWrapup {
+                anchor_hash: [0xBB; 32],
+                relay_receipts: vec![RelayReceiptData {
+                    relay_node: pk(5),
+                    hop_index: 0,
+                    signature: [0xCC; 64],
+                }],
+                destination_ack: [0xDD; 64],
+            },
+        ];
+
+        for body in variants {
+            let tx = dummy_tx(body);
+            let encoded = serde_json::to_vec(&tx).unwrap();
+            let decoded: Transaction = serde_json::from_slice(&encoded).unwrap();
+            assert_eq!(tx, decoded);
+        }
+    }
+
+    #[test]
+    fn mint_signing_hash_differs_by_ticker() {
+        let tx1 = dummy_tx(TransactionBody::Mint {
+            ticker: "AAA".into(),
+            max_supply: 100,
+            metadata_hash: [0; 32],
+        });
+        let tx2 = dummy_tx(TransactionBody::Mint {
+            ticker: "BBB".into(),
+            max_supply: 100,
+            metadata_hash: [0; 32],
+        });
+        assert_ne!(tx1.signing_hash(), tx2.signing_hash());
+    }
+
+    #[test]
+    fn set_commission_signing_hash_differs_by_rate() {
+        let tx1 = dummy_tx(TransactionBody::SetCommission { rate: 100 });
+        let tx2 = dummy_tx(TransactionBody::SetCommission { rate: 200 });
+        assert_ne!(tx1.signing_hash(), tx2.signing_hash());
+    }
+}

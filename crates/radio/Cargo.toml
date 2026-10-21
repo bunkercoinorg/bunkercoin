@@ -1,0 +1,28 @@
+[package]
+name = "bunker_coin_radio"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+bunker_coin_core = { workspace = true }
+bunkerglow = { workspace = true }
+scs_pactor = { path = "../scs_pactor" }
+
+tokio = { workspace = true }
+serde = { workspace = true }
+bincode = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+rand = { workspace = true }
+rand_distr = { workspace = true }
+async-trait = "0.1"
+
+reed-solomon-erasure = { version = "6", features = ["simd-accel"] }
+wincode = { version = "0.2", features = ["derive"] }
+bytes = "1"
+
+[dev-dependencies]
+tokio-test = "0.4"

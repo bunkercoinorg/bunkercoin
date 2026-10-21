@@ -1,0 +1,40 @@
+[workspace]
+members = [
+    "crates/bunkerglow",
+    "crates/core",
+    "crates/gateway",
+    "crates/lora_gateway",
+    "crates/radio",
+    "crates/rpc",
+    "crates/scs_pactor",
+    "crates/sim",
+    "crates/vara",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["BunkerCoin Contributors"]
+license = "Apache-2.0"
+
+
+[workspace.dependencies]
+bunker_coin_core = { path = "crates/core" }
+bunker_coin_radio = { path = "crates/radio" }
+
+bunkerglow = { path = "crates/bunkerglow" }
+
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+bincode = { version = "2", features = ["serde"] }
+thiserror = "2"
+anyhow = "1"
+log = "0.4"
+env_logger = "0.11"
+rand = "0.9"
+rand_distr = "0.4"
+
+ark-bn254 = "0.5"
+ark-groth16 = "0.5"
+light-poseidon = "0.2"

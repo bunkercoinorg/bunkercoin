@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "core",
+    "radio",
+    "sim",
+    "rpc",
+    "gateway",
+] 
