@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { shortId } from '@bunkercoin/chain-format';
 import { Button, Checkbox, CopyValue, Facts, Field, FlowBar, Notice, Textarea } from '@bunkercoin/ui';
 import { checkPhrase, keypairFromMnemonic, MNEMONIC_WORDS, normalizeMnemonic } from '@/lib/keys';
+import { focusField } from '@/hooks/useFlowFocus';
 
 export interface Replacing {
   /** The stored text, replaced only if it is still exactly this. */
@@ -24,6 +25,7 @@ export default function Import({
 }) {
   const [text, setText] = useState('');
   const [tried, setTried] = useState(false);
+  const [refused, setRefused] = useState(0);
   const [replace, setReplace] = useState(false);
   const check = checkPhrase(text);
   const address = useMemo(() => {
@@ -45,7 +47,9 @@ export default function Import({
 
   const submit = () => {
     setTried(true);
-    if (check.valid && (!replacing || replace)) onValid(normalizeMnemonic(text));
+    if (check.valid && (!replacing || replace)) return onValid(normalizeMnemonic(text));
+    setRefused((n) => n + 1);
+    focusField('recovery-phrase');
   };
 
   return (
@@ -73,6 +77,11 @@ export default function Import({
           {replacing.address ? `This replaces ${shortId(replacing.address)} in this browser.` : 'This replaces the saved wallet in this browser.'}
           <Checkbox id="replace-saved" label="replace saved wallet" checked={replace} onChange={setReplace} />
         </Notice>
+      )}
+      {refused > 0 && (
+        <p key={refused} className="bc-sr" role="alert">
+          {error ?? `${check.count} of ${MNEMONIC_WORDS} words entered.`}
+        </p>
       )}
       <Button block disabled={!!replacing && !replace} onClick={submit}>
         continue

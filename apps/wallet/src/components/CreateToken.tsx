@@ -8,6 +8,7 @@ import { isValidTicker, signMint } from '@/lib/keys';
 import { METADATA_ENABLED, metadataHashBytes } from '@/lib/metadata';
 import type { Signer } from '@/lib/signer';
 import { useReview } from '@/hooks/useReview';
+import { focusField } from '@/hooks/useFlowFocus';
 import { bunker, count, NATIVE } from '@/components/assets';
 import { draftIsEmpty, emptyDraft, localHash, MetadataFields, publishDraft, type MetadataDraft } from '@/components/MetadataForm';
 import Receipt from '@/components/Receipt';
@@ -49,16 +50,16 @@ export default function CreateToken({ state, actions, signer }: { state: WalletS
   const toReview = async (withMetadata: boolean) => {
     setFormError('');
     setUploadError('');
+    if (status.error || !isValidTicker(symbol)) {
+      setFormError(status.error ?? 'Use 3 to 8 letters or digits.');
+      return focusField('token-symbol');
+    }
     let value: bigint;
     try {
       value = parseCount(supply);
     } catch (e) {
       setSupplyError(e instanceof AmountError ? e.message : 'Tokens use whole units.');
-      return;
-    }
-    if (status.error || !isValidTicker(symbol)) {
-      setFormError(status.error ?? 'Use 3 to 8 letters or digits.');
-      return;
+      return focusField('token-supply');
     }
     if (state.fee === null) {
       setFormError(state.feeError ? `Fee unavailable: ${state.feeError}` : 'Fee unavailable · retry');
