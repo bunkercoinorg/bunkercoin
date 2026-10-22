@@ -13,6 +13,8 @@ on:
       - ".gitignore"
       - ".github/workflows/apps.yml"
       - ".github/workflows/sync-bunker-coin.yml"
+      - "e2e/**"
+      - ".github/workflows/e2e.yml"
   workflow_dispatch:
     inputs:
       sha:
@@ -59,7 +61,8 @@ jobs:
           fi
           git diff --binary "$before" "$after" -- . \
             ':!apps' ':!packages' ':!package.json' ':!bun.lock' ':!README.md' ':!LICENSE' ':!.gitignore' \
-            ':!.github/workflows/apps.yml' ':!.github/workflows/sync-bunker-coin.yml' > "$RUNNER_TEMP/sync.patch"
+            ':!.github/workflows/apps.yml' ':!.github/workflows/sync-bunker-coin.yml' \
+            ':!e2e' ':!.github/workflows/e2e.yml' > "$RUNNER_TEMP/sync.patch"
           if [ ! -s "$RUNNER_TEMP/sync.patch" ]; then
             echo "Nothing outside the apps to sync."
             echo "empty=true" >> "$GITHUB_OUTPUT"
