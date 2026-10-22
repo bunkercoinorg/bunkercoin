@@ -41,6 +41,12 @@ function Strip({ now }: { now: number | null }) {
     () => stripFrame(done, finalized, end ?? 0, RADIO_COLUMNS, RADIO_BUCKET_MS, 'last 30 minutes in 30s means'),
     [done, finalized, end],
   );
+  if (frame.columns.filter((c) => c.level !== null).length < 3)
+    return (
+      <Panel title="radio throughput · 30 min">
+        <p className="bc-hint m-0">Collecting radio samples. The chart fills in as 30 s means arrive.</p>
+      </Panel>
+    );
   return (
     <TransmissionStrip
       title="radio throughput · 30 min"

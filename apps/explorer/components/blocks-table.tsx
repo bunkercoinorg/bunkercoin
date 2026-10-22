@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import { formatInteger, shortId, utcClock } from '@bunkercoin/chain-format';
 import { CopyValue, StatusTag, type Status } from '@bunkercoin/ui';
 import { DataTable, type Column } from '@bunkercoin/ui/explorer';
-import { blockTime, coarseAge } from '@/lib/cadence';
+import { coarseAge, producedAt } from '@/lib/cadence';
 import { routes } from '@/lib/routes';
 import type { Block } from '@/lib/types';
 
@@ -14,7 +14,7 @@ export const slotLabel = (slot: number | string) => formatInteger(BigInt(slot));
 const MAX_WASHED = 2;
 
 function Age({ block, now }: { block: Block; now: number | null }) {
-  const at = blockTime(block);
+  const at = producedAt(block);
   if (at === undefined || now === null) return <span className="bc-hint mono">–</span>;
   return (
     <time className="mono" dateTime={new Date(at).toISOString()} title={utcClock(at)}>

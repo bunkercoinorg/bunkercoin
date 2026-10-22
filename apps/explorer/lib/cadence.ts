@@ -9,6 +9,7 @@ const MIN_STALE_MS = 3 * 60_000;
 const MAX_STALE_MS = 60 * 60_000;
 
 export const blockTime = (b: Block) => b.finalized_timestamp ?? b.proposed_timestamp;
+export const producedAt = (b: Block) => b.proposed_timestamp ?? b.finalized_timestamp;
 
 const median = (xs: number[]) => {
   const s = [...xs].sort((a, b) => a - b);
