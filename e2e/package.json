@@ -1,0 +1,16 @@
+{
+  "name": "@bunkercoin/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "e2e": "export PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-$PWD/.cache/ms-playwright} && playwright install --only-shell chromium && playwright test",
+    "e2e:report": "playwright show-report",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0",
+    "@types/node": "^26.1.2",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,16 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Heart } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { useCallback, useEffect, useRef } from 'react';
+import { Button } from '@bunkercoin/ui';
+import { LIKE_WS_URL } from '@/lib/config';
 
 // Likes fan out to the lab overlay only; the explorer never renders hearts.
-const LIKE_WS_URL = process.env.NEXT_PUBLIC_LIKE_WS_URL;
 const FLUSH_DEBOUNCE_MS = 400;
 const MAX_LIKES_PER_MESSAGE = 25;
 
 export default function StreamLikeButton() {
-  const [popping, setPopping] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const pendingRef = useRef(0);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -68,10 +66,6 @@ export default function StreamLikeButton() {
   }, []);
 
   const onLike = useCallback(() => {
-    // Button pops locally; the heart itself only appears on the lab overlay.
-    setPopping(true);
-    window.setTimeout(() => setPopping(false), 350);
-
     if (LIKE_WS_URL) {
       pendingRef.current += 1;
       if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
@@ -84,19 +78,8 @@ export default function StreamLikeButton() {
   }, [flush]);
 
   return (
-    // bottom-16 clears the player's control bar so fullscreen stays reachable.
-    <div className="pointer-events-none absolute bottom-16 right-3 z-10 flex flex-col items-center">
-      <button
-        type="button"
-        onClick={onLike}
-        aria-label="Like the stream"
-        className={cn(
-          'pointer-events-auto rounded-full bg-black/50 p-2.5 text-white backdrop-blur transition-colors hover:bg-black/70',
-          popping && 'like-pop',
-        )}
-      >
-        <Heart className="h-5 w-5 fill-rose-500 text-rose-500" />
-      </button>
-    </div>
+    <Button variant="ghost" size="sm" onClick={onLike} title="likes show on the lab screen" aria-label="like · likes show on the lab screen">
+      like
+    </Button>
   );
 }

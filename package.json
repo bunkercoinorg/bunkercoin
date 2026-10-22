@@ -3,13 +3,18 @@
   "private": true,
   "packageManager": "bun@1.4.2",
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "packages/*",
+    "e2e"
   ],
   "scripts": {
     "dev:explorer": "bun run --filter @bunkercoin/explorer dev",
     "dev:wallet": "bun run --filter @bunkercoin/wallet dev",
+    "dev:homepage": "bun run --filter @bunkercoin/homepage dev",
+    "dev:app": "bun run --filter @bunkercoin/app dev",
     "build": "bun run --filter '*' build",
     "typecheck": "bun run --filter '*' typecheck",
-    "test": "bun run --filter '*' test"
+    "test": "bun run --filter '*' test",
+    "e2e": "bun run --cwd e2e e2e"
   }
 }

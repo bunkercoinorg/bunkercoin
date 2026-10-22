@@ -8,14 +8,19 @@ Live at [wallet.bunkercoin.com](https://wallet.bunkercoin.com).
 
 ## Security model
 
-- A new wallet generates a **24-word BIP-39 phrase** (ed25519, base58 address —
-  the same key infrastructure as Solana wallets).
+- A new wallet generates a **24-word BIP-39 phrase**. The ed25519 key is the
+  first 32 bytes of the BIP-39 seed, with no SLIP-0010 derivation path, so the
+  phrase is not interchangeable with Solana or other wallets: the same words
+  give a different address there.
 - The phrase is encrypted with **Argon2id** (256 MiB, 14 iterations — tuned to
   take seconds per attempt by design) + AES-GCM under a user password, and only
   the encrypted record is stored in `localStorage`
   ([src/lib/keystore.ts](src/lib/keystore.ts)).
 - The decrypted key exists in memory only while unlocked; the wallet
-  auto-locks after 15 minutes idle.
+  auto-locks after 15 minutes idle. An unlocked session survives a reload in
+  the same tab (the key is kept encrypted under a non-extractable key in
+  IndexedDB, the ciphertext in `sessionStorage`), so script injected into the
+  page while it is unlocked could use the key, as it could before a reload.
 - Recovery = re-entering the 24 words. There is no password reset.
 
 ## Chain integration

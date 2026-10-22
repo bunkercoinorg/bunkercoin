@@ -3,4 +3,7 @@ node_modules
 out
 *.tsbuildinfo
 .env*
-.next-build
+.next-dev
+
+# wrangler local state
+.wrangler

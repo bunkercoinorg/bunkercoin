@@ -2,7 +2,9 @@ import { ed25519 } from '@noble/curves/ed25519.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
-import bs58 from 'bs58';
+import { base58ToBytes, bytesToBase58, bytesToHex, decodeId, hexToBytes, isTokenId, U64_MAX } from '@bunkercoin/chain-format';
+
+export { isTokenId };
 
 export const MNEMONIC_WORDS = 24;
 
@@ -17,13 +19,29 @@ export const MAX_TICKER_LEN = 8;
 
 export interface SignedTransaction {
   sender: string;
-  nonce: number;
-  fee: number;
+  nonce: bigint;
+  fee: bigint;
   signature: string;
   body:
-    | { Transfer: { to: string; amount: number } }
-    | { TokenTransfer: { to: string; token_id: string; amount: number } }
-    | { Mint: { ticker: string; max_supply: number; metadata_hash: string } };
+    | { Transfer: { to: string; amount: bigint } }
+    | { TokenTransfer: { to: string; token_id: string; amount: bigint } }
+    | { Mint: { ticker: string; max_supply: bigint; metadata_hash: string } }
+    | { UpdateMetadata: { token_id: string; metadata_hash: string } };
+}
+
+/** Native BUNKER and custom tokens are told apart by kind, never by ticker. */
+export type Asset = { kind: 'native' } | { kind: 'token'; tokenId: string };
+
+export const NATIVE_ASSET: Asset = { kind: 'native' };
+
+export function assetKey(asset: Asset): string {
+  return asset.kind === 'native' ? 'native' : `token:${asset.tokenId}`;
+}
+
+/** Token ids are 4 raw bytes, hex-encoded by the node ("01000000"). */
+export function tokenIdBytes(id: string): Uint8Array {
+  if (!isTokenId(id)) throw new Error('Token id must be 8 lowercase hex characters');
+  return hexToBytes(id)!;
 }
 
 export function createMnemonic(): string {
@@ -38,37 +56,66 @@ export function normalizeMnemonic(phrase: string): string {
   return phrase.trim().toLowerCase().split(/\s+/).join(' ');
 }
 
+export const WORDLIST: readonly string[] = wordlist;
+const WORDS = new Set(wordlist);
+
+export interface PhraseCheck {
+  count: number;
+  /** First finished word outside the list; the word still being typed is not judged. */
+  unknown: { position: number; word: string } | null;
+  valid: boolean;
+}
+
+export function checkPhrase(text: string): PhraseCheck {
+  const words = text.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const typing = words.length > 0 && !/\s$/.test(text) && words.length < MNEMONIC_WORDS;
+  const judged = typing ? words.slice(0, -1) : words;
+  const at = judged.findIndex((w) => !WORDS.has(w));
+  return {
+    count: words.length,
+    unknown: at === -1 ? null : { position: at + 1, word: judged[at] },
+    valid: words.length === MNEMONIC_WORDS && at === -1 && validateMnemonic(words.join(' '), wordlist),
+  };
+}
+
 /** Mnemonic -> ed25519 keypair. Seed's first 32 bytes are the private scalar. */
 export function keypairFromMnemonic(phrase: string, passphrase = ''): Keypair {
   const normalized = normalizeMnemonic(phrase);
   if (!validateMnemonic(normalized, wordlist)) throw new Error('Invalid recovery phrase');
-  const privateKey = mnemonicToSeedSync(normalized, passphrase).slice(0, 32);
+  const seed = mnemonicToSeedSync(normalized, passphrase);
+  const privateKey = seed.slice(0, 32);
+  seed.fill(0);
   const publicKey = ed25519.getPublicKey(privateKey);
-  return { privateKey, publicKey, address: bs58.encode(publicKey) };
+  return { privateKey, publicKey, address: bytesToBase58(publicKey) };
 }
 
 export function addressFromPublicKey(publicKey: Uint8Array): string {
-  return bs58.encode(publicKey);
+  return bytesToBase58(publicKey);
 }
 
 /** Accepts base58 or hex, as the node does. */
 export function decodeAddress(address: string): Uint8Array {
-  const value = address.trim();
-  if (/^[0-9a-fA-F]{64}$/.test(value)) {
-    return Uint8Array.from(value.match(/../g)!.map((b) => parseInt(b, 16)));
-  }
-  const bytes = bs58.decode(value);
-  if (bytes.length !== 32) throw new Error('Address must be 32 bytes');
+  const bytes = decodeId(address, 32);
+  if (!bytes) throw new Error('Address must be 32 bytes');
   return bytes;
 }
 
 /** Node tx listings use hex; the wallet displays base58. */
 export function addressToHex(address: string): string {
-  return Array.from(decodeAddress(address), (b) => b.toString(16).padStart(2, '0')).join('');
+  return bytesToHex(decodeAddress(address));
 }
 
 export function hexToBase58(hex: string): string {
-  return bs58.encode(Uint8Array.from(hex.match(/../g)!.map((b) => parseInt(b, 16))));
+  const bytes = hexToBytes(hex);
+  if (!bytes) throw new Error('not hex');
+  return bytesToBase58(bytes);
+}
+
+/** Same 32-byte account however it was typed (base58 or hex, any case). */
+export function sameAddress(a: string, b: string): boolean {
+  const x = decodeId(a.trim(), 32);
+  const y = decodeId(b.trim(), 32);
+  return x !== null && y !== null && bytesToHex(x) === bytesToHex(y);
 }
 
 export function isValidAddress(address: string): boolean {
@@ -80,9 +127,12 @@ export function isValidAddress(address: string): boolean {
   }
 }
 
+// setBigUint64 wraps silently; an out-of-range value must never sign as a different one.
 const u64le = (value: number | bigint): Uint8Array => {
+  const big = BigInt(value);
+  if (big < 0n || big > U64_MAX) throw new RangeError('value does not fit in a u64');
   const bytes = new Uint8Array(8);
-  new DataView(bytes.buffer).setBigUint64(0, BigInt(value), true);
+  new DataView(bytes.buffer).setBigUint64(0, big, true);
   return bytes;
 };
 
@@ -152,14 +202,39 @@ export function mintSigningHash({
   );
 }
 
-/** SHA-256 of the off-chain metadata JSON the chain commits to. */
+/** The pre-service hash, sha256(JSON.stringify(metadata)): what minting commits while no metadata service is configured. */
 export function metadataHash(metadata: unknown): Uint8Array {
   return sha256(new TextEncoder().encode(JSON.stringify(metadata)));
 }
 
-export function toHex(bytes: Uint8Array): string {
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+// UpdateMetadata layout: sender ‖ nonce ‖ fee ‖ 0x09 ‖ token_id(4) ‖ metadata_hash(32).
+export function updateMetadataSigningHash({
+  sender,
+  nonce,
+  fee,
+  tokenId,
+  metadataHash,
+}: {
+  sender: Uint8Array;
+  nonce: number | bigint;
+  fee: number | bigint;
+  tokenId: Uint8Array;
+  metadataHash: Uint8Array;
+}): Uint8Array {
+  if (tokenId.length !== 4) throw new Error('tokenId must be 4 bytes');
+  if (metadataHash.length !== 32) throw new Error('metadataHash must be 32 bytes');
+  return sha256(new Uint8Array([...sender, ...u64le(nonce), ...u64le(fee), 0x09, ...tokenId, ...metadataHash]));
 }
+
+/** Transaction::hash: sha256(sender ‖ nonce ‖ fee ‖ signature), base58 as the RPC returns it. Known before sending. */
+export function transactionId(tx: SignedTransaction): string {
+  const sender = base58ToBytes(tx.sender, 32);
+  const signature = base58ToBytes(tx.signature, 64);
+  if (!sender || !signature) throw new Error('malformed signed transaction');
+  return bytesToBase58(sha256(new Uint8Array([...sender, ...u64le(tx.nonce), ...u64le(tx.fee), ...signature])));
+}
+
+export const toHex = bytesToHex;
 
 export function isValidTicker(ticker: string): boolean {
   return /^[A-Z0-9]{3,8}$/.test(ticker);
@@ -177,10 +252,10 @@ export function signMint({
   privateKey: Uint8Array;
   publicKey: Uint8Array;
   ticker: string;
-  maxSupply: number;
+  maxSupply: bigint;
   metadataHash: Uint8Array;
-  nonce: number;
-  fee: number;
+  nonce: bigint;
+  fee: bigint;
 }): SignedTransaction {
   const digest = mintSigningHash({
     sender: publicKey,
@@ -191,10 +266,10 @@ export function signMint({
     metadataHash: hash,
   });
   return {
-    sender: bs58.encode(publicKey),
+    sender: bytesToBase58(publicKey),
     nonce,
     fee,
-    signature: bs58.encode(ed25519.sign(digest, privateKey)),
+    signature: bytesToBase58(ed25519.sign(digest, privateKey)),
     // The node's REST layer decodes metadata_hash from hex, not a byte array.
     body: { Mint: { ticker, max_supply: maxSupply, metadata_hash: toHex(hash) } },
   };
@@ -211,18 +286,18 @@ export function signTransfer({
   privateKey: Uint8Array;
   publicKey: Uint8Array;
   to: string;
-  amount: number;
-  nonce: number;
-  fee: number;
+  amount: bigint;
+  nonce: bigint;
+  fee: bigint;
 }): SignedTransaction {
   const recipient = decodeAddress(to);
   const hash = transferSigningHash({ sender: publicKey, nonce, fee, to: recipient, amount });
   return {
-    sender: bs58.encode(publicKey),
+    sender: bytesToBase58(publicKey),
     nonce,
     fee,
-    signature: bs58.encode(ed25519.sign(hash, privateKey)),
-    body: { Transfer: { to: bs58.encode(recipient), amount } },
+    signature: bytesToBase58(ed25519.sign(hash, privateKey)),
+    body: { Transfer: { to: bytesToBase58(recipient), amount } },
   };
 }
 
@@ -239,24 +314,49 @@ export function signTokenTransfer({
   publicKey: Uint8Array;
   to: string;
   tokenId: Uint8Array;
-  amount: number;
-  nonce: number;
-  fee: number;
+  amount: bigint;
+  nonce: bigint;
+  fee: bigint;
 }): SignedTransaction {
   const recipient = decodeAddress(to);
   const hash = tokenTransferSigningHash({ sender: publicKey, nonce, fee, to: recipient, tokenId, amount });
   return {
-    sender: bs58.encode(publicKey),
+    sender: bytesToBase58(publicKey),
     nonce,
     fee,
-    signature: bs58.encode(ed25519.sign(hash, privateKey)),
+    signature: bytesToBase58(ed25519.sign(hash, privateKey)),
     body: {
       TokenTransfer: {
         // The node's REST layer decodes token_id from hex, not a byte array.
-        to: bs58.encode(recipient),
+        to: bytesToBase58(recipient),
         token_id: toHex(tokenId),
         amount,
       },
     },
+  };
+}
+
+export function signUpdateMetadata({
+  privateKey,
+  publicKey,
+  tokenId,
+  metadataHash: hash,
+  nonce,
+  fee,
+}: {
+  privateKey: Uint8Array;
+  publicKey: Uint8Array;
+  tokenId: Uint8Array;
+  metadataHash: Uint8Array;
+  nonce: bigint;
+  fee: bigint;
+}): SignedTransaction {
+  const digest = updateMetadataSigningHash({ sender: publicKey, nonce, fee, tokenId, metadataHash: hash });
+  return {
+    sender: bytesToBase58(publicKey),
+    nonce,
+    fee,
+    signature: bytesToBase58(ed25519.sign(digest, privateKey)),
+    body: { UpdateMetadata: { token_id: toHex(tokenId), metadata_hash: toHex(hash) } },
   };
 }

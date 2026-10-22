@@ -1,13 +1,5 @@
-import Header from '@/components/header';
-import Dashboard from '@/components/dashboard';
+import Overview from '@/components/overview';
 
 export default function Home() {
-  return (
-    <>
-      <Header />
-      <main className="min-h-screen bg-background">
-        <Dashboard />
-      </main>
-    </>
-  );
+  return <Overview />;
 }

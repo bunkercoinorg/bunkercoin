@@ -1,14 +1,16 @@
+export type SlotStatus = 'pending' | 'proposed' | 'notarized' | 'finalized';
+
+// Timestamps are epoch milliseconds; absent when the node does not know them.
 export interface Block {
   type: 'block' | 'skip';
   slot: number;
   hash: string;
-  producer?: number; // Only for blocks, not skip certificates
-  timestamp: number;
+  producer?: number;
   proposed_timestamp?: number;
   finalized_timestamp?: number;
   parent_slot?: number;
   parent_hash?: string;
-  status: 'pending' | 'proposed' | 'notarized' | 'finalized';
+  status: SlotStatus;
 }
 
 export interface Node {
@@ -16,80 +18,96 @@ export interface Node {
   finalized_slot: number;
 }
 
-// BlockDetails is the same as Block for now, but kept separate for future extensions
-export type BlockDetails = Block;
-
-// --- Solscan-style entity types ---
-
 export interface TransactionBody {
-  type?: string;
+  type: string;
   to?: string;
-  amount?: number;
+  amount?: bigint;
   token_id?: string;
   ticker?: string;
-  [key: string]: unknown;
+  max_supply?: bigint;
+  metadata_hash?: string;
 }
 
-// Where a transaction currently lives in its lifecycle. Mirrors the node's
-// `status.location`: mempool -> confirmed (in a block) -> finalized.
+// Mirrors the node's `status.location`: mempool -> confirmed (in a block) -> finalized.
 export interface TransactionStatus {
   location: 'mempool' | 'confirmed' | 'finalized';
   slot?: number;
   block_hash?: string;
   executed?: boolean;
   success?: boolean;
-  error?: string | null;
+  error?: string;
 }
 
 export interface TransactionDetails {
   hash: string;
   sender: string;
-  nonce: number;
-  fee: number;
+  nonce: bigint;
+  fee: bigint;
   body?: TransactionBody;
   status: TransactionStatus;
 }
 
-// Row shape in the paginated /transactions list (newest-first).
-export interface TransactionSummary {
-  hash: string;
-  sender: string;
-  nonce: number;
-  fee: number;
-  body?: TransactionBody;
-  slot?: number;
-  success?: boolean;
+export interface TransactionPage {
+  transactions: TransactionDetails[];
+  total: number;
+  offset: number;
+  limit: number;
 }
 
 export interface AccountDetails {
   pubkey: string;
-  native_balance: number;
-  token_balances: Record<string, number>;
-  nonce: number;
+  native_balance: bigint;
+  token_balances: Record<string, bigint>;
+  nonce: bigint;
 }
 
 export interface TokenSummary {
   id: string;
   ticker: string;
-  current_supply: number;
-  max_supply?: number;
+  current_supply: bigint;
+  max_supply?: bigint;
+  creator?: string;
+  metadata_hash?: string;
 }
 
 export interface TokenHolder {
   pubkey: string;
-  balance: number;
+  balance: bigint;
 }
 
-// What a pasted search query resolved to (drives routing from the search bar).
-export type SearchKind = 'transaction' | 'account' | 'block' | 'token' | 'unknown';
+export interface HolderPage {
+  holders: TokenHolder[];
+  total: number;
+  offset: number;
+  limit: number;
+}
 
+// Windowed totals from the radio sampler. `packets_dropped_2s` counts ARQ
+// retries and `packet_loss_rate_2s` is retries / attempts as a 0..1 ratio.
 export interface RadioStats {
-  type: 'radio_stats';
   packets_sent_2s: number;
   packets_dropped_2s: number;
   packets_transmitted_2s: number;
   packets_queued: number;
   bytes_transmitted_2s: number;
+  bytes_received_2s: number;
   effective_throughput_bps_2s: number;
   packet_loss_rate_2s: number;
-} 
+  link_speed_level: number;
+  received_at: number;
+}
+
+export type SearchKind = 'transaction' | 'account' | 'block' | 'token';
+
+export interface SearchMatch {
+  kind: SearchKind;
+  id: string;
+  label: string;
+  // An account the node knows nothing about yet: any valid key answers zeroed.
+  inactive?: boolean;
+  // The probed record, so a result row can say what it is.
+  block?: Block;
+  token?: TokenSummary;
+  transaction?: TransactionDetails;
+  account?: AccountDetails;
+}

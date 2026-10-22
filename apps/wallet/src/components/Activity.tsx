@@ -1,149 +1,134 @@
 'use client';
 
 import { useState } from 'react';
-import type { ChainTransaction } from '@/lib/connection';
-import { addressToHex, hexToBase58 } from '@/lib/keys';
-import { formatUnits, shortAddress, elapsedLabel } from '@/lib/format';
-import type { PendingTx } from '@/lib/pending';
-import TxDetails from '@/components/TxDetails';
-import { Button, Card } from '@/components/ui';
+import {
+  Amount,
+  Button,
+  EmptyState,
+  GroupLabel,
+  List,
+  ListRow,
+  Notice,
+  Pagination,
+  Segmented,
+  StatePanel,
+  StateLine,
+  StatusTag,
+} from '@bunkercoin/ui';
+import { formatUnits, relativeAge } from '@bunkercoin/chain-format';
+import { viewHref } from '@/hooks/useHashView';
+import { activityItems, isOpen, tickerMap, type ActivityItem } from '@/components/activity-model';
+import { dayLabel, KindMark } from '@/components/assets';
+import type { WalletActions, WalletState } from '@/components/Dashboard';
+import { ResourceState } from '@/components/ResourceState';
 
-const ROW =
-  'flex cursor-pointer items-center justify-between border-t border-line py-3 text-sm ' +
-  'hover:bg-[linear-gradient(90deg,transparent,rgba(0,255,178,0.08)_50%,transparent)]';
-function pendingLabel(p: PendingTx): string {
-  if (p.kind === 'faucet') return 'Faucet';
-  if (p.kind === 'mint') return `Create ${p.ticker} · ${p.amount.toLocaleString()} supply`;
-  if (p.kind === 'token-send')
-    return `Send ${p.amount.toLocaleString()} ${p.ticker} → ${shortAddress(p.to ?? '')}`;
-  return `Send ${formatUnits(p.amount)} → ${shortAddress(p.to ?? '')}`;
+export function itemTag(item: ActivityItem, now: number) {
+  if (item.status === 'pending') return <StatusTag status="confirming" detail={item.at ? relativeAge(item.at, now) : undefined} />;
+  if (item.status === 'unconfirmed') return <StatusTag status="unconfirmed" />;
+  if (item.status === 'uncertain') return <StatusTag status="unknown" />;
+  if (item.status === 'failed' || item.status === 'final-failed') return <StatusTag status="failed" />;
+  return null;
 }
 
-const PILL = 'rounded-full px-2 py-[3px] font-mono text-[11px] tracking-[0.04em] whitespace-nowrap';
-
-interface ActivityProps {
-  address: string;
-  pending: PendingTx[];
-  history: ChainTransaction[];
-  onDismiss: (txId: string) => void;
-}
-
-export default function Activity({ address, pending, history, onDismiss }: ActivityProps) {
-  const [expanded, setExpanded] = useState<string | null>(null);
-
-  if (pending.length === 0 && history.length === 0) return null;
-
+export function ActivityRow({ item, now }: { item: ActivityItem; now: number }) {
+  const amount = item.amount && <Amount units={item.amount.units} scale={item.amount.scale} sign={item.amount.sign} />;
+  const failed = item.status === 'failed';
+  const tag = itemTag(item, now);
   return (
-    <Card
-      title="Activity"
-      sub="Transactions finalize over the radio link — usually a few minutes. You can close this page; tracking resumes when you return."
-    >
-      {pending.map((p) => (
-        <div key={p.txId}>
-          <div className={ROW} onClick={() => setExpanded(expanded === p.txId ? null : p.txId)}>
-            <span>
-              {pendingLabel(p)}
-              <span className="ml-2 text-[12.5px] text-faint">{elapsedLabel(p.at)}</span>
-            </span>
-            {p.failed ? (
-              <span className={`${PILL} bg-danger/10 text-danger`} title={p.failed}>
-                failed
-                <Button
-                  variant="ghost"
-                  small
-                  className="ml-1.5"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDismiss(p.txId);
-                  }}
-                >
-                  ✕
-                </Button>
-              </span>
-            ) : (
-              <span className={`${PILL} bg-amber/10 text-amber`}>confirming…</span>
-            )}
-          </div>
-          {expanded === p.txId && (
-            <TxDetails
-              rows={[
-                ['Transaction id', p.txId],
-                p.to ? ['To', p.to] : null,
-                [
-                  'Amount',
-                  p.ticker ? `${p.amount.toLocaleString()} ${p.ticker}` : `${formatUnits(p.amount)} BUNKER`,
-                ],
-                ['Submitted', new Date(p.at).toLocaleString()],
-                p.failed ? ['Error', p.failed] : null,
-              ]}
-            />
-          )}
-        </div>
-      ))}
-      {history.map((t) => (
-        <HistoryRow
-          key={t.hash}
-          tx={t}
-          address={address}
-          expanded={expanded === t.hash}
-          onToggle={() => setExpanded(expanded === t.hash ? null : t.hash)}
-        />
-      ))}
-    </Card>
+    <ListRow
+      href={viewHref('tx', item.id)}
+      mark={<KindMark icon={item.icon} />}
+      title={item.kind}
+      sub={item.sub}
+      value={failed ? tag : amount}
+      tag={failed ? undefined : (tag ?? undefined)}
+      valueSub={
+        failed ? 'nothing moved' : item.status === 'final-failed' ? 'fee spent' : item.slot !== null ? `slot ${formatUnits(item.slot, 0)}` : undefined
+      }
+    />
   );
 }
 
-function HistoryRow({
-  tx: t,
-  address,
-  expanded,
-  onToggle,
-}: {
-  tx: ChainTransaction;
-  address: string;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const outgoing = t.sender === addressToHex(address);
-  const counterparty = hexToBase58(outgoing ? t.body?.to ?? t.sender : t.sender);
-  const failed = t.status?.success === false;
-  const isToken = t.body?.type === 'TokenTransfer';
-  const amountLabel = isToken
-    ? `${(t.body?.amount ?? 0).toLocaleString()} tokens`
-    : formatUnits(t.body?.amount ?? 0);
+export function useActivity(state: WalletState) {
+  return activityItems(state.pending, state.history, state.addressHex, tickerMap(state.tokens, state.registry));
+}
 
+export default function Activity({ state, actions }: { state: WalletState; actions: WalletActions }) {
+  const [filter, setFilter] = useState<'all' | 'pending'>('all');
+  const now = Date.now();
+  const all = useActivity(state);
+  const items = filter === 'pending' ? all.filter((i) => isOpen(i.status) || i.status === 'failed') : all;
+  const groups: [string, ActivityItem[]][] = [];
+  for (const item of items) {
+    const label = item.at !== null ? dayLabel(item.at, now) : 'on chain';
+    const last = groups[groups.length - 1];
+    if (last && last[0] === label) last[1].push(item);
+    else groups.push([label, [item]]);
+  }
+  const { history, fresh } = state;
+  const loading = history === null && fresh.history.error === null;
   return (
-    <div>
-      <div className={ROW} onClick={onToggle}>
-        <span>
-          {outgoing ? '↑ Sent' : '↓ Received'} {amountLabel}
-          <span className="ml-2 text-[12.5px] text-faint">
-            {outgoing ? 'to' : 'from'} {shortAddress(counterparty)}
-          </span>
-        </span>
-        <span
-          className={`${PILL} ${failed ? 'bg-danger/10 text-danger' : 'bg-accent/10 text-accent'}`}
-          title={t.status?.error || ''}
-        >
-          {failed ? 'failed' : '✓ finalized'}
-        </span>
-      </div>
-      {expanded && (
-        <TxDetails
-          rows={[
-            ['From', hexToBase58(t.sender)],
-            t.body?.to ? ['To', hexToBase58(t.body.to)] : null,
-            [
-              'Amount',
-              isToken
-                ? `${(t.body?.amount ?? 0).toLocaleString()} tokens`
-                : `${formatUnits(t.body?.amount ?? 0)} BUNKER`,
-            ],
-            ['Fee', `${formatUnits(t.fee ?? 0)} BUNKER`],
-            ['Reference', t.hash],
-            t.status?.error ? ['Error', String(t.status.error)] : null,
+    <div className="wl-stack wl-gap16">
+      <div className="bc-row justify-between">
+        <h1 className="bc-t2 m-0">Activity.</h1>
+        <Segmented
+          label="filter"
+          options={[
+            { value: 'all', label: 'all' },
+            { value: 'pending', label: 'pending' },
           ]}
-          explorerHash={t.hash}
+          value={filter}
+          onChange={setFilter}
+        />
+      </div>
+      {history !== null && <ResourceState fresh={fresh.history} what="history" onRetry={() => void actions.refresh()} />}
+      {state.trackingLost && (
+        <Notice tone="warn">Tracking could not be saved in this browser; open transactions are not followed after a reload.</Notice>
+      )}
+      {loading && items.length === 0 ? (
+        <StateLine>loading activity…</StateLine>
+      ) : history === null && items.length === 0 ? (
+        <StatePanel
+          state="error"
+          title="Activity unavailable."
+          message={fresh.history.error}
+          actions={
+            <Button variant="ghost" onClick={() => void actions.refresh()}>
+              retry
+            </Button>
+          }
+        />
+      ) : items.length === 0 ? (
+        <EmptyState
+          action={
+            filter === 'all' && (
+              <Button variant="ghost" onClick={() => void actions.go(viewHref('home'))}>
+                faucet
+              </Button>
+            )
+          }
+        >
+          {filter === 'pending' ? 'Nothing pending.' : 'No activity yet.'}
+        </EmptyState>
+      ) : (
+        <div>
+          {groups.map(([label, list]) => (
+            <section key={label} aria-label={label}>
+              <GroupLabel>{label}</GroupLabel>
+              <List>
+                {list.map((i) => (
+                  <ActivityRow key={i.id} item={i} now={now} />
+                ))}
+              </List>
+            </section>
+          ))}
+        </div>
+      )}
+      {history && (
+        <Pagination
+          state={state.historyState}
+          onMore={actions.loadOlder}
+          note={`latest ${history.scanned.toLocaleString('en-US')} network txs scanned`}
         />
       )}
     </div>

@@ -46,6 +46,9 @@ The web apps live in a bun workspace under `apps/`:
 
 - `apps/explorer`: block explorer (Next.js)
 - `apps/wallet`: local-only web wallet (Next.js static export)
+- `apps/homepage`: the website at bunkercoin.com (Next.js on Cloudflare via OpenNext)
+- `apps/app`: the web app (Next.js on Cloudflare via OpenNext)
+- `packages/*`: shared UI components and ESLint/TypeScript configs for the website apps
 
 The Ledger hardware wallet app (C, Ledger SDK) lives in `ledger/`; see [ledger/README.md](ledger/README.md).
 

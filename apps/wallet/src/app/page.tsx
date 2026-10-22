@@ -1,128 +1,272 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppShell, Footer, Tag } from '@bunkercoin/ui';
 import Onboarding from '@/components/Onboarding';
 import Unlock from '@/components/Unlock';
-import Dashboard from '@/components/Dashboard';
-import { hasKeystore } from '@/lib/keystore';
-import { loadSession, saveSession, clearSession, touchSession, SESSION_IDLE_MS } from '@/lib/session';
+import Dashboard, { EXPLORER_URL } from '@/components/Dashboard';
+import { Gate } from '@/components/Gate';
+import {
+  clearKeystore,
+  KEYSTORE_KEY,
+  keystoreFingerprint,
+  loadKeystore,
+  type KeystoreRecord,
+  type KeystoreState,
+} from '@/lib/keystore';
 import type { Keypair } from '@/lib/keys';
+import {
+  autoLockMs,
+  loadAutoLockMinutes,
+  loadSession,
+  removeLegacySession,
+  revokeSession,
+  saveAutoLockMinutes,
+  saveSession,
+  touchSession,
+  type AutoLockMinutes,
+} from '@/lib/session';
+import { clearAllPending } from '@/lib/pending';
+import { Signer } from '@/lib/signer';
+import { settleUnlock, UnlockGate, type FinishUnlock } from '@/lib/unlock';
 
-const AUTO_LOCK_MS = SESSION_IDLE_MS;
+type Phase =
+  | 'loading'
+  | 'insecure'
+  | 'nocrypto'
+  | 'unavailable'
+  | 'corrupt'
+  | 'import'
+  | 'onboarding'
+  | 'locked'
+  | 'unlocked';
 
-type Phase = 'loading' | 'insecure' | 'onboarding' | 'locked' | 'unlocked';
+const CHECKING_AFTER_MS = 300;
+
+const fingerprintOf = (state: KeystoreState) => (state.status === 'ok' ? keystoreFingerprint(state.record) : null);
+
+const FOOTER = (
+  <Footer
+    links={[
+      { label: 'explorer', href: EXPLORER_URL, external: true },
+      { label: 'source', href: 'https://github.com/bunkercoinorg/bunkercoin', external: true },
+    ]}
+  >
+    keys stay in this browser.
+  </Footer>
+);
 
 export default function Wallet() {
   // 'loading' avoids hydration mismatch: localStorage exists only client-side.
   const [phase, setPhase] = useState<Phase>('loading');
-  const keypairRef = useRef<Keypair | null>(null);
+  const [slow, setSlow] = useState(false);
+  const [storageError, setStorageError] = useState('');
+  const [lockReason, setLockReason] = useState<'idle' | 'signing' | null>(null);
+  const [autoLock, setAutoLock] = useState<AutoLockMinutes>(15);
+  const signerRef = useRef<Signer | null>(null);
+  const deadline = useRef(0);
+  const autoLockRef = useRef(autoLock);
+  autoLockRef.current = autoLock;
+  const gate = useRef(new UnlockGate()).current;
+  // The keystore record the current phase was derived from; another tab replacing it invalidates everything.
+  const fingerprint = useRef<string | null>(null);
+
+  const forgetKey = useCallback(() => {
+    gate.invalidate();
+    signerRef.current?.revoke();
+    signerRef.current = null;
+    return revokeSession();
+  }, [gate]);
+
+  const route = useCallback((state: KeystoreState) => {
+    fingerprint.current = fingerprintOf(state);
+    if (state.status === 'unavailable' || state.status === 'corrupt') {
+      setStorageError(state.reason);
+      setPhase(state.status);
+    } else {
+      setPhase(state.status === 'absent' ? 'onboarding' : 'locked');
+    }
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => setSlow(true), CHECKING_AFTER_MS);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     // WebCrypto needs a secure context; without it nothing can be decrypted.
-    if (!window.crypto?.subtle) {
+    if (!window.isSecureContext) {
       setPhase('insecure');
       return;
     }
-    if (!hasKeystore()) {
-      setPhase('onboarding');
+    if (!window.crypto?.subtle) {
+      setPhase('nocrypto');
       return;
     }
-    // Refresh inside the idle window resumes the session, not the Argon2id unlock.
+    const minutes = loadAutoLockMinutes();
+    setAutoLock(minutes);
     let cancelled = false;
-    void loadSession().then((keypair) => {
-      if (cancelled) return;
-      if (keypair) {
-        keypairRef.current = keypair;
-        setPhase('unlocked');
-      } else {
-        setPhase('locked');
-      }
-    });
+    const legacy = removeLegacySession();
+    const stored = loadKeystore();
+    if (stored.status !== 'ok') route(stored);
+    else {
+      const fp = keystoreFingerprint(stored.record);
+      fingerprint.current = fp;
+      // Refresh inside the idle window resumes the session, not the Argon2id unlock.
+      void legacy
+        .then(() => loadSession(fp))
+        .then((session) => {
+          if (cancelled || fingerprint.current !== fp) {
+            session?.keypair.privateKey.fill(0);
+            return;
+          }
+          if (session && Date.now() < session.lastActivity + autoLockMs(minutes)) {
+            signerRef.current = new Signer(session.keypair);
+            deadline.current = session.lastActivity + autoLockMs(minutes);
+            setPhase('unlocked');
+          } else {
+            session?.keypair.privateKey.fill(0);
+            setPhase('locked');
+          }
+        });
+    }
+    // Another tab erased, recovered or created a wallet: whatever this tab holds belongs to the old one.
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== KEYSTORE_KEY && e.key !== null) return;
+      const state = loadKeystore();
+      if (state.status === 'ok' && fingerprintOf(state) === fingerprint.current) return;
+      void forgetKey();
+      route(state);
+    };
+    window.addEventListener('storage', onStorage);
     return () => {
       cancelled = true;
+      gate.invalidate();
+      window.removeEventListener('storage', onStorage);
     };
+  }, [gate, forgetKey, route]);
+
+  const lock = useCallback(
+    (reason: 'idle' | 'signing' | null = null) => {
+      void forgetKey();
+      setLockReason(reason);
+      setPhase('locked');
+    },
+    [forgetKey],
+  );
+
+  const erase = useCallback(async () => {
+    await forgetKey();
+    try {
+      await clearKeystore();
+    } catch (e) {
+      setStorageError((e as Error).message);
+      setPhase('unavailable');
+      return;
+    }
+    clearAllPending();
+    fingerprint.current = null;
+    window.history.replaceState(null, '', window.location.pathname);
+    setPhase('onboarding');
+  }, [forgetKey]);
+
+  const changeAutoLock = useCallback((m: AutoLockMinutes) => {
+    saveAutoLockMinutes(m);
+    setAutoLock(m);
+    deadline.current = Date.now() + autoLockMs(m);
+    touchSession();
   }, []);
 
-  const lock = () => {
-    keypairRef.current = null; // decrypted key lives only while unlocked
-    clearSession();
-    setPhase('locked');
-  };
-
-  // Idle auto-lock: an unlocked key should not outlive a forgotten tab.
+  // Idle auto-lock from persisted activity; timers stall in hidden tabs, so the wall clock is rechecked on return.
   useEffect(() => {
     if (phase !== 'unlocked') return;
-    let timer = setTimeout(lock, AUTO_LOCK_MS);
-    const reset = () => {
+    const idleMs = autoLockMs(autoLock);
+    let timer: ReturnType<typeof setTimeout>;
+    const check = () => {
       clearTimeout(timer);
-      timer = setTimeout(lock, AUTO_LOCK_MS);
-      touchSession(); // keep the refresh-survival window aligned with auto-lock
+      if (Date.now() >= deadline.current) lock('idle');
+      else timer = setTimeout(check, deadline.current - Date.now());
     };
+    const activity = () => {
+      if (Date.now() >= deadline.current) return lock('idle');
+      deadline.current = Date.now() + idleMs;
+      touchSession();
+      check();
+    };
+    const visible = () => document.visibilityState === 'visible' && check();
+    check();
     const events = ['pointerdown', 'keydown'] as const;
-    events.forEach((e) => window.addEventListener(e, reset));
+    events.forEach((e) => window.addEventListener(e, activity, true));
+    document.addEventListener('visibilitychange', visible);
+    window.addEventListener('focus', check);
+    window.addEventListener('pageshow', check);
     return () => {
       clearTimeout(timer);
-      events.forEach((e) => window.removeEventListener(e, reset));
+      events.forEach((e) => window.removeEventListener(e, activity, true));
+      document.removeEventListener('visibilitychange', visible);
+      window.removeEventListener('focus', check);
+      window.removeEventListener('pageshow', check);
     };
-  }, [phase]);
+  }, [phase, lock, autoLock]);
 
-  const unlocked = (keypair: Keypair) => {
-    keypairRef.current = keypair;
-    void saveSession(keypair);
-    setPhase('unlocked');
-  };
+  // Captured when the attempt starts, so an erase or replacement while Argon2id runs voids it.
+  const beginUnlock = useCallback((): FinishUnlock => {
+    const current = gate.begin();
+    const finish = (keypair: Keypair, record: KeystoreRecord) => {
+      const fp = keystoreFingerprint(record);
+      const stored = fingerprintOf(loadKeystore());
+      return settleUnlock(current() && stored === fp, keypair, (k) => {
+        signerRef.current?.revoke();
+        const signer = new Signer(k);
+        signerRef.current = signer;
+        fingerprint.current = fp;
+        deadline.current = Date.now() + autoLockMs(autoLockRef.current);
+        void saveSession(signer, fp);
+        setLockReason(null);
+        setPhase('unlocked');
+      });
+    };
+    return Object.assign(finish, { current });
+  }, [gate]);
+
+  if (phase === 'unlocked' && signerRef.current) {
+    return (
+      <Dashboard
+        signer={signerRef.current}
+        onLock={() => lock(null)}
+        onWalletRemoved={erase}
+        autoLockMinutes={autoLock}
+        onAutoLockChange={changeAutoLock}
+      />
+    );
+  }
+
+  const gateKind =
+    phase === 'insecure'
+      ? 'insecure'
+      : phase === 'nocrypto'
+        ? 'nocrypto'
+        : phase === 'unavailable'
+          ? 'storage'
+          : phase === 'corrupt'
+            ? 'unreadable'
+            : phase === 'loading'
+              ? 'checking'
+              : null;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-155 flex-col px-6 pb-18">
-      <div className="mb-7 flex items-center gap-2.5 border-b border-line py-5.5">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/bunker-favicon.png" alt="" width={22} height={22} className="block rounded-[5px]" />
-        <h1 className="text-[15px] font-semibold tracking-[0.01em]">
-          Bunker<span className="text-accent">Coin</span> Wallet
-        </h1>
-        <span className="ml-auto rounded-full border border-line px-2.5 py-[3px] font-mono text-[10.5px] tracking-[0.14em] uppercase text-muted">
-          testnet
-        </span>
-      </div>
-
-      {phase === 'insecure' && (
-        <div className="flex flex-1 flex-col justify-center pb-[9vh]">
-          <div className="mx-auto w-full max-w-105 text-center">
-            <h2 className="mb-2 text-[21px] font-semibold tracking-tight">
-              Open the wallet over a secure connection
-            </h2>
-            <p className="text-[13.5px] leading-relaxed text-muted">
-              Your browser disables encryption on plain http addresses, so the wallet cannot
-              protect your keys here. Use the https address (or localhost during development).
-            </p>
-          </div>
-        </div>
+    <AppShell app="wallet" status={<Tag>testnet</Tag>} flow={gateKind === null} footer={FOOTER}>
+      {gateKind === 'checking' ? (
+        slow && <Gate kind="checking" />
+      ) : gateKind ? (
+        <Gate kind={gateKind} detail={storageError || undefined} onImport={gateKind === 'unreadable' ? () => setPhase('import') : undefined} />
+      ) : phase === 'import' ? (
+        <Onboarding beginUnlock={beginUnlock} mode="import" onCancel={() => setPhase('corrupt')} />
+      ) : phase === 'onboarding' ? (
+        <Onboarding beginUnlock={beginUnlock} />
+      ) : (
+        <Unlock beginUnlock={beginUnlock} lockReason={lockReason} />
       )}
-      {(phase === 'onboarding' || phase === 'locked') && (
-        <div className="flex flex-1 animate-gate-in flex-col justify-center pb-[9vh] motion-reduce:animate-none">
-          {phase === 'onboarding' && <Onboarding onUnlocked={unlocked} />}
-          {phase === 'locked' && (
-            <Unlock
-              onUnlocked={unlocked}
-              onReset={() => {
-                clearSession();
-                setPhase('onboarding');
-              }}
-            />
-          )}
-        </div>
-      )}
-      {phase === 'unlocked' && keypairRef.current && (
-        <Dashboard
-          keypair={keypairRef.current}
-          onLock={lock}
-          onWalletRemoved={() => {
-            keypairRef.current = null;
-            clearSession();
-            setPhase('onboarding');
-          }}
-        />
-      )}
-    </main>
+    </AppShell>
   );
 }

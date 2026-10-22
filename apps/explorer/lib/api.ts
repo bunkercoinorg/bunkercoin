@@ -1,218 +1,173 @@
+import { NODE_API_URL } from './config.ts';
+import { parseJson, type Json } from './json.ts';
+import { joinUrl, nodePaths } from './routes.ts';
+import { normalizeHash, normalizeSlot, normalizeTokenId } from '@bunkercoin/chain-format';
+import { resolveSearch } from './search.ts';
 import {
-  Block,
-  Node,
-  BlockDetails,
-  TransactionDetails,
-  TransactionSummary,
+  asAccount,
+  asBlock,
+  asBlocks,
+  asHolderPage,
+  asNodes,
+  asToken,
+  asTokens,
+  asTransaction,
+  asTransactionPage,
+  ShapeError,
+} from './guards.ts';
+import type {
   AccountDetails,
+  Block,
+  HolderPage,
+  Node,
+  SearchMatch,
   TokenSummary,
-  TokenHolder,
-  SearchKind,
-} from './types';
+  TransactionDetails,
+  TransactionPage,
+} from './types.ts';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+export class ApiError extends Error {
+  readonly kind: 'network' | 'http' | 'shape';
+  readonly status?: number;
 
-const B58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-
-// Decode base58 to lowercase hex, or return null if `s` isn't valid base58.
-// Wallets and `sendTransaction` speak base58 (Solana convention), but the
-// node's REST endpoints key on hex — so pasted signatures/addresses must be
-// normalized to hex before lookup.
-function base58ToHex(s: string): string | null {
-  if (!s || /[^123456789A-HJ-NP-Za-km-z]/.test(s)) return null;
-  const bytes: number[] = [0];
-  for (const ch of s) {
-    const val = B58_ALPHABET.indexOf(ch);
-    if (val < 0) return null;
-    let carry = val;
-    for (let i = 0; i < bytes.length; i++) {
-      carry += bytes[i] * 58;
-      bytes[i] = carry & 0xff;
-      carry >>= 8;
-    }
-    while (carry > 0) {
-      bytes.push(carry & 0xff);
-      carry >>= 8;
-    }
+  constructor(kind: 'network' | 'http' | 'shape', message: string, status?: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.kind = kind;
+    this.status = status;
   }
-  // Leading '1's are leading zero bytes.
-  for (let i = 0; i < s.length && s[i] === '1'; i++) bytes.push(0);
-  return bytes
-    .reverse()
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
 }
 
-// Normalize any id (hex or base58) to the lowercase hex the node keys on.
-function toHexId(id: string): string {
-  if (/^[0-9a-fA-F]+$/.test(id) && id.length % 2 === 0) return id.toLowerCase();
-  return base58ToHex(id) ?? id;
+export const isAbort = (e: unknown) => e instanceof DOMException && e.name === 'AbortError';
+
+export function errorMessage(e: unknown): string {
+  if (e instanceof ApiError) {
+    if (e.kind === 'network') return 'The node API is unreachable.';
+    if (e.kind === 'http') return `The node API answered ${e.status}.`;
+    return 'The node API sent an unexpected response.';
+  }
+  return e instanceof Error ? e.message : 'Request failed.';
 }
 
-// Accounts display as base58 (the wallet-facing address format); the node's
-// REST layer emits hex. Non-hex input is returned unchanged.
-export function hexToBase58(hex: string): string {
-  if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length % 2 !== 0) return hex;
-  const bytes = hex.match(/../g)!.map((b) => parseInt(b, 16));
-  const digits: number[] = [0];
-  for (const byte of bytes) {
-    let carry = byte;
-    for (let i = 0; i < digits.length; i++) {
-      carry += digits[i] << 8;
-      digits[i] = carry % 58;
-      carry = (carry / 58) | 0;
-    }
-    while (carry > 0) {
-      digits.push(carry % 58);
-      carry = (carry / 58) | 0;
-    }
-  }
-  let prefix = '';
-  for (const byte of bytes) {
-    if (byte !== 0) break;
-    prefix += '1';
-  }
-  return (
-    prefix +
-    digits
-      .reverse()
-      .map((d) => B58_ALPHABET[d])
-      .join('')
-  );
+interface RequestOptions {
+  signal?: AbortSignal;
 }
+
+// Resolves to null only on 404; every other failure throws an ApiError.
+async function request(path: string, { signal }: RequestOptions = {}): Promise<Json | null> {
+  let res: Response;
+  try {
+    res = await fetch(joinUrl(NODE_API_URL, path), { signal, cache: 'no-store' });
+  } catch (e) {
+    if (isAbort(e)) throw e;
+    throw new ApiError('network', `Request to ${path} failed`);
+  }
+  if (res.status === 404) return null;
+  if (!res.ok) throw new ApiError('http', `${path} answered ${res.status}`, res.status);
+  const text = await res.text();
+  let body: Json;
+  try {
+    body = parseJson(text);
+  } catch {
+    throw new ApiError('shape', `${path} returned invalid JSON`);
+  }
+  // Absence is a 404; a successful null is a malformed answer.
+  if (body === null) throw new ApiError('shape', `${path} returned null`);
+  return body;
+}
+
+async function expect(path: string, opts?: RequestOptions): Promise<Json> {
+  const body = await request(path, opts);
+  if (body === null) throw new ApiError('http', `${path} answered 404`, 404);
+  return body;
+}
+
+function guard<T>(f: () => T): T {
+  try {
+    return f();
+  } catch (e) {
+    if (e instanceof ShapeError) throw new ApiError('shape', e.message);
+    throw e;
+  }
+}
+
+const orNull = <T>(body: Json | null, f: (b: Json) => T): T | null => (body === null ? null : guard(() => f(body)));
+
+export const HOLDER_PAGE_SIZE = 100;
 
 export const api = {
-  getBlocks: async (offset: number = 0, limit: number = 20): Promise<{ blocks: Block[], hasMore: boolean }> => {
-    const response = await fetch(`${API_URL}/blocks?offset=${offset}&limit=${limit}`);
-    if (!response.ok) throw new Error('Failed to fetch blocks');
-    
-    const blocks: Block[] = await response.json();
-    const hasMore = blocks.length === limit;
-    
-    return { blocks, hasMore };
+  getBlocks: async (offset: number, limit: number, opts?: RequestOptions): Promise<Block[]> => {
+    const body = await expect(nodePaths.blocks(offset, limit), opts);
+    return guard(() => asBlocks(body));
   },
 
-  getNodes: async (): Promise<Node[]> => {
-    const response = await fetch(`${API_URL}/nodes`);
-    if (!response.ok) throw new Error('Failed to fetch nodes');
-    return response.json();
+  getNodes: async (opts?: RequestOptions): Promise<Node[]> => {
+    const body = await expect(nodePaths.nodes(), opts);
+    return guard(() => asNodes(body));
   },
 
-  getBlock: async (hash: string): Promise<BlockDetails | null> => {
-    const response = await fetch(`${API_URL}/block/${toHexId(hash)}`);
-    if (!response.ok) {
-      if (response.status === 404) return null;
-      throw new Error('Failed to fetch block');
-    }
-    return response.json();
+  // Accepts a 32-byte hash (hex or base58) or a skip id such as `skip-12`.
+  getBlock: async (id: string, opts?: RequestOptions): Promise<Block | null> => {
+    const key = normalizeHash(id) ?? (/^skip-\d+$/.test(id) ? id : null);
+    if (key === null) return null;
+    return orNull(await request(nodePaths.block(key), opts), (b) => asBlock(b));
   },
 
-  getBlockBySlot: async (slot: number): Promise<BlockDetails | null> => {
-    const response = await fetch(`${API_URL}/block/slot/${slot}`);
-    if (!response.ok) {
-      if (response.status === 404) return null;
-      throw new Error('Failed to fetch block');
-    }
-    return response.json();
+  getBlockBySlot: async (slot: string | number, opts?: RequestOptions): Promise<Block | null> => {
+    const key = normalizeSlot(String(slot));
+    if (key === null) return null;
+    return orNull(await request(nodePaths.blockBySlot(key), opts), (b) => asBlock(b));
   },
 
-  getTransaction: async (hash: string): Promise<TransactionDetails | null> => {
-    const response = await fetch(`${API_URL}/transactions/${toHexId(hash)}`);
-    if (!response.ok) {
-      if (response.status === 404) return null;
-      throw new Error('Failed to fetch transaction');
-    }
-    return response.json();
+  // A pure integer id is a slot; anything else is a block hash.
+  getBlockById: (id: string, opts?: RequestOptions): Promise<Block | null> =>
+    /^\d+$/.test(id) ? api.getBlockBySlot(id, opts) : api.getBlock(id, opts),
+
+  getTransactions: async (offset: number, limit: number, opts?: RequestOptions): Promise<TransactionPage> => {
+    const body = await expect(nodePaths.transactions(offset, limit), opts);
+    return guard(() => asTransactionPage(body));
   },
 
-  getTransactions: async (
-    offset: number = 0,
-    limit: number = 25,
-  ): Promise<{ transactions: TransactionSummary[]; hasMore: boolean }> => {
-    const response = await fetch(`${API_URL}/transactions?offset=${offset}&limit=${limit}`);
-    if (!response.ok) throw new Error('Failed to fetch transactions');
-    const data = await response.json();
-    // The node returns { transactions, total, ... }; tolerate a bare array too.
-    const transactions: TransactionSummary[] = Array.isArray(data)
-      ? data
-      : (data.transactions ?? []);
-    return { transactions, hasMore: transactions.length === limit };
+  getTransaction: async (hash: string, opts?: RequestOptions): Promise<TransactionDetails | null> => {
+    const key = normalizeHash(hash);
+    if (key === null) return null;
+    return orNull(await request(nodePaths.transaction(key), opts), asTransaction);
   },
 
-  getAccount: async (pubkey: string): Promise<AccountDetails | null> => {
-    const response = await fetch(`${API_URL}/accounts/${toHexId(pubkey)}`);
-    if (!response.ok) {
-      if (response.status === 404) return null;
-      throw new Error('Failed to fetch account');
-    }
-    return response.json();
+  getAccount: async (pubkey: string, opts?: RequestOptions): Promise<AccountDetails | null> => {
+    const key = normalizeHash(pubkey);
+    if (key === null) return null;
+    return orNull(await request(nodePaths.account(key), opts), asAccount);
   },
 
-  getTokens: async (): Promise<TokenSummary[]> => {
-    const response = await fetch(`${API_URL}/tokens`);
-    if (!response.ok) throw new Error('Failed to fetch tokens');
-    const data = await response.json();
-    return Array.isArray(data) ? data : (data.tokens ?? []);
+  getToken: async (id: string, opts?: RequestOptions): Promise<TokenSummary | null> => {
+    const key = normalizeTokenId(id);
+    if (key === null) return null;
+    return orNull(await request(nodePaths.token(key), opts), (b) => asToken(b));
   },
 
-  getTokenHolders: async (id: string): Promise<TokenHolder[]> => {
-    const response = await fetch(`${API_URL}/tokens/${id}/holders`);
-    if (!response.ok) throw new Error('Failed to fetch token holders');
-    const data = await response.json();
-    return Array.isArray(data) ? data : (data.holders ?? []);
+  getTokens: async (opts?: RequestOptions): Promise<TokenSummary[]> => {
+    const body = await expect(nodePaths.tokens(), opts);
+    return guard(() => asTokens(body));
   },
 
-  // Resolve a pasted search query to an entity by shape + existence probes.
-  // A 64-hex string could be a block hash, tx hash, or account pubkey (all
-  // 32 bytes) — probe in that order and return the first that exists.
-  // A pure integer is a block slot. Returns { kind, id } for routing.
-  search: async (raw: string): Promise<{ kind: SearchKind; id: string }> => {
-    const q = raw.trim();
-    if (!q) return { kind: 'unknown', id: q };
-
-    // Pure integer -> block slot.
-    if (/^\d+$/.test(q)) {
-      const block = await api.getBlockBySlot(Number(q)).catch(() => null);
-      if (block) return { kind: 'block', id: q };
-      return { kind: 'unknown', id: q };
-    }
-
-    // 8-hex -> token id (4 bytes).
-    if (/^[0-9a-fA-F]{8}$/.test(q)) {
-      return { kind: 'token', id: q.toLowerCase() };
-    }
-
-    // 64-hex (or base58 ~44 chars): a 32-byte value that could be a tx
-    // signature, a block hash, or an account pubkey — all identical in shape,
-    // so existence decides. Probe all three concurrently and resolve by
-    // PRIORITY (tx → block → account), not by which request returned first.
-    // Order matters: `/accounts/:pubkey` may answer with a zeroed account for
-    // an arbitrary key, so an account "hit" is the weakest signal and must be
-    // checked last — otherwise a block hash resolves to a phantom account
-    // (the bug this ordering fixes).
-    const looksLike32 = /^[0-9a-fA-F]{64}$/.test(q) || /^[1-9A-HJ-NP-Za-km-z]{32,50}$/.test(q);
-    if (looksLike32) {
-      const [tx, block, acct] = await Promise.all([
-        api.getTransaction(q).catch(() => null),
-        api.getBlock(q).catch(() => null),
-        api.getAccount(q).catch(() => null),
-      ]);
-      if (tx) return { kind: 'transaction', id: q };
-      if (block) return { kind: 'block', id: q };
-      if (acct) return { kind: 'account', id: q };
-      // Nothing matched. Route to the account page: a 32-byte value is
-      // addressable as an account for any key (the endpoint answers with a
-      // zeroed account when unseen), so this always renders something
-      // sensible — and the account page reads correctly whether or not the
-      // address has activity. A hex string is far more often a pasted
-      // address than an unindexed tx signature.
-      return { kind: 'account', id: q };
-    }
-
-    return { kind: 'unknown', id: q };
+  getTokenHolders: async (
+    id: string,
+    offset = 0,
+    limit = HOLDER_PAGE_SIZE,
+    opts?: RequestOptions,
+  ): Promise<HolderPage | null> => {
+    const key = normalizeTokenId(id);
+    if (key === null) return null;
+    return orNull(await request(nodePaths.tokenHolders(key, offset, limit), opts), asHolderPage);
   },
-}; 
-// Native amounts arrive in base units (1 BUNKER = 1,000,000 units).
-export function formatBunker(units: number): string {
-  return (units / 1_000_000).toLocaleString('en-US', { maximumFractionDigits: 6 });
-}
+
+  search: (raw: string): Promise<SearchMatch[]> =>
+    resolveSearch(raw, {
+      transaction: (h) => api.getTransaction(h),
+      block: (h) => api.getBlock(h),
+      blockBySlot: (s) => api.getBlockBySlot(s),
+      token: (t) => api.getToken(t),
+      account: (h) => api.getAccount(h),
+    }),
+};

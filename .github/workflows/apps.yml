@@ -3,10 +3,10 @@ name: Apps
 on:
   push:
     branches: [main]
-    paths: ["apps/**", "package.json", "bun.lock", ".github/workflows/apps.yml"]
+    paths: ["apps/**", "packages/**", "package.json", "bun.lock", ".github/workflows/apps.yml"]
   pull_request:
     branches: [main]
-    paths: ["apps/**", "package.json", "bun.lock", ".github/workflows/apps.yml"]
+    paths: ["apps/**", "packages/**", "package.json", "bun.lock", ".github/workflows/apps.yml"]
 
 jobs:
   build:

@@ -1,74 +1,139 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { Button, FlowBar, Notice, StepList, type Step } from '@bunkercoin/ui';
 import { keypairFromMnemonic, type Keypair } from '@/lib/keys';
-import { encryptMnemonic, saveKeystore } from '@/lib/keystore';
+import type { FinishUnlock } from '@/lib/unlock';
+import { setupErrorCopy } from '@/lib/unlock';
+import { encryptMnemonic, keystoreFingerprint, rememberAddress, replaceKeystore, saveKeystore, type KeystoreRecord } from '@/lib/keystore';
 import { useElapsed } from '@/hooks/useElapsed';
-import KdfProgress from '@/components/KdfProgress';
-import { Button, Card, Divider, ErrorText, Input, Label } from '@/components/ui';
+import PasswordField from '@/components/onboarding/PasswordField';
 
 const MIN_PASSWORD = 8;
 
-interface SetPasswordProps {
-  mnemonic: string;
-  onUnlocked: (keypair: Keypair) => void;
+type Stage = 'derive' | 'encrypt' | 'save';
+
+export interface Saved {
+  keypair: Keypair;
+  record: KeystoreRecord;
+  finish: FinishUnlock;
 }
 
-export default function SetPassword({ mnemonic, onUnlocked }: SetPasswordProps) {
+/** W05. Deliberately slow (Argon2id in a worker): this cost is what a thief pays per guess. */
+export default function SetPassword({
+  mnemonic,
+  beginUnlock,
+  replacing,
+  flow,
+  step,
+  onBack,
+  onSaved,
+}: {
+  mnemonic: string;
+  beginUnlock: () => FinishUnlock;
+  /** The stored text the user agreed to replace; null saves into an empty slot only. */
+  replacing: string | null;
+  flow: string;
+  step: [number, number];
+  onBack: () => void;
+  onSaved: (saved: Saved) => void;
+}) {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const elapsed = useElapsed(busy);
+  const [shown, setShown] = useState(false);
+  const [errors, setErrors] = useState<{ password?: string; confirm?: string; save?: string }>({});
+  const [stage, setStage] = useState<Stage | null>(null);
+  const [fallback, setFallback] = useState(false);
+  const deriveMs = useRef(0);
+  const elapsed = useElapsed(stage === 'derive');
+  const busy = stage !== null;
 
   const submit = async () => {
-    if (password.length < MIN_PASSWORD) {
-      setError(`Use at least ${MIN_PASSWORD} characters.`);
-      return;
-    }
-    if (password !== confirm) {
-      setError('Passwords do not match.');
-      return;
-    }
-    setBusy(true);
-    setError('');
+    if (busy) return;
+    if (password.length < MIN_PASSWORD) return setErrors({ password: 'Use at least 8 characters.' });
+    if (password !== confirm) return setErrors({ confirm: "Passwords don't match." });
+    setErrors({});
+    setFallback(false);
+    setStage('derive');
+    const started = Date.now();
+    const finish = beginUnlock();
     try {
-      // Deliberately slow (Argon2id): this cost is what a thief pays per guess.
-      const record = await encryptMnemonic(mnemonic, password);
-      saveKeystore(record);
-      onUnlocked(keypairFromMnemonic(mnemonic));
+      const record = await encryptMnemonic(mnemonic, password, undefined, {
+        onFallback: () => setFallback(true),
+        onDerived: () => {
+          deriveMs.current = Date.now() - started;
+          setStage('encrypt');
+        },
+      });
+      setStage('save');
+      if (replacing === null) await saveKeystore(record, finish.current);
+      else await replaceKeystore(record, replacing, finish.current);
+      const keypair = keypairFromMnemonic(mnemonic);
+      rememberAddress(keystoreFingerprint(record), keypair.address);
+      onSaved({ keypair, record, finish });
     } catch (e) {
-      setError((e as Error).message || 'Encryption failed');
-      setBusy(false);
+      setErrors({ save: setupErrorCopy(e) });
+      setStage(null);
     }
   };
 
+  const order: Stage[] = ['derive', 'encrypt', 'save'];
+  const state = (s: Stage): Step['state'] => (stage === null ? 'pending' : order.indexOf(s) < order.indexOf(stage) ? 'done' : s === stage ? 'active' : 'pending');
+  const steps: Step[] = [
+    {
+      label: 'deriving key',
+      state: state('derive'),
+      ms: stage === 'derive' ? elapsed * 1000 : deriveMs.current,
+      detail: fallback ? 'The background worker did not answer; this tab may freeze until it finishes.' : undefined,
+    },
+    { label: 'encrypting phrase', state: state('encrypt') },
+    { label: 'saving to this browser', state: state('save') },
+  ];
+
   return (
-    <Card
-      title="Choose a password"
-      sub="It encrypts your recovery phrase on this device. You will need it every time you open the wallet — it cannot be reset, only re-created from the 24 words."
-    >
-      <Label>Password</Label>
-      <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} />
-      <Label>Repeat password</Label>
-      <Input
-        type="password"
-        value={confirm}
-        onChange={(e) => setConfirm(e.target.value)}
-        disabled={busy}
-        onKeyDown={(e) => e.key === 'Enter' && !busy && submit()}
-      />
-      {error && <ErrorText>{error}</ErrorText>}
-      {busy ? (
-        <KdfProgress label="Encrypting your recovery phrase" elapsed={elapsed} />
-      ) : (
-        <>
-          <Divider />
-          <Button disabled={!password || !confirm} onClick={submit}>
-            Encrypt and finish
-          </Button>
-        </>
-      )}
-    </Card>
+    <div className="bc-col-app wl-stack wl-gap24">
+      <FlowBar title={flow} step={step} onBack={busy ? undefined : onBack} />
+      <div>
+        <h1 className="bc-t1">Set a password.</h1>
+        <p className="bc-lead">The password unlocks this browser&apos;s copy. The 24 words restore the wallet.</p>
+      </div>
+      <div className="wl-stack wl-gap16">
+        <PasswordField
+          id="new-password"
+          value={password}
+          onChange={(v) => {
+            setPassword(v);
+            setErrors({});
+          }}
+          hint="8 characters or more."
+          error={errors.password}
+          autoComplete="new-password"
+          disabled={busy}
+          autoFocus
+          shown={shown}
+          onShownChange={setShown}
+        />
+        <PasswordField
+          id="repeat-password"
+          label="repeat password"
+          value={confirm}
+          onChange={(v) => {
+            setConfirm(v);
+            setErrors({});
+          }}
+          error={errors.confirm}
+          autoComplete="new-password"
+          disabled={busy}
+          reveal={false}
+          shown={shown}
+          onEnter={() => void submit()}
+        />
+      </div>
+      {errors.save && <Notice tone="error">{errors.save}</Notice>}
+      <Button block busy={busy} disabled={!busy && (!password || !confirm)} onClick={() => void submit()}>
+        {busy ? 'encrypting…' : 'continue'}
+      </Button>
+      {busy && <StepList steps={steps} />}
+    </div>
   );
 }
