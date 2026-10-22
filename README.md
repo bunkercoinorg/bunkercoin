@@ -50,6 +50,8 @@ The web apps live in a bun workspace under `apps/`:
 - `apps/app`: the web app (Next.js on Cloudflare via OpenNext)
 - `packages/*`: shared UI components and ESLint/TypeScript configs for the website apps
 
+The Ledger hardware wallet app (C, Ledger SDK) lives in `ledger/`; see [ledger/README.md](ledger/README.md).
+
 ```bash
 bun install
 bun run dev:explorer
