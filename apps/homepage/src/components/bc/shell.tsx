@@ -8,7 +8,7 @@ export function SiteHeader({ current }: { current?: Current }) {
     return (
         <header className="bc-hd">
             <div className="bc-wrap bc-hd-in">
-                <Link className="bc-brand" href="/"><BrandMark /><span>bunkercoin</span></Link>
+                <Link className="bc-brand" href="/"><BrandMark /><span>BunkerCoin</span></Link>
                 <span className="bc-tag" data-tone="live"><i />private testnet</span>
                 <nav className="bc-nav" aria-label="site">
                     <a href={SITE.explorer}>explorer ↗</a>
@@ -25,7 +25,7 @@ export function SiteFooter() {
     return (
         <footer className="bc-ft">
             <div className="bc-wrap bc-ft-in">
-                <span className="bc-brand"><BrandMark /><span>bunkercoin</span></span>
+                <span className="bc-brand"><BrandMark /><span>BunkerCoin</span></span>
                 <span>alpenglow over hf radio · © 2026</span>
                 <nav aria-label="footer">
                     <a href={SITE.x}>x ↗</a>
