@@ -19,7 +19,7 @@ const LIVE = [
 const HOW = [
     { title: "Over the air.", body: "Validators send blocks and votes as PACTOR frames on HF radio. Shortwave reflects off the ionosphere, so one link can span a continent." },
     { title: "Alpenglow, adapted.", body: "Solana's new consensus protocol, tuned for a link that carries a few kilobits a second. A block is notarized, then finalized. A missed slot gets a skip certificate." },
-    { title: "Gateways for people.", body: "Wallets and the explorer reach the chain through internet gateways. The validators don't need the internet to agree." },
+    { title: "Gateways for people.", body: "Wallets and the explorer reach the chain through internet gateways. Without the internet, nodes can be reached directly over radio. The validators don't need the internet to agree." },
 ];
 
 async function audience() {
