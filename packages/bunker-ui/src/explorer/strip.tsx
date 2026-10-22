@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { StatusTag } from '../status.tsx';
 
-/** One 2s telemetry sample. `level` 0-8 lit cells, `null` = no sample (dashed gap). `finalized` labels a finalized column. */
+/** One telemetry column (a sample or a bucket mean). `level` 0-8 lit cells, `null` = no sample (dashed gap). `finalized` labels a finalized column. */
 export type StripColumn = { level: number | null; finalized?: string };
 
 export type StripSample = { time: string; value: string; finalized?: string };
@@ -58,6 +58,7 @@ export function TransmissionStrip({
   peak,
   samples,
   title = 'transmission · 2 min',
+  span = ['-2m', '-1m'],
 }: {
   columns: StripColumn[];
   summary: string;
@@ -67,6 +68,8 @@ export function TransmissionStrip({
   /** Latest samples for the visually hidden table (the spec keeps 10). */
   samples?: StripSample[];
   title?: string;
+  /** Left axis label on desktop and on phones (which show the newer half). */
+  span?: [string, string];
 }) {
   const half = columns.slice(Math.floor(columns.length / 2));
   const tag = state === 'live' ? <StatusTag status="live" /> : state === 'stale' ? <StatusTag status="stale" detail={staleFor} /> : <StatusTag status="awaiting" />;
@@ -95,8 +98,8 @@ export function TransmissionStrip({
         {stripSvg(half, 'bc-sv-p')}
       </div>
       <div className="bc-strip-ax" aria-hidden="true">
-        <span className="bc-ph-hide">-2m</span>
-        <span className="bc-ph-only">-1m</span>
+        <span className="bc-ph-hide">{span[0]}</span>
+        <span className="bc-ph-only">{span[1]}</span>
         <span>{peak ? `peak ${peak}` : ''}</span>
         <span>now</span>
       </div>
