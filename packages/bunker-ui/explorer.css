@@ -76,8 +76,9 @@
 .bc-lg [data-k="n"] { border: 1px dotted var(--faint); height: 12px; width: 6px; vertical-align: -3px; }
 @media (max-width: 40rem) { .bc-tl-cd { grid-template-columns: minmax(0, 1fr) auto; } .bc-tl-cd .bc-lbl { grid-column: 1 / -1; } }
 
-.bc-pill { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px 0 10px; border: 1px solid color-mix(in srgb, var(--acc-fill) 16%, transparent); border-radius: 999px; background: var(--acc-soft); color: var(--fg); font: 500 11.5px/1 var(--mono); letter-spacing: .02em; text-decoration: none; white-space: nowrap; transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease); }
-.bc-pill > i { width: 6px; height: 6px; border-radius: 50%; background: var(--acc-fill); flex: none; }
+.bc-pill { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border: 1px solid color-mix(in srgb, var(--acc-fill) 16%, transparent); border-radius: 999px; background: var(--acc-soft); color: var(--fg); font: 500 11px/1 var(--mono); letter-spacing: .02em; text-decoration: none; white-space: nowrap; transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease); }
+.bc-pill { position: relative; }
+.bc-pill::before { content: ""; position: absolute; inset: -10px -4px; }
 .bc-pill:hover { background: color-mix(in srgb, var(--acc-fill) 16%, transparent); border-color: color-mix(in srgb, var(--acc-fill) 28%, transparent); }
 .bc-pill:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 
