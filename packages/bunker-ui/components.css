@@ -177,6 +177,7 @@ select.bc-inp { appearance: none; background-image: linear-gradient(45deg, trans
 .bc-pn-h .bc-mini { font-size: 11.5px; }
 .bc-pn-b { padding: 20px; }
 .bc-pn-b[data-flush] { padding: 0; }
+.bc-pn-b[data-flush] > .bc-empty, .bc-pn-b[data-flush] > [role="status"] > .bc-stl { padding-inline: 20px; }
 .bc-pn-f { border-top: 1px solid var(--line-soft); padding: 12px 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; position: relative; }
 .bc-pn[data-tone="receipt"] { border-color: var(--fg); }
 .bc-pn[data-tone="receipt"]::before, .bc-pn[data-tone="receipt"]::after,

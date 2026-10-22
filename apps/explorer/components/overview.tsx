@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { useAtomValue } from 'jotai';
 import { relativeAge } from '@bunkercoin/chain-format';
-import { Link, Panel, StatusTag, useNow } from '@bunkercoin/ui';
+import { ButtonLink, Link, Panel, StatusTag, useNow } from '@bunkercoin/ui';
 import { Ledger, Summaries, TransmissionStrip } from '@bunkercoin/ui/explorer';
 import { blocksAtom, blocksFeedAtom, highestFinalizedSlotAtom, radioSamplesAtom, wsStatusAtom } from '@/lib/atoms';
 import { RADIO_STALE_MS, stripFrame } from '@/lib/strip';
@@ -64,7 +64,12 @@ export default function Overview() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
-        <h1 className="bc-t1 m-0">Explorer.</h1>
+        <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
+          <h1 className="bc-t1 m-0">Explorer.</h1>
+          <ButtonLink href="/stream" variant="ghost">
+            watch lab live stream
+          </ButtonLink>
+        </div>
         <PageSearch />
       </div>
       <Ledger
