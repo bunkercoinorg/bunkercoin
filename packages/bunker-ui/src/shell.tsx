@@ -57,9 +57,9 @@ export function Header({ app, nav, tools, status, search, flow, brandHref = '/' 
   return (
     <header className="bc-hd" data-flow={flow ? '' : undefined}>
       <div className={cx('bc-wrap', 'bc-hd-in', !!search && 'bc-has-search')}>
-        <Link className="bc-brand" href={brandHref} aria-label={`bunkercoin ${app}`}>
+        <Link className="bc-brand" href={brandHref} aria-label={`BunkerCoin ${app}`}>
           <BrandMark />
-          <span>bunkercoin</span>
+          <span>BunkerCoin</span>
           <small>{app}</small>
         </Link>
         {status}
@@ -77,7 +77,7 @@ export function Footer({ children, links }: { children?: ReactNode; links?: NavI
       <div className="bc-wrap bc-ft-in">
         <span className="bc-brand">
           <BrandMark />
-          <span>bunkercoin</span>
+          <span>BunkerCoin</span>
         </span>
         {children && <span>{children}</span>}
         {links && links.length > 0 && (

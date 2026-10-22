@@ -187,7 +187,7 @@ test('shell has landmarks, skip link and current page', () => {
   assert.match(html, /<footer class="bc-ft">/);
   assert.match(html, /<a href="https:\/\/explorer.example" rel="noopener noreferrer">explorer<\/a>/);
   assert.match(html, /<symbol id="bc-mark" viewBox="0 0 161 128">/);
-  assert.match(html, /aria-label="bunkercoin wallet"/);
+  assert.match(html, /aria-label="BunkerCoin wallet"/);
   assert.match(html, /<h1 class="bc-t1">Home.<\/h1>/);
 });
 

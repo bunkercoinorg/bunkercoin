@@ -49,7 +49,7 @@ const FOOTER = (
   <Footer
     links={[
       { label: 'explorer', href: EXPLORER_URL, external: true },
-      { label: 'source', href: 'https://github.com/bunkercoin', external: true },
+      { label: 'source', href: 'https://github.com/bunkercoinorg/bunkercoin', external: true },
     ]}
   >
     keys stay in this browser.
