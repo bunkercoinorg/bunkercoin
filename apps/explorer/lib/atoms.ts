@@ -1,7 +1,8 @@
 import { atom } from 'jotai';
 import { emptyChain, highestFinalized, type Applied, type ChainView } from './chain.ts';
 import type { HistoryWindow } from './history.ts';
-import type { RadioSample } from './strip.ts';
+import { emptyArchive, type Archive } from './archive.ts';
+import type { RadioBucket } from './strip.ts';
 import type { Node, RadioStats } from './types.ts';
 
 export const BLOCK_PAGE_SIZE = 20;
@@ -29,7 +30,11 @@ export const nodesAtom = atom<Node[]>([]);
 export type WsStatus = 'connecting' | 'open' | 'closed';
 export const wsStatusAtom = atom<WsStatus>('connecting');
 export const radioStatsAtom = atom<RadioStats | null>(null);
-export const radioSamplesAtom = atom<RadioSample[]>([]);
+export const radioBucketsAtom = atom<RadioBucket[]>([]);
+
+// The stored last day of settled slots behind the overview timeline; `ready` once storage was read.
+export const archiveAtom = atom<Archive>(emptyArchive);
+export const archiveReadyAtom = atom(false);
 
 export const showSkippedSlotsAtom = atom(false);
 export const displayCountAtom = atom(INITIAL_DISPLAY_COUNT);

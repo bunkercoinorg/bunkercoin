@@ -16,11 +16,12 @@ import {
 import { api, errorMessage, isAbort } from '@/lib/api';
 import { applyHead } from '@/lib/chain';
 import { usePoll } from '@/lib/use-poll';
+import { useArchive } from '@/lib/use-archive';
 import { useWebSocket } from '@/lib/websocket';
 
-// Live slots arrive over the socket; polling then only reconciles.
-const POLL_MS_WS_HEALTHY = 5000;
-const POLL_MS_WS_DOWN = 2000;
+// Live slots arrive over the socket; polling then only reconciles. Blocks take minutes over radio.
+export const POLL_MS_WS_HEALTHY = 30_000;
+const POLL_MS_WS_DOWN = 15_000;
 
 /** Keeps the shared chain view, validators and radio feed current; renders the API-offline bar. */
 export default function LiveFeed() {
@@ -34,6 +35,7 @@ export default function LiveFeed() {
   const nodes = useAtomValue(nodesFeedAtom);
 
   useWebSocket();
+  useArchive();
 
   const interval = wsStatus === 'open' ? POLL_MS_WS_HEALTHY : POLL_MS_WS_DOWN;
 

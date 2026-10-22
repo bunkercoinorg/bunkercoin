@@ -2,8 +2,8 @@
 
 import { useEffect } from 'react';
 import { useSetAtom } from 'jotai';
-import { applyChainAtom, radioSamplesAtom, radioStatsAtom, wsStatusAtom } from './atoms';
-import { appendSample } from './strip';
+import { applyChainAtom, radioBucketsAtom, radioStatsAtom, wsStatusAtom } from './atoms';
+import { addToBuckets } from './strip';
 import { applyLive, applyStatusChange } from './chain';
 import { NODE_WS_URL } from './config';
 import { backoffDelay, parseWsMessage } from './ws-protocol';
@@ -12,7 +12,7 @@ export function useWebSocket() {
   const applyChain = useSetAtom(applyChainAtom);
   const setStatus = useSetAtom(wsStatusAtom);
   const setRadioStats = useSetAtom(radioStatsAtom);
-  const setRadioSamples = useSetAtom(radioSamplesAtom);
+  const setRadioBuckets = useSetAtom(radioBucketsAtom);
 
   useEffect(() => {
     let disposed = false;
@@ -55,7 +55,7 @@ export function useWebSocket() {
         else if (msg.kind === 'status') applyChain((v) => applyStatusChange(v, msg));
         else {
           setRadioStats(msg.stats);
-          setRadioSamples((s) => appendSample(s, { at: msg.stats.received_at, bps: msg.stats.effective_throughput_bps_2s }));
+          setRadioBuckets((b) => addToBuckets(b, { at: msg.stats.received_at, bps: msg.stats.effective_throughput_bps_2s }));
         }
       };
       sock.onerror = () => sock.close();
@@ -74,5 +74,5 @@ export function useWebSocket() {
       if (ws) detach(ws);
       ws = null;
     };
-  }, [applyChain, setStatus, setRadioStats, setRadioSamples]);
+  }, [applyChain, setStatus, setRadioStats, setRadioBuckets]);
 }

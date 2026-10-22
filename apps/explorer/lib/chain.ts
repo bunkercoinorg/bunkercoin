@@ -26,7 +26,7 @@ export const emptyChain: ChainView = { blocks: [], restTop: null, exhausted: fal
 const RANK: Record<SlotStatus, number> = { pending: 0, proposed: 1, notarized: 2, finalized: 3 };
 
 // Status only moves forward, so a late response can never regress a row.
-function supersedes(next: Block, prev: Block): boolean {
+export function supersedes(next: Block, prev: Block): boolean {
   const d = RANK[next.status] - RANK[prev.status];
   if (d !== 0) return d > 0;
   return (
@@ -92,6 +92,12 @@ export function applyStatusChange(
   const prev = view.blocks.find((b) => b.slot === change.slot && b.hash === change.hash);
   if (!prev) return { view, finalized: [] };
   return merge(view, [{ ...prev, status: change.status }], retain);
+}
+
+// Seeds an empty view from a stored run; `restTop` lets the first head page detect the gap since then.
+export function applyCached(view: ChainView, run: Block[], retain = MAX_RETAINED_BLOCKS): Applied {
+  if (view.blocks.length || view.restTop !== null || !run.length) return { view, finalized: [] };
+  return { view: { blocks: run.slice(0, retain), restTop: run[0].slot, exhausted: false }, finalized: [] };
 }
 
 export const cursorSlot = (view: ChainView) => (view.blocks.length ? view.blocks[view.blocks.length - 1].slot : null);

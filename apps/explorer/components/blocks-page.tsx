@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useAtom, useAtomValue } from 'jotai';
-import { relativeAge } from '@bunkercoin/chain-format';
 import { Button, Checkbox, Pagination, Panel, useNow, type PaginationState } from '@bunkercoin/ui';
 import { NewRowsBar } from '@bunkercoin/ui/explorer';
 import {
@@ -17,6 +16,7 @@ import {
   loadMoreErrorAtom,
   showSkippedSlotsAtom,
 } from '@/lib/atoms';
+import { CLOCK_MS, coarseAge } from '@/lib/cadence';
 import { liveScroll, MAX_RENDERED_ROWS } from '@/lib/chain';
 import { olderAnchor } from '@/lib/history';
 import { useHistory } from '@/lib/use-history';
@@ -27,7 +27,7 @@ import BlocksTable, { slotLabel } from './blocks-table';
 const LABELS = { error: "couldn't load older blocks", end: 'start of chain' };
 
 export default function BlocksPage() {
-  const now = useNow();
+  const now = useNow(CLOCK_MS);
   const blocks = useAtomValue(blocksAtom);
   const feed = useAtomValue(blocksFeedAtom);
   const hasMore = useAtomValue(hasMoreBlocksAtom);
@@ -86,7 +86,7 @@ export default function BlocksPage() {
 
   const shown = rows.length ? rows : page;
   const range = shown.length ? `${slotLabel(shown[0].slot)} to ${slotLabel(shown[shown.length - 1].slot)}` : '';
-  const checked = feed.lastSuccess !== null && now !== null ? `checked ${relativeAge(feed.lastSuccess, now)} ago` : '';
+  const checked = feed.lastSuccess !== null && now !== null ? `checked ${coarseAge(feed.lastSuccess, now)} ago` : '';
 
   return (
     <div className="flex flex-col gap-6">

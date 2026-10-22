@@ -1,22 +1,24 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { formatInteger, relativeAge, shortId, utcClock } from '@bunkercoin/chain-format';
+import { formatInteger, shortId, utcClock } from '@bunkercoin/chain-format';
 import { CopyValue, StatusTag, type Status } from '@bunkercoin/ui';
 import { DataTable, type Column } from '@bunkercoin/ui/explorer';
+import { blockTime, coarseAge } from '@/lib/cadence';
 import { routes } from '@/lib/routes';
 import type { Block } from '@/lib/types';
 
 export const blockStatus = (b: Block): Status => (b.type === 'skip' ? 'skipped' : b.status);
 export const slotLabel = (slot: number | string) => formatInteger(BigInt(slot));
-const blockTime = (b: Block) => b.finalized_timestamp ?? b.proposed_timestamp;
+// A reload after a long absence lands many rows at once; only a trickle washes.
+const MAX_WASHED = 2;
 
 function Age({ block, now }: { block: Block; now: number | null }) {
   const at = blockTime(block);
   if (at === undefined || now === null) return <span className="bc-hint mono">–</span>;
   return (
     <time className="mono" dateTime={new Date(at).toISOString()} title={utcClock(at)}>
-      {relativeAge(at, now)}
+      {coarseAge(at, now)}
     </time>
   );
 }
@@ -50,6 +52,7 @@ export default function BlocksTable({
   // Only slots above the highest one seen so far are new head rows; revealed older rows never wash.
   const top = useRef<number | null>(null);
   const known = top.current;
+  const fresh = known === null ? 0 : blocks.filter((b) => b.slot > known).length;
   useEffect(() => {
     if (blocks.length) top.current = Math.max(top.current ?? -1, ...blocks.map((b) => b.slot));
   }, [blocks]);
@@ -60,7 +63,7 @@ export default function BlocksTable({
       rows={blocks}
       rowKey={(b) => String(b.slot)}
       rowHref={(b) => routes.block(b.slot)}
-      rowState={(b) => ({ isNew: known !== null && b.slot > known, dim: b.type === 'skip' })}
+      rowState={(b) => ({ isNew: fresh <= MAX_WASHED && known !== null && b.slot > known, dim: b.type === 'skip' })}
       phone={(b) => (
         <>
           <span className="flex items-center gap-2.5">
