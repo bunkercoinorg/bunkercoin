@@ -47,3 +47,27 @@ test('appendSample keeps time order and caps the buffer', () => {
   assert.deepEqual(s.map((x) => x.at), [2, 3]);
   assert.deepEqual(appendSample(s, { at: 2, bps: 9 }, 5).map((x) => x.at), [2]);
 });
+
+test('radio samples fold into 30s buckets, bounded, late samples dropped', async () => {
+  const { addToBuckets, bucketSamples, joinBuckets } = await import('../lib/strip.ts');
+  let b = addToBuckets([], { at: END + 1000, bps: 100 });
+  b = addToBuckets(b, { at: END + 3000, bps: 300 });
+  b = addToBuckets(b, { at: END + 31_000, bps: 50 });
+  assert.deepEqual(b, [
+    { at: END, sum: 400, n: 2, peak: 300 },
+    { at: END + 30_000, sum: 50, n: 1, peak: 50 },
+  ]);
+  assert.equal(addToBuckets(b, { at: END + 2000, bps: 9 }), b);
+  assert.equal(addToBuckets(b, { at: END + 90_000, bps: 1 }, 30_000, 2).length, 2);
+  assert.deepEqual(bucketSamples(b), [{ at: END + 30_000, bps: 200 }, { at: END + 60_000, bps: 50 }]);
+  assert.deepEqual(joinBuckets([{ at: END - 30_000, sum: 1, n: 1, peak: 1 }, b[0]], [b[0], b[1]]), [{ at: END - 30_000, sum: 1, n: 1, peak: 1 }, ...b]);
+});
+
+test('bucket means land one per column in a 30-minute frame', async () => {
+  const { bucketSamples, kbps } = await import('../lib/strip.ts');
+  const f = stripFrame(bucketSamples([{ at: END - 30_000, sum: 1500, n: 15, peak: 200 }]), [], END, 2, 30_000, 'last minute');
+  assert.deepEqual(f.columns.map((c) => c.level), [null, 8]);
+  assert.equal(f.summary, 'last minute: average 100 b/s, 0 blocks finalized, 1 gap');
+  assert.equal(kbps(77.4), '77 b/s');
+  assert.equal(kbps(2500), '2.50 kb/s');
+});

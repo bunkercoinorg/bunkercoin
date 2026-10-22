@@ -107,6 +107,19 @@ const GALLERY: Record<string, ReactElement> = {
     peak: '4.1 kb/s',
     samples: [{ time: '21:04:17 UTC', value: '3.42 kb/s', finalized: '48,203 at 21:04:16 UTC' }],
   }),
+  BlockTimeline: h(explorer.BlockTimeline, {
+    title: 'history · 24 h',
+    summary: 'last 24 hours: 2 blocks finalized, 1 skipped, no data for 15 min',
+    columns: [
+      { stack: [], known: false, label: '11:30–11:45 UTC · no data' },
+      { stack: ['f', 's', 'f'], known: true, label: '11:45–12:00 UTC · 2 blocks, 1 skipped' },
+    ],
+    axis: ['-24h', '-12h', 'now'],
+    phoneAxis: ['-12h', '-6h', 'now'],
+    rows: [{ time: '11:45–12:00 UTC', blocks: '48,203 node 1 11:59' }],
+    idle: 'latest · 48,203 node 1 11:59 UTC',
+    cadence: { points: [0.2, 1, 0.4], median: 0.4, label: 'median 4.6 min' },
+  }),
   DataTable: h(explorer.DataTable, {
     caption: 'recent blocks',
     columns: [
@@ -241,6 +254,13 @@ test('words, qr, tables and strip carry their semantics', () => {
   assert.match(strip, /<title>48,203 finalized<\/title>/);
   assert.match(strip, /<table class="bc-sr"><caption>latest samples<\/caption>/);
   assert.match(strip, /<th scope="col">finalized<\/th>.*<td>48,203 at 21:04:16 UTC<\/td>/);
+  const timeline = render('BlockTimeline');
+  assert.match(timeline, /role="img" aria-label="last 24 hours: 2 blocks finalized, 1 skipped, no data for 15 min"/);
+  assert.match(timeline, /tabindex="0" aria-label="history · 24 h: use arrow keys to read each column"/);
+  assert.match(timeline, /class="bc-t-g"/);
+  assert.match(timeline, /class="bc-t-s"/);
+  assert.match(timeline, /<p class="bc-tl-ro" aria-live="polite">latest · 48,203 node 1 11:59 UTC<\/p>/);
+  assert.match(timeline, /<caption>history · 24 h: blocks by time<\/caption>/);
   assert.match(render('Lifecycle'), /<li data-state="current" aria-current="step">/);
   assert.match(render('HeaderSearch'), /<form class="bc-hs" role="search"><label class="bc-sr" for="([^"]+)">search<\/label><input type="text" class="bc-inp" data-mono="" id="\1"/);
 });

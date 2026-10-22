@@ -2,7 +2,11 @@ import { formatInteger, utcClock } from '@bunkercoin/chain-format';
 
 export const STRIP_COLUMNS = 60;
 export const STRIP_STEP_MS = 2000;
-export const RADIO_STALE_MS = 10_000;
+// The overview strip: 30 minutes of 30s buckets, each the mean of ~15 two-second samples.
+export const RADIO_BUCKET_MS = 30_000;
+export const RADIO_COLUMNS = 60;
+export const MAX_RADIO_BUCKETS = 120;
+export const RADIO_STALE_MS = 60_000;
 export const MAX_RADIO_SAMPLES = 120;
 
 export interface RadioSample {
@@ -27,7 +31,35 @@ export interface StripFrame {
   samples: { time: string; value: string; finalized?: string }[];
 }
 
-export const kbps = (bps: number) => `${(bps / 1000).toFixed(2)} kb/s`;
+export const kbps = (bps: number) => (bps < 1000 ? `${Math.round(bps)} b/s` : `${(bps / 1000).toFixed(2)} kb/s`);
+
+export interface RadioBucket {
+  at: number;
+  sum: number;
+  n: number;
+  peak: number;
+}
+
+// Buckets oldest first, keyed by their start; a sample older than the newest bucket is dropped.
+export function addToBuckets(buckets: RadioBucket[], s: RadioSample, step = RADIO_BUCKET_MS, max = MAX_RADIO_BUCKETS): RadioBucket[] {
+  const at = Math.floor(s.at / step) * step;
+  const last = buckets[buckets.length - 1];
+  if (last && at < last.at) return buckets;
+  if (last && at === last.at) {
+    return [...buckets.slice(0, -1), { at, sum: last.sum + s.bps, n: last.n + 1, peak: Math.max(last.peak, s.bps) }];
+  }
+  return [...buckets, { at, sum: s.bps, n: 1, peak: s.bps }].slice(-max);
+}
+
+// Stored buckets fill in behind the ones gathered since load.
+export const joinBuckets = (older: RadioBucket[], newer: RadioBucket[], max = MAX_RADIO_BUCKETS) =>
+  [...older.filter((b) => !newer.length || b.at < newer[0].at), ...newer].slice(-max);
+
+/** Each bucket as one sample at its end, so it lands in its own strip column. */
+export const bucketSamples = (buckets: RadioBucket[], step = RADIO_BUCKET_MS): RadioSample[] =>
+  buckets.map((b) => ({ at: b.at + step, bps: b.sum / b.n }));
+
+export const alignedEnd = (now: number, step: number) => Math.ceil(now / step) * step;
 
 export const appendSample = (samples: RadioSample[], next: RadioSample, max = MAX_RADIO_SAMPLES) =>
   [...samples.filter((s) => s.at < next.at), next].slice(-max);
@@ -39,6 +71,7 @@ export function stripFrame(
   end: number,
   count = STRIP_COLUMNS,
   step = STRIP_STEP_MS,
+  window = 'last 2 minutes',
 ): StripFrame {
   const start = end - count * step;
   const bucket = (at: number) => (at > start && at <= end ? Math.min(count - 1, Math.floor((at - start - 1) / step)) : -1);
@@ -72,8 +105,8 @@ export function stripFrame(
   const average = lit.length ? lit.reduce((a, b) => a + b, 0) / lit.length : null;
   const summary =
     average === null
-      ? 'last 2 minutes: no samples'
-      : `last 2 minutes: average ${kbps(average)}, ${blocks} ${blocks === 1 ? 'block' : 'blocks'} finalized, ${gaps} ${gaps === 1 ? 'gap' : 'gaps'}`;
+      ? `${window}: no samples`
+      : `${window}: average ${kbps(average)}, ${blocks} ${blocks === 1 ? 'block' : 'blocks'} finalized, ${gaps} ${gaps === 1 ? 'gap' : 'gaps'}`;
   return {
     columns,
     summary,

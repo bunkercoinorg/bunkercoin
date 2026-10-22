@@ -5,11 +5,13 @@ import { useAtomValue } from 'jotai';
 import { relativeAge } from '@bunkercoin/chain-format';
 import { Cell, Cells, Disclosure, EmptyState, Facts, Freshness, Panel, Skeleton, StatusTag, useNow } from '@bunkercoin/ui';
 import { blocksAtom, finalizedFlashAtom, nodesAtom, nodesFeedAtom, radioStatsAtom, wsStatusAtom } from '@/lib/atoms';
+import { CLOCK_MS } from '@/lib/cadence';
 import { kbps, RADIO_STALE_MS } from '@/lib/strip';
 import { slotLabel } from './blocks-table';
 import type { RadioStats } from '@/lib/types';
 
-export const FEED_STALE_MS = 15_000;
+// Three missed reconciling polls.
+export const FEED_STALE_MS = 90_000;
 const FLASH_MS = 1000;
 const RETRY_DANGER = 0.25;
 
@@ -36,7 +38,7 @@ export type RadioView = { stats: RadioStats | null; live: boolean; now: number |
 export function useRadio(): RadioView {
   const stats = useAtomValue(radioStatsAtom);
   const ws = useAtomValue(wsStatusAtom);
-  const now = useNow();
+  const now = useNow(CLOCK_MS);
   // Socket open alone is not live: the last sample has to be recent.
   const live = stats !== null && ws === 'open' && now !== null && now - stats.received_at < RADIO_STALE_MS;
   return { stats, live, now };
@@ -53,6 +55,7 @@ export function ValidatorsPanel() {
   const { nodes, feed, max } = useValidators();
   const producer = useLatestProducer();
   const flash = useAtomValue(finalizedFlashAtom);
+  const now = useNow(CLOCK_MS);
   const [flashing, setFlashing] = useState<{ seq: number; producers: Set<number> }>({ seq: 0, producers: new Set() });
 
   useEffect(() => {
@@ -64,7 +67,7 @@ export function ValidatorsPanel() {
 
   const loading = feed.lastSuccess === null && feed.error === null;
   return (
-    <Panel title="validators" meta={!loading && <Freshness lastSuccessAt={feed.lastSuccess} staleAfterMs={FEED_STALE_MS} />} flush>
+    <Panel title="validators" meta={!loading && <Freshness lastSuccessAt={feed.lastSuccess} staleAfterMs={FEED_STALE_MS} now={now ?? undefined} />} flush>
       {loading ? (
         <Skeleton rows={2} columns={2} label="loading validators…" />
       ) : nodes.length === 0 ? (
