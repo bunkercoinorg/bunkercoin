@@ -139,12 +139,11 @@ export default function Overview() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-          <h1 className="bc-t1 m-0">Explorer.</h1>
+          <h1 className="bc-t1 m-0 leading-none">Explorer.</h1>
           <Link className="bc-pill" href="/stream">
-            <i aria-hidden="true" />
-            watch lab live stream
+            watch lab live
           </Link>
         </div>
         <PageSearch />

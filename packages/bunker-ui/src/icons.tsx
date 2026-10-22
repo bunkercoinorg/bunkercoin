@@ -32,7 +32,7 @@ export function Sprite() {
     <svg className="bc-sprite" width="0" height="0" aria-hidden="true" focusable="false">
       <symbol id="bc-mark" viewBox="0 0 161 128">
         <path d={B_PATH} />
-        <path d={C_PATH} stroke="var(--mark)" strokeWidth={8} />
+        <path d={C_PATH} fill="none" stroke="var(--mark)" strokeWidth={8} />
       </symbol>
       {ICON_NAMES.map((name) => (
         <symbol key={name} id={`bc-i-${name}`} viewBox="0 0 16 16">
@@ -62,7 +62,7 @@ export function Icon({ name, title, className, ...rest }: { name: IconName; titl
 
 const MARK_SIZES = { 16: [20, 16], 24: [30, 24], 48: [60, 48] } as const;
 
-/** The BunkerCoin logo as on the landing page: B filled, C filled and stroked with `--mark`. Pass `title` when it is the only label. */
+/** The BunkerCoin logo as on the landing page: B filled, C an 8-unit `--mark` outline. Pass `title` when it is the only label. */
 export function BrandMark({ size = 16, title, className }: { size?: 16 | 24 | 48; title?: string; className?: string }) {
   const [w, h] = MARK_SIZES[size];
   return (
@@ -77,12 +77,12 @@ export function BrandMark({ size = 16, title, className }: { size?: 16 | 24 | 48
       focusable="false"
     >
       <path d={B_PATH} />
-      <path d={C_PATH} stroke="var(--mark)" strokeWidth={8} />
+      <path d={C_PATH} fill="none" stroke="var(--mark)" strokeWidth={8} />
     </svg>
   );
 }
 
 /** Standalone favicon SVG (no sprite); `#007a55` light, `#00ffb2` dark. */
 export const FAVICON_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 161 128"><style>path{fill:#007a55;stroke:#007a55}@media (prefers-color-scheme:dark){path{fill:#00ffb2;stroke:#00ffb2}}path+path{stroke-width:8}path:first-of-type{stroke:none}</style>' +
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 161 128"><style>path{fill:#007a55;stroke:#007a55}@media (prefers-color-scheme:dark){path{fill:#00ffb2;stroke:#00ffb2}}path+path{fill:none;stroke-width:8}path:first-of-type{stroke:none}</style>' +
   `<path d="${B_PATH}"/><path d="${C_PATH}"/></svg>`;
