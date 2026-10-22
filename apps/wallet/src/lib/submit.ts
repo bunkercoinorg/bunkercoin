@@ -1,4 +1,4 @@
-import bs58 from 'bs58';
+import { base58ToBytes } from '@bunkercoin/chain-format';
 import {
   encodeTransaction,
   RpcError,
@@ -167,7 +167,7 @@ export async function broadcast(
   return { txId: out.nodeId, tracked };
 }
 
-export type Submission = Pick<PendingTx, 'kind' | 'amount' | 'to' | 'ticker'>;
+export type Submission = Pick<PendingTx, 'kind' | 'amount' | 'to' | 'ticker' | 'fee'>;
 
 /** One account's chain access and persisted tracking. Callers hold `withAccountLock` around every use. */
 export interface Account {
@@ -241,7 +241,9 @@ async function resolveLegacy(account: Account): Promise<PendingTx | null> {
   for (const p of account.entries().filter(isUnresolvedLegacy)) {
     let found;
     try {
-      found = await account.conn.getTransaction(toHex(bs58.decode(p.txId)));
+      const raw = base58ToBytes(p.txId);
+      if (!raw) return p;
+      found = await account.conn.getTransaction(toHex(raw));
     } catch {
       return p;
     }

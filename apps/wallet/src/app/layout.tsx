@@ -1,43 +1,40 @@
-import { Inter, IBM_Plex_Mono } from 'next/font/google';
+import type { Viewport } from 'next';
+import { fontClassName } from '@bunkercoin/ui/fonts';
+import { THEME_COLORS, themeInitScript } from '@bunkercoin/ui';
 import './globals.css';
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
-const plexMono = IBM_Plex_Mono({
-  subsets: ['latin'],
-  weight: ['400', '500'],
-  variable: '--font-plex',
-});
+const description = 'Local-only wallet for the BunkerCoin testnet';
 
 export const metadata = {
   metadataBase: new URL('https://wallet.bunkercoin.com'),
-  title: 'BunkerCoin Wallet',
-  description: 'Local-only wallet for the BunkerCoin testnet',
-  icons: {
-    icon: '/bunker-favicon.png',
-    shortcut: '/bunker-favicon.png',
-    apple: '/bunker-favicon.png',
-  },
+  title: 'BunkerCoin wallet',
+  description,
   openGraph: {
-    title: 'BunkerCoin Wallet',
-    description: 'Local-only wallet for the BunkerCoin testnet',
+    title: 'BunkerCoin wallet',
+    description,
     url: 'https://wallet.bunkercoin.com',
-    siteName: 'BunkerCoin Wallet',
+    siteName: 'BunkerCoin wallet',
     images: [{ url: '/og.png', width: 1200, height: 630 }],
     type: 'website',
   },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'BunkerCoin Wallet',
-    description: 'Local-only wallet for the BunkerCoin testnet',
-    images: ['/og.png'],
-  },
+  twitter: { card: 'summary_large_image', title: 'BunkerCoin wallet', description, images: ['/og.png'] },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: THEME_COLORS.light },
+    { media: '(prefers-color-scheme: dark)', color: THEME_COLORS.dark },
+  ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${plexMono.variable}`}>
+    <html lang="en" className={fontClassName} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript('system') }} />
+      </head>
       <body>
-        {/* WebCrypto needs a secure context — hop to https before anything runs. */}
+        {/* WebCrypto needs a secure context: hop to https before anything runs. */}
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
         <script src="/https-redirect.js" />
         {children}

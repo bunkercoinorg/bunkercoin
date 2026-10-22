@@ -1,0 +1,78 @@
+/* @bunkercoin/ui tokens: single source for wallet + explorer. Import from the app's Tailwind entry. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff;           --surface: #f7f7f6;
+  --fg: #0b0b0b;           --ink: #555555;
+  --dim: #6b6b6b;          --faint: #a8a8a8;          /* decorative only, never text a user must read */
+  --line: rgb(0 0 0 / .12);           --line-soft: rgb(0 0 0 / .065);
+  --control: #858585;                 /* input, checkbox, segmented boundaries (>=3:1) */
+  --acc: #007a55;          --acc-soft: rgb(0 154 109 / .10);
+  --acc-fill: #009a6d;                /* non-text marks only */
+  --info: #2a64c6;         --info-soft: rgb(42 100 198 / .10);
+  --danger: #d21023;       --danger-soft: rgb(210 16 35 / .10);
+  --logo: #00ffb2;                    /* brand only, never text */
+  --mark: #007a55;
+  --head: rgb(255 255 255 / .86);     --overlay: rgb(0 0 0 / .40);
+
+  --sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --mono: var(--font-geist-mono), ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  --t-balance: clamp(2.25rem, 5vw, 4rem);
+  --t-title: clamp(1.75rem, 3vw, 2.5rem);
+  --t-h2: 1.5rem;
+  --t-h3: 1.125rem;
+  --t-lead: 1.0625rem;
+  --t-body: .9375rem;
+  --t-small: .8125rem;
+  --t-data: .8125rem;
+  --t-ui: .75rem;
+  --t-label: .6875rem;
+  --t-input: 1rem;
+
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px; --s8: 64px;
+  --headh: 4rem; --gutter: clamp(1rem, 4vw, 3rem);
+  --max: 76rem; --max-wallet: 60rem; --max-form: 36rem; --max-gate: 32rem;
+  --control-h: 44px; --control-h-sm: 32px; --row-h: 52px;
+  --radius: 0;
+
+  --ease: cubic-bezier(.16, 1, .3, 1);
+  --dur: 150ms;
+  --dur-wash: 600ms;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { color-scheme: dark;
+    --bg: #090909; --surface: #111111; --fg: #f2f2f0; --ink: #a6a6a6; --dim: #8c8c8c; --faint: #575757;
+    --line: rgb(255 255 255 / .13); --line-soft: rgb(255 255 255 / .07); --control: #777777;
+    --acc: #00ffb2; --acc-fill: #00ffb2; --acc-soft: rgb(0 255 178 / .08);
+    --info: #9ec5ff; --info-soft: rgb(158 197 255 / .10); --danger: #ff4655; --danger-soft: rgb(255 70 85 / .10);
+    --mark: #00ffb2; --head: rgb(9 9 9 / .86); --overlay: rgb(0 0 0 / .65); }
+}
+:root[data-theme="dark"] { color-scheme: dark;
+  --bg: #090909; --surface: #111111; --fg: #f2f2f0; --ink: #a6a6a6; --dim: #8c8c8c; --faint: #575757;
+  --line: rgb(255 255 255 / .13); --line-soft: rgb(255 255 255 / .07); --control: #777777;
+  --acc: #00ffb2; --acc-fill: #00ffb2; --acc-soft: rgb(0 255 178 / .08);
+  --info: #9ec5ff; --info-soft: rgb(158 197 255 / .10); --danger: #ff4655; --danger-soft: rgb(255 70 85 / .10);
+  --mark: #00ffb2; --head: rgb(9 9 9 / .86); --overlay: rgb(0 0 0 / .65); }
+
+@theme inline {
+  --color-bg: var(--bg); --color-surface: var(--surface); --color-fg: var(--fg); --color-ink: var(--ink);
+  --color-dim: var(--dim); --color-faint: var(--faint); --color-line: var(--line); --color-line-soft: var(--line-soft);
+  --color-control: var(--control); --color-acc: var(--acc); --color-acc-soft: var(--acc-soft);
+  --color-acc-fill: var(--acc-fill); --color-info: var(--info); --color-info-soft: var(--info-soft); --color-logo: var(--logo);
+  --color-mark: var(--mark); --color-danger: var(--danger); --color-danger-soft: var(--danger-soft);
+  --font-sans: var(--sans); --font-mono: var(--mono);
+  --radius-xs: 0; --radius-sm: 0; --radius-md: 0; --radius-lg: 0; --radius-xl: 0; --radius-2xl: 0; --radius-3xl: 0; --radius-4xl: 0;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { background: var(--bg); color: var(--fg); font: 400 var(--t-body)/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased; scroll-padding-top: calc(var(--headh) + 1.5rem); }
+body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--fg); }
+h1, h2, h3 { text-wrap: balance; }
+code, kbd, pre, .mono { font-family: var(--mono); font-feature-settings: "liga" 0; }
+.tnum, td, .amount, .slot { font-variant-numeric: tabular-nums; }
+::selection { background: var(--fg); color: var(--bg); }
+:focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

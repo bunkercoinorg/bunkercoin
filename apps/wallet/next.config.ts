@@ -6,6 +6,7 @@ import type { NextConfig } from 'next';
 export default function config(phase: string): NextConfig {
   return {
     output: 'export',
+    transpilePackages: ['@bunkercoin/ui', '@bunkercoin/chain-format'],
     ...(phase === PHASE_DEVELOPMENT_SERVER ? { distDir: '.next-dev' } : {}),
   };
 }

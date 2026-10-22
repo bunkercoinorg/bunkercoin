@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BunkerConnection, ConfirmTimeoutError, MAX_FEE_UNITS, RpcError } from '../src/lib/connection.ts';
-import { parseJson, stringifyJson } from '../src/lib/json.ts';
+import { parseJson, stringifyJson } from '@bunkercoin/chain-format';
 
 interface RpcCall {
   id: number;
@@ -108,6 +108,51 @@ test('getTokenBalances unwraps the node {value:{pubkey,tokens}} shape', async ()
   assert.equal(tokens[0]?.ticker, 'BNKTEST');
 });
 
+test('token records carry the metadata hash and the creator as a base58 address', async () => {
+  const creatorHex = '11'.repeat(32);
+  const meta = { id: '01000000', ticker: 'RADIO', current_supply: 5, max_supply: 9, metadata_hash: 'ab'.repeat(32), creator: creatorHex };
+  const expected = {
+    id: '01000000',
+    ticker: 'RADIO',
+    currentSupply: 5n,
+    maxSupply: 9n,
+    metadataHash: 'ab'.repeat(32),
+    creator: '29d2S7vB453rNYFdR5Ycwt7y9haRT5fwVwL9zTmBhfV2',
+  };
+  const { conn, calls } = mockConnection((method) => {
+    if (method === 'getTokens') return { tokens: [meta] };
+    if (method === 'getToken') return meta;
+    return {
+      context: { slot: 1 },
+      value: {
+        pubkey: 'addr',
+        tokens: [{ token_id: '01000000', balance: 1, ticker: 'RADIO', metadata_hash: 'ab'.repeat(32), creator: creatorHex }, { token_id: '02000000', balance: 2 }],
+      },
+    };
+  });
+  assert.deepEqual(await conn.getTokens(), [expected]);
+  assert.deepEqual(await conn.getToken('01000000'), expected);
+  assert.deepEqual(calls.at(-1)?.params, ['01000000']);
+  const [held, bare] = await conn.getTokenBalances('addr');
+  assert.equal(held.metadataHash, 'ab'.repeat(32));
+  assert.equal(held.creator, expected.creator);
+  assert.equal(bare.metadataHash, null);
+  assert.equal(bare.creator, null);
+});
+
+test('getToken is null for an unknown token and rejects malformed records', async () => {
+  const { conn: missing } = mockConnection(() => new Error('token not found'));
+  assert.equal(await missing.getToken('09000000'), null);
+  const { conn: broken } = mockConnection(() => ({ id: '01000000', ticker: 'X', current_supply: 1, max_supply: 1, metadata_hash: 'AB', creator: '11'.repeat(32) }));
+  await assert.rejects(broken.getToken('01000000'), /metadata hash/);
+});
+
+test('UpdateMetadata transactions decode with their token and hash', async () => {
+  const { conn } = mockConnection(() => ({ transactions: [tx({ body: { type: 'UpdateMetadata', token_id: '01000000', metadata_hash: 'cd'.repeat(32) } })] }));
+  const [update] = await conn.getTransactions();
+  assert.deepEqual(update.body, { type: 'UpdateMetadata', tokenId: '01000000', metadataHash: 'cd'.repeat(32) });
+});
+
 test('getTokenBalances returns an array for accounts holding nothing', async () => {
   const { conn } = mockConnection(() => ({ context: { slot: 1 }, value: null }));
   assert.deepEqual(await conn.getTokenBalances('addr'), []);
@@ -186,7 +231,7 @@ test('transaction kinds and outcomes are modelled, not guessed', async () => {
     ],
   }));
   const [mint, unknown, failed, other] = await conn.getTransactions();
-  assert.deepEqual(mint.body, { type: 'Mint', ticker: 'BNK', maxSupply: 1000n });
+  assert.deepEqual(mint.body, { type: 'Mint', ticker: 'BNK', maxSupply: 1000n, metadataHash: '00'.repeat(32) });
   assert.deepEqual(mint.outcome, { kind: 'success' });
   assert.deepEqual(unknown.outcome, { kind: 'unknown' });
   assert.deepEqual(failed.outcome, { kind: 'failed', error: 'insufficient balance' });

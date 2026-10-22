@@ -6,8 +6,7 @@ export async function copyText(text: string): Promise<boolean> {
   } catch {
     const area = document.createElement('textarea');
     area.value = text;
-    area.style.position = 'fixed';
-    area.style.opacity = '0';
+    area.className = 'bc-sr';
     document.body.appendChild(area);
     area.select();
     try {

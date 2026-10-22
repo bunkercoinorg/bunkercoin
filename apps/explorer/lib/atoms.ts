@@ -1,6 +1,7 @@
 import { atom } from 'jotai';
 import { emptyChain, highestFinalized, type Applied, type ChainView } from './chain.ts';
 import type { HistoryWindow } from './history.ts';
+import type { RadioSample } from './strip.ts';
 import type { Node, RadioStats } from './types.ts';
 
 export const BLOCK_PAGE_SIZE = 20;
@@ -28,13 +29,13 @@ export const nodesAtom = atom<Node[]>([]);
 export type WsStatus = 'connecting' | 'open' | 'closed';
 export const wsStatusAtom = atom<WsStatus>('connecting');
 export const radioStatsAtom = atom<RadioStats | null>(null);
+export const radioSamplesAtom = atom<RadioSample[]>([]);
 
 export const showSkippedSlotsAtom = atom(false);
 export const displayCountAtom = atom(INITIAL_DISPLAY_COUNT);
 // Set while the list pages through history below the live window.
 export const historyAtom = atom<HistoryWindow | null>(null);
 export const historyLoadAtom = atom<{ loading: boolean; error: string | null }>({ loading: false, error: null });
-export const selectedBlockHashAtom = atom<string | null>(null);
 
 // Producers of blocks that just turned finalized; `seq` makes each batch distinct.
 export const finalizedFlashAtom = atom<{ seq: number; producers: number[] }>({ seq: 0, producers: [] });

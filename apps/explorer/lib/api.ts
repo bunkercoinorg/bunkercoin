@@ -1,7 +1,7 @@
 import { NODE_API_URL } from './config.ts';
 import { parseJson, type Json } from './json.ts';
 import { joinUrl, nodePaths } from './routes.ts';
-import { normalizeHash, normalizeSlot, normalizeTokenId } from './codec.ts';
+import { normalizeHash, normalizeSlot, normalizeTokenId } from '@bunkercoin/chain-format';
 import { resolveSearch } from './search.ts';
 import {
   asAccount,
@@ -10,7 +10,9 @@ import {
   asHolderPage,
   asNodes,
   asToken,
+  asTokens,
   asTransaction,
+  asTransactionPage,
   ShapeError,
 } from './guards.ts';
 import type {
@@ -21,6 +23,7 @@ import type {
   SearchMatch,
   TokenSummary,
   TransactionDetails,
+  TransactionPage,
 } from './types.ts';
 
 export class ApiError extends Error {
@@ -120,6 +123,11 @@ export const api = {
   getBlockById: (id: string, opts?: RequestOptions): Promise<Block | null> =>
     /^\d+$/.test(id) ? api.getBlockBySlot(id, opts) : api.getBlock(id, opts),
 
+  getTransactions: async (offset: number, limit: number, opts?: RequestOptions): Promise<TransactionPage> => {
+    const body = await expect(nodePaths.transactions(offset, limit), opts);
+    return guard(() => asTransactionPage(body));
+  },
+
   getTransaction: async (hash: string, opts?: RequestOptions): Promise<TransactionDetails | null> => {
     const key = normalizeHash(hash);
     if (key === null) return null;
@@ -136,6 +144,11 @@ export const api = {
     const key = normalizeTokenId(id);
     if (key === null) return null;
     return orNull(await request(nodePaths.token(key), opts), (b) => asToken(b));
+  },
+
+  getTokens: async (opts?: RequestOptions): Promise<TokenSummary[]> => {
+    const body = await expect(nodePaths.tokens(), opts);
+    return guard(() => asTokens(body));
   },
 
   getTokenHolders: async (

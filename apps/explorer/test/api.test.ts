@@ -76,3 +76,41 @@ test('malformed ids never reach the network', async () => {
   assert.equal(await api.getTransaction('zz'), null);
   assert.equal(urls.length, 0);
 });
+
+test('the token registry keeps creator and metadata hash', async () => {
+  respond(json(`{"tokens":[{"id":"01000000","ticker":"RADIO","current_supply":5,"max_supply":9,"metadata_hash":"${HASH}","creator":"${HASH}"}]}`));
+  const [t] = await api.getTokens();
+  assert.deepEqual(t, { id: '01000000', ticker: 'RADIO', current_supply: 5n, max_supply: 9n, creator: HASH, metadata_hash: HASH });
+  assert.ok(urls[0].endsWith('/tokens'));
+  respond(json('{"tokens":[{"id":"01000000"}]}'));
+  await rejectsWith(api.getTokens(), 'shape');
+});
+
+test('a mint body carries ticker, max supply and metadata hash', async () => {
+  respond(
+    json(
+      `{"hash":"${HASH}","sender":"${HASH}","nonce":1,"fee":100,"body":{"type":"Mint","ticker":"RADIO","max_supply":18446744073709551615,"metadata_hash":"${HASH}"},"status":{"location":"mempool"}}`,
+    ),
+  );
+  const tx = await api.getTransaction(HASH);
+  assert.deepEqual(tx?.body, { type: 'Mint', to: undefined, amount: undefined, token_id: undefined, ticker: 'RADIO', max_supply: 18446744073709551615n, metadata_hash: HASH });
+});
+
+test('the transaction feed is paged by offset and guarded', async () => {
+  respond(
+    json(
+      `{"transactions":[{"hash":"${HASH}","sender":"${HASH}","nonce":3,"fee":100,"slot":48219,"block_hash":"${HASH}","body":{"type":"Transfer","to":"${HASH}","amount":18446744073709551615},"status":{"location":"finalized","slot":48219,"block_hash":"${HASH}","success":true,"error":null}}],"total":1,"limit":50,"offset":0}`,
+    ),
+  );
+  const page = await api.getTransactions(0, 50);
+  assert.match(urls[0], /\/transactions\?offset=0&limit=50$/);
+  assert.equal(page.total, 1);
+  assert.equal(page.transactions[0].body?.amount, 18446744073709551615n);
+  assert.deepEqual(page.transactions[0].status, { location: 'finalized', slot: 48219, block_hash: HASH, executed: undefined, success: true, error: undefined });
+  respond(json('{"transactions":[{"hash":"x"}],"total":1,"limit":50,"offset":0}'));
+  await rejectsWith(api.getTransactions(0, 50), 'shape');
+  respond(json('{"transactions":[],"limit":50,"offset":0}'));
+  await rejectsWith(api.getTransactions(0, 50), 'shape');
+  respond(json('', 404));
+  await rejectsWith(api.getTransactions(0, 50), 'http', 404);
+});
