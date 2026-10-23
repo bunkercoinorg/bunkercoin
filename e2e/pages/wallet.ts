@@ -9,16 +9,16 @@ import { FINALITY_MS, formatBunker } from '../harness/rpc';
 
 const KDF_MS = 90_000;
 
-const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** CopyValue buttons carry the full value in their title: `copy <value>`. */
-async function copyTarget(scope: Locator): Promise<string> {
+export async function copyTarget(scope: Locator): Promise<string> {
   const title = await scope.locator('button[title^="copy "]').first().getAttribute('title');
   return title!.slice('copy '.length);
 }
 
 /** `<dl>` facts (receipts, tx details) as label -> value; CopyValue cells give their full value. */
-async function facts(scope: Locator): Promise<Record<string, string>> {
+export async function facts(scope: Locator): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   for (const row of await scope.locator('dl > div').all()) {
     const label = (await row.locator('dt').textContent())!.trim();

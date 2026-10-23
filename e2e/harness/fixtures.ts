@@ -1,4 +1,5 @@
 import { test as base, expect, type BrowserContext, type Page } from '@playwright/test';
+import { ExplorerPage } from '../pages/explorer';
 import { WalletPage } from '../pages/wallet';
 import { Rpc } from './rpc';
 import { LIVE } from './target';
@@ -14,6 +15,7 @@ interface Fixtures {
   rpcUrl: string;
   /** A wallet in its own browser context: separate localStorage, sessionStorage and IndexedDB. */
   openWallet: () => Promise<WalletPage>;
+  openExplorer: () => Promise<ExplorerPage>;
   /** Console errors, page errors, failed and >= 400 requests from every page the test opened. */
   diagnostics: (page: Page) => void;
 }
@@ -54,6 +56,17 @@ export const test = base.extend<Fixtures>({
       const wallet = new WalletPage(page);
       await wallet.goto();
       return wallet;
+    });
+    await Promise.all(contexts.map((c) => c.close()));
+  },
+  openExplorer: async ({ browser, diagnostics }, use) => {
+    const contexts: BrowserContext[] = [];
+    await use(async () => {
+      const context = await browser.newContext();
+      contexts.push(context);
+      const page = await context.newPage();
+      diagnostics(page);
+      return new ExplorerPage(page);
     });
     await Promise.all(contexts.map((c) => c.close()));
   },
