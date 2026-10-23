@@ -37,11 +37,20 @@ export const test = base.extend<Fixtures>({
       page.on('pageerror', (e) => seen.push(`[${at()}] pageerror: ${e.message}`));
       page.on('requestfailed', (r) => seen.push(`[${at()}] requestfailed: ${r.method()} ${r.url()} ${r.failure()?.errorText}`));
       page.on('response', async (r) => {
+        const method = /"method":"(requestAirdrop|sendTransaction)"/.exec(r.request().postData() ?? '')?.[1];
+        if (method) {
+          const reply = await r.text().catch((e) => String(e));
+          testInfo.annotations.push({ type: method, description: `${new Date().toISOString()} ${reply.slice(0, 200)}` });
+        }
         if (r.status() < 400) return;
         const body = r.request().postData()?.slice(0, 200) ?? '';
         seen.push(`[${at()}] http ${r.status()}: ${r.request().method()} ${r.url()} ${body}`);
       });
     });
+    if (LIVE) {
+      const notes = testInfo.annotations.filter((a) => a.description).map((a) => `${a.type}: ${a.description}`);
+      if (notes.length) console.log(`annotations (${testInfo.title}):\n  ${notes.join('\n  ')}`);
+    }
     if (seen.length === 0) return;
     await testInfo.attach('browser-diagnostics', { body: seen.join('\n'), contentType: 'text/plain' });
     if (LIVE) console.log(`browser diagnostics (${testInfo.title}):\n  ${seen.join('\n  ')}`);
