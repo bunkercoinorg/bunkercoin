@@ -1,3 +1,4 @@
+import { test } from '@playwright/test';
 import { LIVE } from './target';
 
 export const FEE_UNITS = 100;
@@ -79,6 +80,8 @@ export class Rpc {
 
   /** Genesis-signed airdrop; the node reuses the finalized nonce, so callers must not overlap these. */
   async fund(address: string, units: number): Promise<void> {
-    await this.waitFinalized(await this.call<string>('requestAirdrop', [address, units]));
+    const txId = await this.call<string>('requestAirdrop', [address, units]);
+    test.info().annotations.push({ type: 'airdrop', description: `${txId} -> ${address}` });
+    await this.waitFinalized(txId);
   }
 }
