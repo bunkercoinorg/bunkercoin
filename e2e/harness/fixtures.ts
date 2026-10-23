@@ -1,7 +1,7 @@
 import { test as base, expect, type BrowserContext, type Page } from '@playwright/test';
 import { ExplorerPage } from '../pages/explorer';
 import { WalletPage } from '../pages/wallet';
-import { Rpc } from './rpc';
+import { pendingAirdrops, Rpc } from './rpc';
 import { LIVE } from './target';
 
 function env(name: string): string {
@@ -18,6 +18,8 @@ interface Fixtures {
   openExplorer: () => Promise<ExplorerPage>;
   /** Console errors, page errors, failed and >= 400 requests from every page the test opened. */
   diagnostics: (page: Page) => void;
+  /** Live: waits out airdrops an earlier test left pending, so this test's airdrop gets a fresh nonce. */
+  airdropBarrier: void;
 }
 
 /** Specs that also run against the live testnet (`E2E_TARGET=live`): no fault injection, one airdrop per funded wallet. */
@@ -27,6 +29,13 @@ export const test = base.extend<Fixtures>({
   baseURL: async ({}, use) => use(env('E2E_WALLET_URL')),
   rpcUrl: async ({}, use) => use(env('E2E_RPC_URL')),
   rpc: async ({ rpcUrl }, use) => use(new Rpc(rpcUrl)),
+  airdropBarrier: [
+    async ({ rpc }, use) => {
+      if (LIVE) await rpc.settleAirdrops();
+      await use();
+    },
+    { auto: true },
+  ],
   diagnostics: async ({}, use, testInfo) => {
     const seen: string[] = [];
     await use((page) => {
@@ -40,6 +49,8 @@ export const test = base.extend<Fixtures>({
         const method = /"method":"(requestAirdrop|sendTransaction)"/.exec(r.request().postData() ?? '')?.[1];
         if (method) {
           const reply = await r.text().catch((e) => String(e));
+          const txId = /"result":"(\w+)"/.exec(reply)?.[1];
+          if (method === 'requestAirdrop' && txId) pendingAirdrops.add(txId);
           testInfo.annotations.push({ type: method, description: `${new Date().toISOString()} ${reply.slice(0, 200)}` });
         }
         if (r.status() < 400) return;
