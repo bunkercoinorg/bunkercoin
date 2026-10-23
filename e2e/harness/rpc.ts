@@ -5,8 +5,8 @@ import { LIVE } from './target';
 
 export const FEE_UNITS = 100;
 export const UNITS_PER_BUNKER = 1_000_000;
-// Live blocks land every ~10 min over radio and an airdrop waited 30 min for a slot that included it.
-export const FINALITY_MS = (LIVE ? 40 : 5) * 60_000;
+// Live blocks land every ~10-20 min over radio and a tx can sit out two or three of them before inclusion.
+export const FINALITY_MS = (LIVE ? 60 : 5) * 60_000;
 const STATUS_POLL_MS = LIVE ? 5_000 : 1_000;
 
 /** Mirrors the wallet's display format so UI text can be asserted from base units. */
@@ -30,7 +30,9 @@ const PENDING_FILE = path.resolve(import.meta.dirname, '../logs/pending-airdrops
 const readPending = (): string[] => (existsSync(PENDING_FILE) ? JSON.parse(readFileSync(PENDING_FILE, 'utf8')) : []);
 const writePending = (ids: string[]) => writeFileSync(PENDING_FILE, JSON.stringify(ids));
 export const pendingAirdrops = {
-  add: (txId: string) => writePending([...new Set([...readPending(), txId])]),
+  add: (txId: string) => {
+    if (LIVE) writePending([...new Set([...readPending(), txId])]);
+  },
   delete: (txId: string) => writePending(readPending().filter((id) => id !== txId)),
   list: readPending,
 };
@@ -95,6 +97,7 @@ export class Rpc {
 
   /** Genesis-signed airdrop; the node reuses the finalized nonce, so callers must not overlap these. */
   async fund(address: string, units: number): Promise<void> {
+    await this.settleAirdrops();
     const txId = await this.call<string>('requestAirdrop', [address, units]);
     pendingAirdrops.add(txId);
     test.info().annotations.push({ type: 'airdrop', description: `${txId} -> ${address}` });
@@ -102,7 +105,9 @@ export class Rpc {
     pendingAirdrops.delete(txId);
   }
 
+  /** Waits out every airdrop still pending from this or an earlier run (live only; the sim chain is fresh). */
   async settleAirdrops(): Promise<void> {
+    if (!LIVE) return;
     for (const txId of pendingAirdrops.list()) {
       await this.waitFinalized(txId).catch((e: Error) =>
         test.info().annotations.push({ type: 'unsettled airdrop', description: e.message }),

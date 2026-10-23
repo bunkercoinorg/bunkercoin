@@ -18,8 +18,6 @@ interface Fixtures {
   openExplorer: () => Promise<ExplorerPage>;
   /** Console errors, page errors, failed and >= 400 requests from every page the test opened. */
   diagnostics: (page: Page) => void;
-  /** Live: waits out airdrops an earlier test left pending, so this test's airdrop gets a fresh nonce. */
-  airdropBarrier: void;
 }
 
 /** Specs that also run against the live testnet (`E2E_TARGET=live`): no fault injection, one airdrop per funded wallet. */
@@ -29,22 +27,20 @@ export const test = base.extend<Fixtures>({
   baseURL: async ({}, use) => use(env('E2E_WALLET_URL')),
   rpcUrl: async ({}, use) => use(env('E2E_RPC_URL')),
   rpc: async ({ rpcUrl }, use) => use(new Rpc(rpcUrl)),
-  airdropBarrier: [
-    async ({ rpc }, use) => {
-      if (LIVE) await rpc.settleAirdrops();
-      await use();
-    },
-    { auto: true },
-  ],
   diagnostics: async ({}, use, testInfo) => {
     const seen: string[] = [];
+    let aborted = 0;
     await use((page) => {
       const at = () => new URL(page.url()).host || page.url();
       page.on('console', (m) => {
         if (m.type() === 'error' || m.type() === 'warning') seen.push(`[${at()}] console.${m.type()}: ${m.text()}`);
       });
       page.on('pageerror', (e) => seen.push(`[${at()}] pageerror: ${e.message}`));
-      page.on('requestfailed', (r) => seen.push(`[${at()}] requestfailed: ${r.method()} ${r.url()} ${r.failure()?.errorText}`));
+      page.on('requestfailed', (r) => {
+        // The wallet aborts its own polls on unmount and lock; count those, list the rest.
+        if (r.failure()?.errorText === 'net::ERR_ABORTED') aborted++;
+        else seen.push(`[${at()}] requestfailed: ${r.method()} ${r.url()} ${r.failure()?.errorText}`);
+      });
       page.on('response', async (r) => {
         const method = /"method":"(requestAirdrop|sendTransaction)"/.exec(r.request().postData() ?? '')?.[1];
         if (method) {
@@ -62,6 +58,7 @@ export const test = base.extend<Fixtures>({
       const notes = testInfo.annotations.filter((a) => a.description).map((a) => `${a.type}: ${a.description}`);
       if (notes.length) console.log(`annotations (${testInfo.title}):\n  ${notes.join('\n  ')}`);
     }
+    if (aborted) seen.push(`${aborted} aborted request(s) (net::ERR_ABORTED)`);
     if (seen.length === 0) return;
     await testInfo.attach('browser-diagnostics', { body: seen.join('\n'), contentType: 'text/plain' });
     if (LIVE) console.log(`browser diagnostics (${testInfo.title}):\n  ${seen.join('\n  ')}`);

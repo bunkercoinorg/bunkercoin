@@ -6,6 +6,7 @@ test('faucet: airdrop lands as exactly 1 BUNKER after finality', live, async ({ 
   const { address } = await wallet.createWallet(PASSWORD);
   await wallet.expectBalance(0, 60_000);
 
+  await rpc.settleAirdrops();
   await wallet.requestFaucet();
   await expect(wallet.activityRow('faucet', '+1.000000')).toContainText('confirming');
 
