@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "e2e": "export PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-$PWD/.cache/ms-playwright} && playwright install --only-shell chromium && playwright test",
+    "e2e:live": "E2E_TARGET=live bun run e2e",
     "e2e:report": "playwright show-report",
     "typecheck": "tsc --noEmit"
   },

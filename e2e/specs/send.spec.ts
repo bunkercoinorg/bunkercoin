@@ -1,7 +1,7 @@
-import { test, expect, PASSWORD } from '../harness/fixtures';
+import { test, expect, live, PASSWORD } from '../harness/fixtures';
 import { FEE_UNITS, FINALITY_MS, UNITS_PER_BUNKER } from '../harness/rpc';
 
-test('send BUNKER: sender pays amount + fee, receiver gets amount', async ({ openWallet, rpc }) => {
+test('send BUNKER: sender pays amount + fee, receiver gets amount', live, async ({ openWallet, rpc }) => {
   const sender = await openWallet();
   const receiver = await openWallet();
   const { address: from } = await sender.createWallet(PASSWORD);
@@ -47,7 +47,7 @@ test('send BUNKER: sender pays amount + fee, receiver gets amount', async ({ ope
   expect((await receiver.txDetails(receiver.activityRow('receive', '+0.250000'))).from).toBe(from);
 });
 
-test('send BUNKER: amount above balance is refused before signing', async ({ openWallet }) => {
+test('send BUNKER: amount above balance is refused before signing', live, async ({ openWallet }) => {
   const sender = await openWallet();
   const receiver = await openWallet();
   await sender.createWallet(PASSWORD);

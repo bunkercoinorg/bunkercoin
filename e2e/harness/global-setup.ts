@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Rpc } from './rpc';
 import { serveStatic } from './static-server';
+import { LIVE, LIVE_RPC_URL, LIVE_WALLET_URL } from './target';
 
 const E2E_DIR = path.resolve(import.meta.dirname, '..');
 const ROOT = path.resolve(E2E_DIR, '..');
@@ -93,8 +94,16 @@ function stopNode(node: ChildProcess): Promise<void> {
   });
 }
 
+async function liveSetup(): Promise<void> {
+  const slot = await new Rpc(LIVE_RPC_URL).getSlot();
+  if (!(slot > 0)) throw new Error(`${LIVE_RPC_URL} reports slot ${slot}; the live testnet is not finalizing`);
+  process.env.E2E_RPC_URL = LIVE_RPC_URL;
+  process.env.E2E_WALLET_URL = LIVE_WALLET_URL;
+}
+
 export default async function globalSetup() {
   mkdirSync(LOG_DIR, { recursive: true });
+  if (LIVE) return liveSetup();
   const [rpcPort, walletPort] = await Promise.all([freePort(), freePort()]);
   const rpcUrl = `http://127.0.0.1:${rpcPort}/`;
   // localhost (not 127.0.0.1): the node's CORS allowlist only admits http://localhost* origins.

@@ -1,6 +1,10 @@
+import { LIVE } from './target';
+
 export const FEE_UNITS = 100;
 export const UNITS_PER_BUNKER = 1_000_000;
-export const FINALITY_MS = 5 * 60_000;
+// The live testnet finalizes a block every 3-7 min over radio.
+export const FINALITY_MS = (LIVE ? 20 : 5) * 60_000;
+const STATUS_POLL_MS = LIVE ? 5_000 : 1_000;
 
 /** Mirrors the wallet's display format so UI text can be asserted from base units. */
 export function formatBunker(units: number): string {
@@ -68,7 +72,7 @@ export class Rpc {
       const status = value[0];
       if (status?.err) throw new Error(`${txId} failed: ${JSON.stringify(status.err)}`);
       if (status?.confirmationStatus === 'finalized') return;
-      await new Promise((r) => setTimeout(r, 1_000));
+      await new Promise((r) => setTimeout(r, STATUS_POLL_MS));
     }
     throw new Error(`${txId} not finalized within ${timeoutMs}ms`);
   }
