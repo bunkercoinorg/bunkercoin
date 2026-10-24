@@ -110,6 +110,10 @@ jobs:
           branch="sync/bunkercoin-${SOURCE_PR:-$SHORT}"
           git switch -q -c "$branch" origin/main
           git apply --3way --index "$RUNNER_TEMP/sync.patch"
+          if git diff --cached --quiet; then
+            echo "bunker_coin already has this change."
+            exit 0
+          fi
           git commit -q --author "$AUTHOR" -F "$RUNNER_TEMP/message"
           git push -q --force origin "$branch"
           source="${{ github.server_url }}/${{ github.repository }}/commit/$AFTER"
