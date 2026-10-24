@@ -24,6 +24,7 @@ jobs:
       contents: read
       actions: write
       pull-requests: write
+      packages: read
     uses: LedgerHQ/ledger-app-workflows/.github/workflows/reusable_build.yml@v1
     with:
       upload_app_binaries_artifact: ledger-binaries
@@ -64,6 +65,9 @@ jobs:
 
   coding-style:
     name: C coding style
+    permissions:
+      contents: read
+      packages: read
     uses: LedgerHQ/ledger-app-workflows/.github/workflows/reusable_lint.yml@v1
     with:
       source: ledger/src
