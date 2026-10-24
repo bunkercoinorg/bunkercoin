@@ -21,7 +21,7 @@ import {
   type NoncePlan,
   type Submission,
 } from '@/lib/submit';
-import { cadenceHint, nativeSpendable, spendableTokens, type Spendable } from '@/lib/inflight';
+import { cadenceHint, fetchSnapshot, nativeSpendable, revalidate, spendableTokens, type Spendable } from '@/lib/inflight';
 import { connectionStatus, initialFreshness, type Freshness, type FreshnessMap, type Resource } from '@/lib/freshness';
 import type { Inflight } from '@/hooks/useInflight';
 import type { Signer } from '@/lib/signer';
@@ -49,8 +49,15 @@ export interface SubmitResult {
   tracked: boolean;
 }
 
-/** Signs with the next reconciled nonce and broadcasts, one per account at a time; refuses while one is unacknowledged. */
-export type SubmitSigned = (build: (nonce: bigint) => SignedTransaction, info: Submission) => Promise<SubmitResult>;
+/**
+ * Signs with the next reconciled nonce and broadcasts, one per account at a time; refuses while one is unacknowledged,
+ * or when funds or a duplicate changed since review. `duplicateOk`: the in-flight tx the user approved sending again.
+ */
+export type SubmitSigned = (
+  build: (nonce: bigint) => SignedTransaction,
+  info: Submission,
+  duplicateOk?: string | null,
+) => Promise<SubmitResult>;
 
 /** What every view reads from the account. */
 export interface WalletState {
@@ -138,16 +145,24 @@ export default function Dashboard({ signer, inflight, onLock, onWalletRemoved, a
   const life = useRef<AbortController | null>(null);
   const historyWant = useRef(HISTORY_STEP);
   const [, tick] = useState(0);
+  const committed = useRef({ balance, tokens });
+  committed.current = { balance, tokens };
 
   // Only the newest request per resource may write state; slower, older answers are dropped. Resolves false on failure.
   const load = useCallback(
-    <T,>(name: Resource, fetch: (signal: AbortSignal) => Promise<T>, onValue: (v: T) => void): Promise<boolean> => {
+    <T,>(names: Resource | Resource[], fetch: (signal: AbortSignal) => Promise<T>, onValue: (v: T) => void): Promise<boolean> => {
       const signal = life.current?.signal;
       if (!signal || signal.aborted) return Promise.resolve(false);
+      const all = typeof names === 'string' ? [names] : names;
+      const name = all[0];
       const id = (latest.current[name] ?? 0) + 1;
       latest.current[name] = id;
       const mark = (f: Freshness | ((prev: Freshness) => Freshness)) =>
-        setFresh((m) => ({ ...m, [name]: typeof f === 'function' ? f(m[name]) : f }));
+        setFresh((m) => {
+          const next = { ...m };
+          for (const n of all) next[n] = typeof f === 'function' ? f(m[n]) : f;
+          return next;
+        });
       return fetch(signal).then(
         (v) => {
           if (latest.current[name] !== id || signal.aborted) return true;
@@ -209,16 +224,36 @@ export default function Dashboard({ signer, inflight, onLock, onWalletRemoved, a
     );
   }, [conn]);
 
+  // Balances and settled transfers commit together, so a finalized send stops holding funds in the same update that
+  // first shows a balance fetched after it.
+  const { entries, markFinal, reconcile, durable } = inflight;
+  const loadBalances = useCallback(
+    () =>
+      load(
+        ['balance', 'tokens'],
+        async (signal) => {
+          const snap = await fetchSnapshot({
+            fetch: () => Promise.all([conn.getBalance(address, { signal }), conn.getTokenBalances(address, { signal })]),
+            entries,
+            statuses: (ids) => conn.getSignatureStatuses(ids, { signal }),
+            finalize: markFinal,
+          });
+          if (snap === null) throw new Error('Balances kept changing while transfers finalized; retrying shortly.');
+          return snap;
+        },
+        ({ value: [b, t], at }) => {
+          setBalance(b);
+          setTokens(t);
+          reconcile(at);
+        },
+      ),
+    [conn, address, load, entries, markFinal, reconcile],
+  );
+
   const refresh = useCallback(async () => {
     loadRegistry();
-    await Promise.all([
-      load('balance', (signal) => conn.getBalance(address, { signal }), setBalance),
-      load('tokens', (signal) => conn.getTokenBalances(address, { signal }), setTokens),
-      load('slot', (signal) => conn.getSlot({ signal }), setSlot),
-      loadFee(),
-      loadHistory(),
-    ]);
-  }, [conn, address, load, loadFee, loadHistory, loadRegistry]);
+    await Promise.all([loadBalances(), load('slot', (signal) => conn.getSlot({ signal }), setSlot), loadFee(), loadHistory()]);
+  }, [conn, load, loadBalances, loadFee, loadHistory, loadRegistry]);
 
   // Polling while visible; a transfer settling (tracked above the lock) refreshes balances too.
   useEffect(() => {
@@ -243,9 +278,12 @@ export default function Dashboard({ signer, inflight, onLock, onWalletRemoved, a
   }, [refresh, inflight.onSettled]);
 
   const submit: SubmitSigned = useCallback(
-    (build, info) =>
+    (build, info, duplicateOk = null) =>
       withAccountLock(address, () => {
         signer.assertActive();
+        const { balance: b, tokens: t } = committed.current;
+        const problem = revalidate(info, b, t, durable(), duplicateOk);
+        if (problem) throw new Error(problem);
         return submitTransaction(
           account,
           (nonce) => {
@@ -255,7 +293,7 @@ export default function Dashboard({ signer, inflight, onLock, onWalletRemoved, a
           info,
         );
       }),
-    [address, signer, account],
+    [address, signer, account, durable],
   );
 
   const previewNonce = useCallback(

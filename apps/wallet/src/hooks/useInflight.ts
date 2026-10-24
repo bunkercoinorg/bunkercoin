@@ -2,19 +2,20 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObjec
 import { base58ToBytes } from '@bunkercoin/chain-format';
 import { ConfirmCancelledError, ConfirmTimeoutError, TxFailedError, type BunkerConnection, type SignatureStatus } from '@/lib/connection';
 import { toHex } from '@/lib/keys';
-import { blockIntervals, isInflight, phaseOf, settledText } from '@/lib/inflight';
+import { blockIntervals, dropReflected, isInflight, mergeStored, phaseOf, settledText } from '@/lib/inflight';
 import { notify } from '@/lib/notify';
 import {
   addEntry,
+  finalizeEntry,
   loadPending,
   loadReservations,
   migrateLegacyPending,
   mutatePending,
   mutateReservations,
   patchEntry,
+  pendingKey,
   phaseEntry,
   releaseReservations,
-  removeEntry,
   transitionEntry,
   type PendingTx,
   type Reservation,
@@ -56,6 +57,14 @@ export interface Inflight {
   stopTracking: (txId: string) => void;
   record: (txId: string, info: Submission) => Promise<{ txId: string; tracked: boolean }>;
   promoteOnFinal: (txId: string, hash: string) => void;
+  /** The list as it is at call time, for a balance snapshot's settlement check. */
+  entries: () => PendingTx[];
+  /** Marks them finalized at `at`; they keep holding funds until `reconcile` passes a later fetch. */
+  markFinal: (txIds: string[], at: number) => void;
+  /** Call in the same update that commits a balance fetched at `at`. */
+  reconcile: (at: number) => void;
+  /** Storage merged with this tab's unreconciled holds: what a submission revalidates against. */
+  durable: () => PendingTx[];
   /** Set by the unlocked view so a settled transfer refreshes balances. */
   onSettled: MutableRefObject<(() => void) | null>;
 }
@@ -77,6 +86,23 @@ export function useInflight(conn: BunkerConnection, address: string | null): Inf
   const onSettled = useRef<(() => void) | null>(null);
   const openCount = useRef(0);
   openCount.current = pending.filter(isInflight).length;
+  const current = useRef(pending);
+  current.current = pending;
+  const persisted = useRef(new Set<string>());
+  const reconciledAt = useRef(0);
+
+  const stored = useCallback(() => {
+    if (!address) return [];
+    const list = loadPending(chain, address);
+    list.forEach((p) => persisted.current.add(p.txId));
+    return list;
+  }, [chain, address]);
+
+  const resync = useCallback(() => {
+    const list = stored();
+    const now = Date.now();
+    setPending((local) => mergeStored(list, local, persisted.current, reconciledAt.current, now));
+  }, [stored]);
 
   const apply = useCallback(
     (op: (list: PendingTx[]) => PendingTx[]) => {
@@ -84,10 +110,38 @@ export function useInflight(conn: BunkerConnection, address: string | null): Inf
       setPending(op);
       return mutatePending(chain, address, op).then((ok) => {
         if (!ok) setTrackingLost(true);
+        else resync();
         return ok;
       });
     },
-    [chain, address],
+    [chain, address, resync],
+  );
+
+  const markFinal = useCallback(
+    (txIds: string[], at: number) => {
+      setFinalized((m) => {
+        const next = new Map(m);
+        txIds.forEach((id) => next.has(id) || next.set(id, at));
+        return next;
+      });
+      void apply(finalizeEntry(txIds, at));
+    },
+    [apply],
+  );
+
+  const reconcile = useCallback(
+    (at: number) => {
+      reconciledAt.current = Math.max(reconciledAt.current, at);
+      void apply(dropReflected(at));
+    },
+    [apply],
+  );
+
+  const entries = useCallback(() => current.current, []);
+
+  const durable = useCallback(
+    () => mergeStored(stored(), current.current, persisted.current, reconciledAt.current, Date.now()),
+    [stored],
   );
 
   const reserve = useCallback(
@@ -147,13 +201,12 @@ export function useInflight(conn: BunkerConnection, address: string | null): Inf
             entry.txId,
             slow ? { signal, onStatus, pollMs: SLOW_POLL_MS, timeoutMs: Infinity } : { signal, onStatus },
           );
-          setFinalized((m) => new Map(m).set(entry.txId, Date.now()));
+          markFinal([entry.txId], Date.now());
           const hash = promotions.current.get(entry.txId);
           if (hash) {
             promotions.current.delete(entry.txId);
             void promoteMetadata(hash);
           }
-          void apply(removeEntry(entry.txId));
           release();
           settled(entry, null);
           return;
@@ -172,7 +225,7 @@ export function useInflight(conn: BunkerConnection, address: string | null): Inf
         }
       }
     },
-    [conn, apply, reserve, settled],
+    [conn, apply, reserve, settled, markFinal],
   );
 
   const stopTracking = useCallback((txId: string) => {
@@ -200,7 +253,9 @@ export function useInflight(conn: BunkerConnection, address: string | null): Inf
     const ctrl = new AbortController();
     life.current = ctrl;
     const map = trackers.current;
-    setPending(loadPending(chain, address));
+    persisted.current = new Set();
+    reconciledAt.current = 0;
+    setPending(stored());
     const intervalsKnown = { current: false };
     const cadence = () => {
       if (openCount.current === 0 && intervalsKnown.current) return;
@@ -217,17 +272,22 @@ export function useInflight(conn: BunkerConnection, address: string | null): Inf
     const poll = setInterval(() => document.visibilityState === 'visible' && cadence(), CADENCE_POLL_MS);
     void migrateLegacyPending(chain, address).then(() => {
       if (ctrl.signal.aborted) return;
-      const list = loadPending(chain, address);
+      const list = stored();
       setPending((prev) => [...prev.filter((p) => !list.some((l) => l.txId === p.txId)), ...list]);
-      list.filter((p) => p.state !== 'failed').forEach(startTracking);
+      list.filter((p) => p.state !== 'failed' && p.finalizedAt === undefined).forEach(startTracking);
     });
+    // Another tab's sends and settlements change what is spendable and what counts as a duplicate here.
+    const key = pendingKey(chain, address);
+    const onStorage = (e: StorageEvent) => (e.key === null || e.key === key) && resync();
+    window.addEventListener('storage', onStorage);
     return () => {
       ctrl.abort();
       map.clear();
       life.current = null;
       clearInterval(poll);
+      window.removeEventListener('storage', onStorage);
     };
-  }, [conn, chain, address, startTracking]);
+  }, [conn, chain, address, startTracking, stored, resync]);
 
   const record = useCallback(
     async (txId: string, info: Submission) => {
@@ -277,6 +337,10 @@ export function useInflight(conn: BunkerConnection, address: string | null): Inf
     stopTracking,
     record,
     promoteOnFinal,
+    entries,
+    markFinal,
+    reconcile,
+    durable,
     onSettled,
   };
 }

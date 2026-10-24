@@ -35,6 +35,8 @@ export interface PendingTx {
   error?: string;
   /** A `failed` entry the chain executed and failed (fee and nonce spent), as opposed to a broadcast the node refused. */
   executed?: true;
+  /** When it was seen finalized. It keeps holding its funds until a balance fetched after this is committed. */
+  finalizedAt?: number;
 }
 
 /** A signed nonce that may still execute. Kept apart from Activity so dismissing or trimming never frees it. */
@@ -82,6 +84,7 @@ function decode(v: unknown): PendingTx | null {
     ...(PHASES.includes(e.phase as PendingPhase) ? { phase: e.phase as PendingPhase } : {}),
     ...(typeof e.error === 'string' ? { error: e.error } : {}),
     ...(e.executed === true ? { executed: true as const } : {}),
+    ...(typeof e.finalizedAt === 'number' ? { finalizedAt: e.finalizedAt } : {}),
   };
 }
 
@@ -169,6 +172,10 @@ export const transitionEntry = (txId: string, from: PendingState, to: PendingSta
 /** Records a newer node placement on a still-open entry; settled entries keep what they had. */
 export const phaseEntry = (txId: string, phase: PendingPhase) => (list: PendingTx[]) =>
   list.map((p) => (p.txId === txId && p.state !== 'failed' && p.phase !== phase ? { ...p, phase } : p));
+
+/** Settled on chain; the first sighting wins so the hold never moves later. */
+export const finalizeEntry = (txIds: string[], at: number) => (list: PendingTx[]) =>
+  list.map((p) => (txIds.includes(p.txId) && p.state !== 'failed' && p.finalizedAt === undefined ? { ...p, finalizedAt: at } : p));
 
 export const removeEntry = (txId: string) => (list: PendingTx[]) => list.filter((p) => p.txId !== txId);
 

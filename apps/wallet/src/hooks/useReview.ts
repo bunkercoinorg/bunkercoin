@@ -45,7 +45,7 @@ export function useReview(state: WalletState, actions: WalletActions, fee: bigin
   }, [fee, state.fresh.fee.okAt, loadPlan]);
 
   const sign = useCallback(
-    async (build: (nonce: bigint, fee: bigint) => SignedTransaction, info: Submission): Promise<SignResult> => {
+    async (build: (nonce: bigint, fee: bigint) => SignedTransaction, info: Submission, duplicateOk: string | null = null): Promise<SignResult> => {
       if (!reviewed || !plan) return { kind: 'stopped', message: 'The review is not ready yet.' };
       let current: bigint;
       try {
@@ -68,7 +68,7 @@ export function useReview(state: WalletState, actions: WalletActions, fee: bigin
           signedMs = performance.now() - t0;
           signedAt = performance.now();
           return tx;
-        }, { ...info, fee: current });
+        }, { ...info, fee: current }, duplicateOk);
         return { kind: 'broadcast', sent: { txId, tracked, signedMs, acceptedMs: performance.now() - signedAt, acceptedAt: Date.now() } };
       } catch (e) {
         if (e instanceof BroadcastUncertainError) {

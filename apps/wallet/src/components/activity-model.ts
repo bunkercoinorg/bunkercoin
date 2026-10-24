@@ -41,7 +41,7 @@ export function tickerMap(tokens: TokenBalance[], registry: TokenMeta[] | null):
 export const isOpen = (s: ItemStatus) => s === 'pending' || s === 'unconfirmed' || s === 'uncertain';
 
 export function fromPending(p: PendingTx): ActivityItem {
-  const status: ItemStatus = p.state === 'failed' && p.executed ? 'final-failed' : p.state;
+  const status: ItemStatus = p.finalizedAt !== undefined ? 'final' : p.state === 'failed' && p.executed ? 'final-failed' : p.state;
   const base = {
     id: p.txId,
     status,

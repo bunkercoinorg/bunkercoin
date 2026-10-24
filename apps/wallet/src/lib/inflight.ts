@@ -2,9 +2,82 @@ import { formatUnits, NATIVE_SCALE, shortId } from '@bunkercoin/chain-format';
 import type { SignatureStatus, TokenBalance } from './connection.ts';
 import { sameAddress } from './keys.ts';
 import type { PendingPhase, PendingTx } from './pending.ts';
+import type { Submission } from './submit.ts';
 
 /** Signed or requested by this wallet and not settled yet: it may still move funds. */
-export const isInflight = (p: PendingTx) => p.state === 'pending' || p.state === 'unconfirmed' || p.state === 'uncertain';
+export const isInflight = (p: PendingTx) =>
+  p.finalizedAt === undefined && (p.state === 'pending' || p.state === 'unconfirmed' || p.state === 'uncertain');
+
+/** In flight, or finalized but not yet reflected in a committed balance: either way its funds are spoken for. */
+export const holdsFunds = (p: PendingTx) => isInflight(p) || (p.finalizedAt !== undefined && p.state !== 'failed');
+
+/** A balance whose fetch began at `at` already includes this entry's effect. */
+export const reflectedIn = (p: PendingTx, at: number) => p.finalizedAt !== undefined && p.finalizedAt < at;
+
+/** Drops what a committed balance fetched at `at` already reflects; apply in the same update as that balance. */
+export const dropReflected = (at: number) => (list: PendingTx[]) => list.filter((p) => !reflectedIn(p, at));
+
+export interface Snapshot<T> {
+  value: T;
+  /** When the fetch began. */
+  at: number;
+}
+
+export interface SnapshotDeps<T> {
+  fetch: () => Promise<T>;
+  /** The tab's entries as they are now. */
+  entries: () => PendingTx[];
+  statuses: (txIds: string[]) => Promise<(SignatureStatus | null)[]>;
+  /** Records them as finalized at `at`, which is after the fetch that may or may not include them. */
+  finalize: (txIds: string[], at: number) => unknown;
+  now?: () => number;
+  tries?: number;
+}
+
+/**
+ * Balances read as one snapshot against settlement. An entry that finalized while the fetch ran, seen by a tracker or
+ * by the status check here, may or may not be in it, so the fetch is repeated; null when every try spanned one.
+ */
+export async function fetchSnapshot<T>({ fetch, entries, statuses, finalize, now = Date.now, tries = 3 }: SnapshotDeps<T>): Promise<Snapshot<T> | null> {
+  const settled = new Set<string>();
+  for (let i = 0; i < tries; i++) {
+    const at = now();
+    const value = await fetch();
+    const list = entries();
+    if (list.some((p) => p.finalizedAt !== undefined && p.finalizedAt >= at)) continue;
+    const ids = list.filter((p) => isInflight(p) && !settled.has(p.txId)).map((p) => p.txId);
+    if (ids.length === 0) return { value, at };
+    const st = await statuses(ids);
+    const done = ids.filter((_, j) => st[j]?.confirmationStatus === 'finalized' && st[j]!.err === null);
+    if (done.length === 0) return { value, at };
+    done.forEach((id) => settled.add(id));
+    finalize(done, now());
+  }
+  return null;
+}
+
+/**
+ * This tab's list rebuilt from storage after another tab (or this one) wrote it. Stored entries win, keeping a
+ * finalization this tab saw first. One this tab had persisted that left storage still holds its funds here until this
+ * tab commits a balance fetched after it went; entries never persisted yet are a write in progress and stay as they are.
+ */
+export function mergeStored(stored: PendingTx[], local: PendingTx[], persisted: ReadonlySet<string>, reconciledAt: number, now: number): PendingTx[] {
+  const byId = new Map(local.map((p) => [p.txId, p]));
+  const ids = new Set(stored.map((p) => p.txId));
+  const out = stored.map((s) => {
+    const l = byId.get(s.txId);
+    return s.finalizedAt === undefined && l?.finalizedAt !== undefined ? { ...s, finalizedAt: l.finalizedAt } : s;
+  });
+  for (const l of local) {
+    if (ids.has(l.txId)) continue;
+    if (!persisted.has(l.txId)) out.push(l);
+    else if (holdsFunds(l)) {
+      const held = l.finalizedAt === undefined ? { ...l, finalizedAt: now } : l;
+      if (!reflectedIn(held, reconciledAt)) out.push(held);
+    }
+  }
+  return out;
+}
 
 /**
  * Display phase from the node's answers. `processed` is never trusted: the node reports mempool entries that way at
@@ -39,7 +112,7 @@ export function nativeSpendable(balance: bigint | null, pending: PendingTx[]): S
   let out = 0n;
   let inc = 0n;
   for (const p of pending) {
-    if (!isInflight(p)) continue;
+    if (!holdsFunds(p)) continue;
     if (p.kind === 'faucet') inc += p.amount;
     else out += (p.kind === 'send' ? p.amount : 0n) + (p.fee ?? 0n);
   }
@@ -50,7 +123,7 @@ export function nativeSpendable(balance: bigint | null, pending: PendingTx[]): S
 export function tokenPendingOut(pending: PendingTx[]): Map<string, bigint> {
   const m = new Map<string, bigint>();
   for (const p of pending) {
-    if (p.kind === 'token-send' && p.tokenId && isInflight(p)) m.set(p.tokenId, (m.get(p.tokenId) ?? 0n) + p.amount);
+    if (p.kind === 'token-send' && p.tokenId && holdsFunds(p)) m.set(p.tokenId, (m.get(p.tokenId) ?? 0n) + p.amount);
   }
   return m;
 }
@@ -81,6 +154,30 @@ export function findDuplicate(pending: PendingTx[], intent: SendIntent): Pending
         (intent.kind === 'send' || p.tokenId === intent.tokenId),
     ) ?? null
   );
+}
+
+const intentOf = (info: Submission): SendIntent | null =>
+  (info.kind === 'send' || info.kind === 'token-send') && info.to !== undefined
+    ? { kind: info.kind, to: info.to, amount: info.amount, ...(info.tokenId ? { tokenId: info.tokenId } : {}) }
+    : null;
+
+/**
+ * Re-checked under the submission lock against durable entries, right before signing: another tab may have spent the
+ * funds or sent the same thing since review. `duplicateOk` is the in-flight tx the user approved sending again; '' if fine.
+ */
+export function revalidate(info: Submission, balance: bigint | null, tokens: TokenBalance[], entries: PendingTx[], duplicateOk: string | null): string {
+  const native = nativeSpendable(balance, entries).available;
+  const fee = info.fee ?? 0n;
+  const spent = 'Another transfer spent these funds since review. Review again.';
+  if (native !== null && (info.kind === 'send' ? info.amount : 0n) + fee > native) return spent;
+  if (info.kind === 'token-send' && info.tokenId) {
+    const t = spendableTokens(tokens, entries).find((x) => x.tokenId === info.tokenId);
+    if (t && info.amount > t.balance) return spent;
+  }
+  const intent = intentOf(info);
+  const dup = intent && findDuplicate(entries, intent);
+  if (dup && dup.txId !== duplicateOk) return `A matching send (${shortId(dup.txId)}) started since review. Review again.`;
+  return '';
 }
 
 /** `<1 min`, `3 min`, `2 h`. */
