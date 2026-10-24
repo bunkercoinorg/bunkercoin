@@ -5,6 +5,7 @@ import { shortId } from '@bunkercoin/chain-format';
 import { Actions, Button, Checkbox, CopyValue, Dialog, Facts, FlowBar, Segmented, SettingsList } from '@bunkercoin/ui';
 import { RPC_URL } from '@/lib/connection';
 import { AUTO_LOCK_OPTIONS, type AutoLockMinutes } from '@/lib/session';
+import { enableNotify, notificationsSupported, notifyEnabled, saveNotify } from '@/lib/notify';
 import RecoveryPhrase from '@/components/RecoveryPhrase';
 
 export interface SettingsProps {
@@ -37,6 +38,22 @@ export default function Settings({ address, autoLockMinutes, onAutoLockChange, r
   const [erasing, setErasing] = useState(false);
   const [hasWords, setHasWords] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [notifyOn, setNotifyOn] = useState(false);
+  const [notifyNote, setNotifyNote] = useState('');
+  useEffect(() => setNotifyOn(notifyEnabled()), []);
+
+  // The browser is asked only from this tap; never on load.
+  const toggleNotify = async () => {
+    if (notifyOn) {
+      saveNotify(false);
+      setNotifyOn(false);
+      return;
+    }
+    if (!notificationsSupported()) return setNotifyNote('This browser has no notifications.');
+    const on = await enableNotify();
+    setNotifyOn(on);
+    setNotifyNote(on ? '' : 'Notifications are blocked for this site in the browser.');
+  };
 
   useEffect(() => {
     const sync = () => setView(viewFromHash(window.location.hash));
@@ -74,7 +91,9 @@ export default function Settings({ address, autoLockMinutes, onAutoLockChange, r
           value={String(autoLockMinutes)}
           onChange={(v) => onAutoLockChange(Number(v) as AutoLockMinutes)}
         />
-        <p className="bc-hint mono">Locks after {autoLockMinutes} min without a tap or key.</p>
+        <p className="bc-hint mono">
+          Locks after {autoLockMinutes} min without a tap or key. Transfers keep being tracked while locked.
+        </p>
       </div>
     );
   }
@@ -96,9 +115,11 @@ export default function Settings({ address, autoLockMinutes, onAutoLockChange, r
           { label: 'recovery phrase', value: 'password', onClick: () => go('phrase') },
           { label: 'auto-lock', value: `${autoLockMinutes} min`, onClick: () => go('auto-lock') },
           { label: 'network', value: rpcHost, onClick: () => go('network') },
+          { label: 'notify when a transfer settles', value: notifyOn ? 'on' : 'off', onClick: () => void toggleNotify() },
           { label: 'erase wallet', danger: true, onClick: () => setErasing(true) },
         ]}
       />
+      {notifyNote && <p className="bc-hint mono">{notifyNote}</p>}
       <p className="bc-hint mono">Keys stay in this browser.</p>
       <Dialog
         open={erasing}
