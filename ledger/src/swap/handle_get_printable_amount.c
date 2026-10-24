@@ -23,7 +23,7 @@
  *   char printable_amount[MAX_PRINTABLE_AMOUNT_SIZE];
  * } get_printable_amount_parameters_t;
  */
-void swap_handle_get_printable_amount(get_printable_amount_parameters_t* params) {
+void swap_handle_get_printable_amount(get_printable_amount_parameters_t *params) {
     PRINTF("Inside swap_handle_get_printable_amount\n");
 
     PRINTF("Amount: %.*H\n", params->amount_length, params->amount);

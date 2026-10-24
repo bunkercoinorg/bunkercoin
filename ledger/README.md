@@ -6,6 +6,46 @@
 
 App for Ledger, enabling users to store BunkerCoin on Ledger devices.
 
+## Monorepo CI
+
+The active workflow is [`.github/workflows/ledger.yml`](../.github/workflows/ledger.yml).
+It runs on Ledger changes in pull requests and pushes to `main`, and can also be
+started manually. It builds Nano X, Nano S Plus, Stax and Flex, runs standalone
+Ragger tests on Speculos for Nano S Plus and Stax, and checks C unit tests, C
+formatting, spelling, Python client lint/types, CodeQL and Doxygen documentation.
+
+LedgerHQ's reusable build, Ragger and formatting workflows read the
+[root manifest](../ledger_app.toml). Its `app.build_directory = "ledger/"` routes
+builds into this application, while its test directories are relative to the
+monorepo root. Keep its devices and test metadata synchronized with the local
+[`ledger_app.toml`](ledger_app.toml), which remains usable from this directory.
+Upstream resolves the manifest in
+[`_get_app_metadata.yml`, lines 54–55 and 81–105](https://github.com/LedgerHQ/ledger-app-workflows/blob/v1/.github/workflows/_get_app_metadata.yml#L54-L105),
+builds in that directory in
+[`reusable_build.yml`, lines 176–178](https://github.com/LedgerHQ/ledger-app-workflows/blob/v1/.github/workflows/reusable_build.yml#L176-L178),
+and restores Ragger binaries under that directory in
+[`reusable_ragger_tests.yml`, lines 220–236](https://github.com/LedgerHQ/ledger-app-workflows/blob/v1/.github/workflows/reusable_ragger_tests.yml#L220-L236).
+Unit tests, documentation and CodeQL use the official `ledger-app-dev-tools`
+container with an explicit working directory under `ledger/`.
+
+The following parts of the standalone CI have not been enabled here:
+
+- The guidelines enforcer has no app-directory input and also dispatches
+  repository-level README/changelog checks; see
+  [`reusable_guidelines_enforcer.yml`, lines 104–119](https://github.com/LedgerHQ/ledger-app-workflows/blob/v1/.github/workflows/reusable_guidelines_enforcer.yml#L104-L119).
+- ClusterFuzzLite is omitted rather than adding push/PR fuzzing. Although its
+  build action exposes `project-src-path`, its GitHub backend clones the whole
+  repository and resolves `.clusterfuzzlite` under that checkout; see
+  [`continuous_integration.py`, lines 88–94 and 323–336](https://github.com/google/oss-fuzz/blob/master/infra/cifuzz/continuous_integration.py#L323-L336).
+  The existing Dockerfile/build script expect `ledger/` as the build context.
+- Swap integration tests and automatic snapshot-update PRs are not enabled;
+  the standalone Ragger suite provides the functional test coverage for this
+  migration. Codecov uploads are also not configured.
+
+The original `ledger/.github/workflows/` directory is retained because these
+workflows have not all been replaced. GitHub does not execute that nested
+directory in this monorepo.
+
 ## Quickstart guide
 
 ### With VSCode

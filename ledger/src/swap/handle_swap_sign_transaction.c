@@ -21,7 +21,7 @@ typedef struct swap_validated_s {
 /* Global variable used to store swap validation status */
 static swap_validated_t G_swap_validated;
 
-bool swap_copy_transaction_parameters(create_transaction_parameters_t* params) {
+bool swap_copy_transaction_parameters(create_transaction_parameters_t *params) {
     PRINTF("Inside swap_copy_transaction_parameters %s\n", params->destination_address);
 
     if (params->destination_address == NULL) {
@@ -83,7 +83,7 @@ bool swap_copy_transaction_parameters(create_transaction_parameters_t* params) {
 }
 
 /* Check if the Tx to sign have the same parameters as the ones previously validated */
-bool swap_check_validity(uint64_t amount, uint64_t fee, const uint8_t* destination) {
+bool swap_check_validity(uint64_t amount, uint64_t fee, const uint8_t *destination) {
     PRINTF("Inside swap_check_validity\n");
 
     if (!G_swap_validated.initialized) {

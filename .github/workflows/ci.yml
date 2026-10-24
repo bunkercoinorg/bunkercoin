@@ -3,10 +3,10 @@ name: CI
 on:
   push:
     branches: [main]
-    paths-ignore: ["apps/**", "ledger/**", "e2e/**", "package.json", "bun.lock", ".github/workflows/e2e.yml"]
+    paths-ignore: ["apps/**", "ledger/**", "ledger_app.toml", ".github/workflows/ledger*.yml", "e2e/**", "package.json", "bun.lock", ".github/workflows/e2e.yml"]
   pull_request:
     branches: [main]
-    paths-ignore: ["apps/**", "ledger/**", "e2e/**", "package.json", "bun.lock", ".github/workflows/e2e.yml"]
+    paths-ignore: ["apps/**", "ledger/**", "ledger_app.toml", ".github/workflows/ledger*.yml", "e2e/**", "package.json", "bun.lock", ".github/workflows/e2e.yml"]
 
 env:
   CARGO_TERM_COLOR: always

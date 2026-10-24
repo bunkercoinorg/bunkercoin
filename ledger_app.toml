@@ -1,0 +1,21 @@
+# CI entry point for LedgerHQ's reusable workflows, which require this file at
+# the repository root. Keep devices and test metadata in sync with
+# ledger/ledger_app.toml; paths here are relative to the monorepo root.
+[app]
+build_directory = "ledger/"
+sdk = "C"
+devices = ["nanox", "nanos+", "stax", "flex"]
+
+[unit_tests]
+directory = "ledger/unit-tests/"
+
+[pytest.standalone]
+directory = "ledger/tests/standalone/"
+
+[pytest.swap]
+directory = "ledger/tests/swap/"
+[pytest.swap.dependencies]
+testing_with_latest = [
+    {url = "https://github.com/LedgerHQ/app-exchange", ref = "develop", use_case = "dbg_use_test_keys"},
+    {url = "https://github.com/LedgerHQ/app-ethereum", ref = "develop", use_case = "use_test_keys"},
+]
