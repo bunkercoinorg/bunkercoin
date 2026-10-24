@@ -391,6 +391,21 @@ export class BunkerConnection {
     return u64('getSlot', await this.rpc('getSlot', [], opts), 'slot');
   }
 
+  /** Finalization instants (epoch ms) of recent finalized blocks; skips and undated blocks are left out. */
+  async getBlockTimes(limit = 20, opts?: RequestOptions): Promise<number[]> {
+    const m = 'getBlocks';
+    const res = await this.rpc(m, [limit, 0], opts);
+    const list = Array.isArray(res) ? res : isObject(res) && Array.isArray(res.blocks) ? res.blocks : null;
+    if (list === null) throw bad(m, 'block list');
+    return list.flatMap((b) => {
+      if (!isObject(b) || b.type !== 'block' || b.status !== 'finalized') return [];
+      const t = b.finalized_timestamp;
+      const n = typeof t === 'bigint' ? Number(t) : typeof t === 'number' ? t : 0;
+      if (!(n > 0)) return [];
+      return [n < 1e12 ? n * 1000 : n];
+    });
+  }
+
   /** Global newest-first page; the node has no per-account filter. */
   async getTransactions(limit = HISTORY_PAGE, offset = 0, opts?: RequestOptions): Promise<ChainTransaction[]> {
     const m = 'getTransactions';

@@ -14,6 +14,9 @@ export type PendingKind = 'faucet' | 'send' | 'mint' | 'token-send' | 'metadata'
  */
 export type PendingState = 'uncertain' | 'pending' | 'unconfirmed' | 'failed';
 
+/** Where the node last placed an acknowledged transaction; absent until a lookup answered. */
+export type PendingPhase = 'mempool' | 'block';
+
 export interface PendingTx {
   txId: string;
   kind: PendingKind;
@@ -26,6 +29,9 @@ export interface PendingTx {
   fee?: bigint;
   to?: string;
   ticker?: string;
+  /** Token sends: the frozen token id, so pending amounts net against the right balance. */
+  tokenId?: string;
+  phase?: PendingPhase;
   error?: string;
   /** A `failed` entry the chain executed and failed (fee and nonce spent), as opposed to a broadcast the node refused. */
   executed?: true;
@@ -44,6 +50,7 @@ export interface Reservation {
 
 const KINDS: PendingKind[] = ['faucet', 'send', 'mint', 'token-send', 'metadata'];
 const STATES: PendingState[] = ['uncertain', 'pending', 'unconfirmed', 'failed'];
+const PHASES: PendingPhase[] = ['mempool', 'block'];
 const DIGITS = /^\d+$/;
 
 export function pendingKey(chain: string, address: string): string {
@@ -71,6 +78,8 @@ function decode(v: unknown): PendingTx | null {
     ...(typeof e.fee === 'string' ? { fee: BigInt(e.fee) } : {}),
     ...(typeof e.to === 'string' ? { to: e.to } : {}),
     ...(typeof e.ticker === 'string' ? { ticker: e.ticker } : {}),
+    ...(typeof e.tokenId === 'string' ? { tokenId: e.tokenId } : {}),
+    ...(PHASES.includes(e.phase as PendingPhase) ? { phase: e.phase as PendingPhase } : {}),
     ...(typeof e.error === 'string' ? { error: e.error } : {}),
     ...(e.executed === true ? { executed: true as const } : {}),
   };
@@ -156,6 +165,10 @@ export const patchEntry = (txId: string, patch: Partial<PendingTx>) => (list: Pe
 /** Moves an entry on only from the state it was observed in, so a newer write is never undone. */
 export const transitionEntry = (txId: string, from: PendingState, to: PendingState) => (list: PendingTx[]) =>
   list.map((p) => (p.txId === txId && p.state === from ? { ...p, state: to } : p));
+
+/** Records a newer node placement on a still-open entry; settled entries keep what they had. */
+export const phaseEntry = (txId: string, phase: PendingPhase) => (list: PendingTx[]) =>
+  list.map((p) => (p.txId === txId && p.state !== 'failed' && p.phase !== phase ? { ...p, phase } : p));
 
 export const removeEntry = (txId: string) => (list: PendingTx[]) => list.filter((p) => p.txId !== txId);
 
