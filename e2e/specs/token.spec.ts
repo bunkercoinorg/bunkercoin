@@ -1,7 +1,7 @@
-import { test, expect, PASSWORD, uniqueTicker } from '../harness/fixtures';
+import { test, expect, live, PASSWORD, uniqueTicker } from '../harness/fixtures';
 import { FEE_UNITS, FINALITY_MS, UNITS_PER_BUNKER } from '../harness/rpc';
 
-test('create token, then send it: only the token moves, BUNKER pays fees', async ({ openWallet, rpc }) => {
+test('create token, then send it: only the token moves, BUNKER pays fees', live, async ({ openWallet, rpc }) => {
   const issuer = await openWallet();
   const holder = await openWallet();
   const { address: from } = await issuer.createWallet(PASSWORD);

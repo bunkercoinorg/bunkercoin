@@ -1,6 +1,6 @@
-import { test, expect, PASSWORD } from '../harness/fixtures';
+import { test, expect, live, PASSWORD } from '../harness/fixtures';
 
-test('erase wallet from settings returns to onboarding with no keystore', async ({ openWallet }) => {
+test('erase wallet from settings returns to onboarding with no keystore', live, async ({ openWallet }) => {
   const wallet = await openWallet();
   await wallet.createWallet(PASSWORD);
   expect(await wallet.storedKeystore()).not.toBeNull();
