@@ -42,7 +42,6 @@ jobs:
       test_dir: ledger/tests/standalone
       run_for_devices: '["nanox", "nanosp", "stax", "flex"]'
       test_options: --backend=speculos
-      regenerate_snapshots: true
 
   unit-tests:
     name: C unit tests
@@ -160,26 +159,3 @@ jobs:
       - uses: github/codeql-action/analyze@v3
         with:
           category: ledger-${{ matrix.device }}
-
-  format-patch:
-    name: TEMP clang-format patch
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: read
-    container: ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Format with the app's .clang-format
-        working-directory: ledger
-        run: |
-          clang-format --version
-          clang-format -i $(find src -type f \( -name '*.c' -o -name '*.h' \))
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git diff > "$RUNNER_TEMP/format.patch"
-          wc -l "$RUNNER_TEMP/format.patch"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: format-patch
-          path: ${{ runner.temp }}/format.patch
-
