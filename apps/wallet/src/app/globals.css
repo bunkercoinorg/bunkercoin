@@ -29,3 +29,10 @@
 .bc-pn-b > .bc-fx[data-variant="rows"] > div:last-child, .bc-more-b > .bc-fx[data-variant="rows"] > div:last-child { border-bottom: 0; }
 .wl-tx-amt .bc-bal { font-size: 44px; }
 @media (max-width: 40rem) { .wl-tx-amt .bc-bal { font-size: 36px; } }
+.wl-toasts { position: fixed; right: 16px; bottom: 16px; left: 16px; z-index: 40; display: grid; justify-items: end; gap: 8px; pointer-events: none; }
+.wl-toast { pointer-events: auto; display: flex; align-items: center; gap: 10px; width: 100%; max-width: 440px; padding: 10px 8px 10px 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: 400 13px/1.4 var(--sans); }
+.wl-toast[data-tone="error"] { border-color: var(--danger); }
+@media (max-width: 40rem) { .wl-toasts { bottom: 68px; justify-items: stretch; } .wl-toast { max-width: none; } }
+.wl-inflight-line { color: var(--info); }
+.wl-split { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 12px; }
+.wl-split .wl-in { color: var(--info); }

@@ -6,11 +6,16 @@ import Onboarding from '@/components/Onboarding';
 import Unlock from '@/components/Unlock';
 import Dashboard, { EXPLORER_URL } from '@/components/Dashboard';
 import { Gate } from '@/components/Gate';
+import Toasts from '@/components/Toasts';
+import { BunkerConnection } from '@/lib/connection';
+import { useInflight } from '@/hooks/useInflight';
+import { inflightSummary, isInflight, titleWithCount } from '@/lib/inflight';
 import {
   clearKeystore,
   KEYSTORE_KEY,
   keystoreFingerprint,
   loadKeystore,
+  rememberedAddress,
   type KeystoreRecord,
   type KeystoreState,
 } from '@/lib/keystore';
@@ -42,6 +47,7 @@ type Phase =
   | 'unlocked';
 
 const CHECKING_AFTER_MS = 300;
+const TITLE = 'BunkerCoin wallet';
 
 const fingerprintOf = (state: KeystoreState) => (state.status === 'ok' ? keystoreFingerprint(state.record) : null);
 
@@ -70,6 +76,19 @@ export default function Wallet() {
   const gate = useRef(new UnlockGate()).current;
   // The keystore record the current phase was derived from; another tab replacing it invalidates everything.
   const fingerprint = useRef<string | null>(null);
+  const conn = useRef(new BunkerConnection()).current;
+  // Locked still knows the public address: tracking needs no key, so it keeps running across a lock.
+  const address =
+    phase === 'unlocked' && signerRef.current
+      ? signerRef.current.address
+      : phase === 'locked' && fingerprint.current
+        ? rememberedAddress(fingerprint.current)
+        : null;
+  const inflight = useInflight(conn, address);
+  const openCount = inflight.pending.filter(isInflight).length;
+  useEffect(() => {
+    document.title = titleWithCount(TITLE, openCount);
+  }, [openCount]);
 
   const forgetKey = useCallback(() => {
     gate.invalidate();
@@ -229,15 +248,21 @@ export default function Wallet() {
     return Object.assign(finish, { current });
   }, [gate]);
 
-  if (phase === 'unlocked' && signerRef.current) {
+  const toasts = <Toasts notes={inflight.notes} onDismiss={inflight.dismissNote} />;
+
+  if (phase === 'unlocked' && signerRef.current && inflight.account) {
     return (
-      <Dashboard
-        signer={signerRef.current}
-        onLock={() => lock(null)}
-        onWalletRemoved={erase}
-        autoLockMinutes={autoLock}
-        onAutoLockChange={changeAutoLock}
-      />
+      <>
+        <Dashboard
+          signer={signerRef.current}
+          inflight={inflight}
+          onLock={() => lock(null)}
+          onWalletRemoved={erase}
+          autoLockMinutes={autoLock}
+          onAutoLockChange={changeAutoLock}
+        />
+        {toasts}
+      </>
     );
   }
 
@@ -255,18 +280,21 @@ export default function Wallet() {
               : null;
 
   return (
-    <AppShell app="wallet" status={<Tag>testnet</Tag>} flow={gateKind === null} footer={FOOTER}>
-      {gateKind === 'checking' ? (
-        slow && <Gate kind="checking" />
-      ) : gateKind ? (
-        <Gate kind={gateKind} detail={storageError || undefined} onImport={gateKind === 'unreadable' ? () => setPhase('import') : undefined} />
-      ) : phase === 'import' ? (
-        <Onboarding beginUnlock={beginUnlock} mode="import" onCancel={() => setPhase('corrupt')} />
-      ) : phase === 'onboarding' ? (
-        <Onboarding beginUnlock={beginUnlock} />
-      ) : (
-        <Unlock beginUnlock={beginUnlock} lockReason={lockReason} />
-      )}
-    </AppShell>
+    <>
+      <AppShell app="wallet" status={<Tag>testnet</Tag>} flow={gateKind === null} footer={FOOTER}>
+        {gateKind === 'checking' ? (
+          slow && <Gate kind="checking" />
+        ) : gateKind ? (
+          <Gate kind={gateKind} detail={storageError || undefined} onImport={gateKind === 'unreadable' ? () => setPhase('import') : undefined} />
+        ) : phase === 'import' ? (
+          <Onboarding beginUnlock={beginUnlock} mode="import" onCancel={() => setPhase('corrupt')} />
+        ) : phase === 'onboarding' ? (
+          <Onboarding beginUnlock={beginUnlock} />
+        ) : (
+          <Unlock beginUnlock={beginUnlock} lockReason={lockReason} inflight={inflightSummary(inflight.pending)} />
+        )}
+      </AppShell>
+      {toasts}
+    </>
   );
 }

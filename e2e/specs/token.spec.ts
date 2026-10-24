@@ -1,5 +1,6 @@
 import { test, expect, live, PASSWORD, uniqueTicker } from '../harness/fixtures';
 import { FEE_UNITS, FINALITY_MS, UNITS_PER_BUNKER } from '../harness/rpc';
+import { IN_FLIGHT } from '../pages/wallet';
 
 test('create token, then send it: only the token moves, BUNKER pays fees', live, async ({ openWallet, rpc }) => {
   const issuer = await openWallet();
@@ -12,7 +13,7 @@ test('create token, then send it: only the token moves, BUNKER pays fees', live,
   const ticker = uniqueTicker();
   await issuer.createToken(ticker, 1000);
   await issuer.done();
-  await expect(issuer.activityRow('create token', ticker, '1,000')).toContainText('confirming');
+  await expect(issuer.activityRow('create token', ticker, '1,000')).toContainText(IN_FLIGHT);
   await expect.poll(() => rpc.tokenAmount(from, ticker), { timeout: FINALITY_MS }).toBe(1000);
   await issuer.expectTokenBalance(ticker, '1,000');
   await issuer.expectBalance(UNITS_PER_BUNKER - FEE_UNITS);
@@ -29,9 +30,9 @@ test('create token, then send it: only the token moves, BUNKER pays fees', live,
   });
   expect(receipt.total).toBeUndefined();
   await issuer.sign();
-  await expect(issuer.outcomeTitle).toHaveText(`Sending 100 ${receipt.token}.`);
+  await issuer.expectSent(`100 ${receipt.token}`);
   await issuer.done();
-  await expect(issuer.activityRow('token send', `100 ${receipt.token} to `)).toContainText('confirming');
+  await expect(issuer.activityRow('token send', `100 ${receipt.token} to `)).toContainText(IN_FLIGHT);
 
   await expect.poll(() => rpc.tokenAmount(to, ticker), { timeout: FINALITY_MS }).toBe(100);
   expect(await rpc.tokenAmount(from, ticker)).toBe(900);
@@ -56,7 +57,7 @@ test('activity labels a token creation as a mint, not a 0 BUNKER send', async ({
   await expect.poll(() => rpc.tokenAmount(address, ticker), { timeout: FINALITY_MS }).toBe(10);
   const mint = issuer.activityRow('create token', ticker, '10');
   await issuer.expectFinalized(mint);
-  await expect(mint).not.toContainText('confirming');
+  await expect(mint).not.toContainText(IN_FLIGHT);
   await expect(issuer.activityRow('send')).toHaveCount(0);
   await expect(issuer.activityRow('token send')).toHaveCount(0);
 });

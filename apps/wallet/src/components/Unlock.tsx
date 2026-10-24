@@ -17,10 +17,12 @@ export interface UnlockProps {
   /** Unused: a forgotten password leads to import with the record kept, never to an erase. */
   onReset?: () => void;
   lockReason?: LockReason;
+  /** One line on transfers still being tracked; null when none. */
+  inflight?: string | null;
 }
 
 /** W08. Works offline: nothing here talks to the node. */
-export default function Unlock({ beginUnlock, lockReason = null }: UnlockProps) {
+export default function Unlock({ beginUnlock, lockReason = null, inflight = null }: UnlockProps) {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -60,6 +62,11 @@ export default function Unlock({ beginUnlock, lockReason = null }: UnlockProps) 
         <BrandMark size={48} />
         <h1 className="bc-t1">Unlock.</h1>
         {reason && <p className="bc-hint mono">{reason}</p>}
+        {inflight && (
+          <p className="wl-inflight-line bc-hint mono" role="status">
+            {inflight}
+          </p>
+        )}
       </div>
       <PasswordField
         id="unlock-password"

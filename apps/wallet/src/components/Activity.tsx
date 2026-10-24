@@ -14,7 +14,9 @@ import {
   StatePanel,
   StateLine,
   StatusTag,
+  Tag,
 } from '@bunkercoin/ui';
+import { phaseLabel } from '@/lib/inflight';
 import { formatUnits, relativeAge } from '@bunkercoin/chain-format';
 import { viewHref } from '@/hooks/useHashView';
 import { activityItems, isOpen, tickerMap, type ActivityItem } from '@/components/activity-model';
@@ -22,9 +24,12 @@ import { dayLabel, KindMark } from '@/components/assets';
 import type { WalletActions, WalletState } from '@/components/Dashboard';
 import { ResourceState } from '@/components/ResourceState';
 
-export function itemTag(item: ActivityItem, now: number) {
-  if (item.status === 'pending') return <StatusTag status="confirming" detail={item.at ? relativeAge(item.at, now) : undefined} />;
-  if (item.status === 'unconfirmed') return <StatusTag status="unconfirmed" />;
+export function itemTag(item: ActivityItem, now: number, withAge = true) {
+  // Radio finality takes many minutes: a slow transfer is normal, so it reads as a calm phase, never an alarm.
+  if (item.status === 'pending' || item.status === 'unconfirmed') {
+    const age = withAge && item.at ? ` · ${relativeAge(item.at, now)}` : '';
+    return <Tag state="pending">{(item.pending ? phaseLabel(item.pending) : 'waiting for a block') + age}</Tag>;
+  }
   if (item.status === 'uncertain') return <StatusTag status="unknown" />;
   if (item.status === 'failed' || item.status === 'final-failed') return <StatusTag status="failed" />;
   return null;
@@ -33,7 +38,7 @@ export function itemTag(item: ActivityItem, now: number) {
 export function ActivityRow({ item, now }: { item: ActivityItem; now: number }) {
   const amount = item.amount && <Amount units={item.amount.units} scale={item.amount.scale} sign={item.amount.sign} />;
   const failed = item.status === 'failed';
-  const tag = itemTag(item, now);
+  const tag = itemTag(item, now, false);
   return (
     <ListRow
       href={viewHref('tx', item.id)}

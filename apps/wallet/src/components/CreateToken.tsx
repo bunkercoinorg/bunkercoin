@@ -65,7 +65,7 @@ export default function CreateToken({ state, actions, signer }: { state: WalletS
       setFormError(state.feeError ? `Fee unavailable: ${state.feeError}` : 'Fee unavailable · retry');
       return;
     }
-    if (state.balance !== null && state.balance < state.fee) {
+    if (state.spendable.available !== null && state.spendable.available < state.fee) {
       setFormError(`Not enough BUNKER for the ${bunker(state.fee)} fee.`);
       return;
     }
@@ -127,7 +127,7 @@ export default function CreateToken({ state, actions, signer }: { state: WalletS
 
   if (step === 'review' && review.reviewed) {
     const f = review.reviewed.fee;
-    const short = state.balance !== null && state.balance < f;
+    const short = state.spendable.available !== null && state.spendable.available < f;
     const sign = async () => {
       setBusy(true);
       setSignError('');

@@ -32,6 +32,9 @@ export async function facts(scope: Locator): Promise<Record<string, string>> {
   return out;
 }
 
+
+/** An open transfer's activity tag: `sent · waiting for a block`, `in mempool · …`, `in block · finalizing`. */
+export const IN_FLIGHT = /waiting for a block|finalizing/;
 export class WalletPage {
   /** The password this wallet was last opened with, to get past the idle lock during long waits. */
   private password?: string;
@@ -354,6 +357,13 @@ export class WalletPage {
     await expect(this.receipt).toBeVisible();
     await this.sign('sign and create');
     await expect(this.outcomeTitle).toHaveText(`Creating ${ticker}.`);
+  }
+
+  /** The send flow ends once the node acknowledged it: `Sent.` over what went where; finality is read from Activity. */
+  async expectSent(what: string, timeout?: number): Promise<void> {
+    await expect(this.outcomeTitle).toHaveText('Sent.', { timeout });
+    await expect(this.main.getByText(new RegExp(`^${escape(what)} to `))).toBeVisible();
+    await expect(this.main).toContainText('It lands in the next blocks; you can close this.');
   }
 
   /** W14-W16 and W21: the view's one h1. */

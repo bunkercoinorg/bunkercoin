@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
-import { Button, CopyValue, Field, FlowBar, Icon, List, ListRow, TextInput } from '@bunkercoin/ui';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Actions, Button, CopyValue, Field, FlowBar, Icon, List, ListRow, Notice, TextInput } from '@bunkercoin/ui';
 import { shortId } from '@bunkercoin/chain-format';
 import { isValidAddress, sameAddress, signTokenTransfer, signTransfer, tokenIdBytes } from '@/lib/keys';
 import { amountProblem, heldOf, NATIVE_SEND, pickAsset, sendProblem, TOKEN_GONE, tokenIdentity, type SendAsset } from '@/lib/send';
 import type { Signer } from '@/lib/signer';
+import { approvalKey, duplicatePrompt, findDuplicate, type SendIntent } from '@/lib/inflight';
 import { useReview } from '@/hooks/useReview';
 import { focusField, useFlowFocus } from '@/hooks/useFlowFocus';
 import { activityItems, tickerMap } from '@/components/activity-model';
@@ -30,7 +31,10 @@ export default function Send({
   signer: Signer;
   preset: string | null;
 }) {
-  const { balance, tokens, fee, feeError } = state;
+  // Everything below validates against what is spendable now: in-flight sends and their fees are already spoken for.
+  const { fee, feeError } = state;
+  const balance = state.spendable.available;
+  const tokens = state.spendableTokens;
   const [step, setStep] = useState<Step>('to');
   const [picked, setPicked] = useState<SendAsset | null>(preset === null ? NATIVE_SEND : null);
   const [assetError, setAssetError] = useState('');
@@ -44,6 +48,9 @@ export default function Send({
   const [signError, setSignError] = useState('');
   const [sent, setSent] = useState<Broadcast | null>(null);
   const [rejected, setRejected] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
+  // Bound to the exact intent and the in-flight tx it matched; any edit or step change drops it.
+  const [approved, setApproved] = useState<string | null>(null);
   const review = useReview(state, actions, fee);
   const root = useFlowFocus<HTMLDivElement>(step);
   const wrap = (node: ReactNode) => (
@@ -55,6 +62,10 @@ export default function Send({
   // Until the first step is left a preset can still resolve as tokens load; from then on the asset is frozen.
   const asset = picked ?? (preset === null ? null : pickAsset(tokens, preset));
   const recipient = to.trim();
+  useEffect(() => {
+    setApproved(null);
+    setAsking(false);
+  }, [step, recipient, units, amount, picked]);
   const known = activityItems(state.pending, state.history, state.addressHex, tickerMap(tokens, state.registry)).some(
     (i) => i.counterparty?.label === 'to' && sameAddress(i.counterparty.address, recipient),
   );
@@ -95,7 +106,7 @@ export default function Send({
         state={state}
         actions={actions}
         onRetry={() => setStep('amount')}
-        copy={{ sending: `Sending ${what}.`, done: 'Sent.', lead: `${what} to ${shortId(recipient)}`, line: `to ${shortId(recipient)}` }}
+        copy={{ sending: `Sending ${what}.`, sent: 'Sent.', done: 'Sent.', lead: `${what} to ${shortId(recipient)}`, line: `to ${shortId(recipient)}` }}
       />
     );
   }
@@ -103,7 +114,14 @@ export default function Send({
   if (step === 'review' && review.reviewed) {
     const f = review.reviewed.fee;
     const blocked = sendProblem(asset, units, f, balance, tokens);
-    const sign = async () => {
+    const intent: SendIntent =
+      asset.kind === 'token' ? { kind: 'token-send', to: recipient, amount: units, tokenId: asset.tokenId } : { kind: 'send', to: recipient, amount: units };
+    const dup = findDuplicate(state.pending, intent);
+    const key = dup ? approvalKey(intent, dup.txId) : null;
+    const sign = async (again = key !== null && approved === key) => {
+      if (blocked) return;
+      if (dup && !again) return setAsking(true);
+      setAsking(false);
       setBusy(true);
       setSignError('');
       const result = await review.sign(
@@ -114,8 +132,9 @@ export default function Send({
               : signTransfer({ privateKey, publicKey, to: recipient, amount: units, nonce, fee: signedFee }),
           ),
         asset.kind === 'token'
-          ? { kind: 'token-send', to: recipient, amount: units, ticker: asset.unit }
+          ? { kind: 'token-send', to: recipient, amount: units, ticker: asset.unit, tokenId: asset.tokenId }
           : { kind: 'send', to: recipient, amount: units },
+        dup && again ? dup.txId : null,
       );
       setBusy(false);
       if (result.kind === 'broadcast') {
@@ -130,6 +149,30 @@ export default function Send({
       <div className="wl-stack wl-gap24">
         <FlowBar title="send" step={[3, 3]} onBack={() => setStep('amount')} />
         <h1 className="bc-sr">Review before signing.</h1>
+        {asking && dup && (
+          <Notice
+            tone="warn"
+            role="alert"
+            action={
+              <Actions>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setApproved(key);
+                    void sign(true);
+                  }}
+                >
+                  send again
+                </Button>
+                <Button size="sm" variant="ghost" onClick={back}>
+                  cancel
+                </Button>
+              </Actions>
+            }
+          >
+            {duplicatePrompt(`${fmt(units)} ${unit}`, recipient, dup.at, Date.now())}
+          </Notice>
+        )}
         <Receipt
           rows={[
             { label: 'to', value: <CopyValue value={recipient} mode="full" label="recipient" /> },

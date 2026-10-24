@@ -15,16 +15,18 @@ import {
   StateLine,
   StatusTag,
 } from '@bunkercoin/ui';
-import { formatUnits, relativeAge, utcClock } from '@bunkercoin/chain-format';
+import { relativeAge, utcClock } from '@bunkercoin/chain-format';
 import type { TokenBalance } from '@/lib/connection';
 import { viewHref } from '@/hooks/useHashView';
 import { useVerifiedMetadata } from '@/hooks/useVerifiedMetadata';
 import { ActivityRow, useActivity } from '@/components/Activity';
+import { isOpen } from '@/components/activity-model';
+import { tokenPendingOut } from '@/lib/inflight';
 import { bunker, count, NATIVE, NativeMark, TokenMark } from '@/components/assets';
 import { ResourceState, STALE_MS } from '@/components/ResourceState';
 import type { WalletActions, WalletState } from '@/components/Dashboard';
 
-function TokenRow({ token }: { token: TokenBalance }) {
+function TokenRow({ token, out }: { token: TokenBalance; out: bigint }) {
   const doc = useVerifiedMetadata(token.metadataHash);
   return (
     <ListRow
@@ -32,23 +34,24 @@ function TokenRow({ token }: { token: TokenBalance }) {
       mark={<TokenMark ticker={token.ticker} tokenId={token.tokenId} metadataHash={token.metadataHash} />}
       title={token.ticker ?? `token ${token.tokenId}`}
       sub={doc ? `${doc.name} · ${token.tokenId}` : token.ticker ? token.tokenId : 'no ticker'}
-      value={count(token.balance)}
+      value={count(token.balance > out ? token.balance - out : 0n)}
+      valueSub={out > 0n ? `${count(out)} pending out` : undefined}
     />
   );
 }
 
 export default function Home({ state, actions }: { state: WalletState; actions: WalletActions }) {
-  const { balance, tokens, fresh, offline } = state;
+  const { balance, tokens, fresh, offline, spendable } = state;
   const [faucetBusy, setFaucetBusy] = useState(false);
   const [faucetError, setFaucetError] = useState('');
   const items = useActivity(state);
   const now = Date.now();
-  const outgoing = state.pending
-    .filter((p) => (p.kind === 'send' || p.kind === 'token-send' || p.kind === 'mint') && p.state !== 'failed')
-    .reduce((sum, p) => sum + (p.kind === 'send' ? p.amount : 0n) + (p.fee ?? 0n), 0n);
+  const tokenOut = tokenPendingOut(state.pending);
+  const inflight = items.filter((i) => isOpen(i.status));
+  const settled = items.filter((i) => !isOpen(i.status));
   const okAt = fresh.balance.okAt;
   const stale = okAt !== null && (fresh.balance.error !== null || now - okAt > STALE_MS);
-  const zero = balance === 0n;
+  const zero = spendable.available === 0n;
 
   const requestFaucet = async () => {
     setFaucetBusy(true);
@@ -69,9 +72,15 @@ export default function Home({ state, actions }: { state: WalletState; actions: 
         {balance === null && okAt === null && fresh.balance.error === null ? (
           <StateLine>checking balance…</StateLine>
         ) : (
-          <Amount units={balance} scale={6} symbol={NATIVE} size="balance" />
+          <Amount units={spendable.available} scale={6} symbol={NATIVE} size="balance" />
         )}
-        {outgoing > 0n && <p className="bc-hint mono">−{formatUnits(outgoing, 6)} pending</p>}
+        {(spendable.pendingOut > 0n || spendable.pendingIn > 0n) && (
+          <p className="wl-split bc-hint mono" data-testid="pending-split">
+            <span>{spendable.available === null ? '–' : bunker(spendable.available)} BUNKER available</span>
+            {spendable.pendingOut > 0n && <span>· {bunker(spendable.pendingOut)} pending out</span>}
+            {spendable.pendingIn > 0n && <span className="wl-in">· +{bunker(spendable.pendingIn)} pending in, not spendable yet</span>}
+          </p>
+        )}
         {stale && okAt !== null && (
           <p className="wl-hero-sub bc-hint mono">
             as of {utcClock(okAt)} <StatusTag status="stale" detail={relativeAge(okAt, now)} />
@@ -97,6 +106,16 @@ export default function Home({ state, actions }: { state: WalletState; actions: 
           </Notice>
         )}
       </div>
+      {inflight.length > 0 && (
+        <section aria-labelledby="home-inflight">
+          <SectionHead label="in flight" id="home-inflight" action={state.cadence && <span className="bc-hint mono">{state.cadence}</span>} />
+          <List>
+            {inflight.map((i) => (
+              <ActivityRow key={i.id} item={i} now={now} />
+            ))}
+          </List>
+        </section>
+      )}
       <section aria-labelledby="home-tokens">
         <SectionHead
           label="tokens"
@@ -104,9 +123,15 @@ export default function Home({ state, actions }: { state: WalletState; actions: 
           action={<ResourceState fresh={fresh.tokens} what="token balances" onRetry={() => void actions.refresh()} />}
         />
         <List>
-          <ListRow mark={<NativeMark />} title={NATIVE} sub="native" value={balance === null ? '–' : bunker(balance)} />
+          <ListRow
+            mark={<NativeMark />}
+            title={NATIVE}
+            sub="native"
+            value={spendable.available === null ? '–' : bunker(spendable.available)}
+            valueSub={spendable.pendingOut > 0n ? `${bunker(spendable.pendingOut)} pending out` : undefined}
+          />
           {tokens.map((t) => (
-            <TokenRow key={t.tokenId} token={t} />
+            <TokenRow key={t.tokenId} token={t} out={tokenOut.get(t.tokenId) ?? 0n} />
           ))}
         </List>
       </section>
@@ -127,11 +152,11 @@ export default function Home({ state, actions }: { state: WalletState; actions: 
             )
           }
         />
-        {items.length === 0 ? (
-          <EmptyState>{state.history === null ? 'loading activity…' : 'No activity yet.'}</EmptyState>
+        {settled.length === 0 ? (
+          <EmptyState>{state.history === null ? 'loading activity…' : inflight.length > 0 ? 'Nothing settled yet.' : 'No activity yet.'}</EmptyState>
         ) : (
           <List>
-            {items.slice(0, 3).map((i) => (
+            {settled.slice(0, 3).map((i) => (
               <ActivityRow key={i.id} item={i} now={now} />
             ))}
           </List>

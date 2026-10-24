@@ -4,43 +4,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AddressChip, AppShell, Banner, Button, Footer, Icon, StatusTag, Tag, TabBar, type NavItem } from '@bunkercoin/ui';
 import { utcClock } from '@bunkercoin/chain-format';
 import {
-  BunkerConnection,
-  ConfirmCancelledError,
-  ConfirmTimeoutError,
   RpcError,
-  TxFailedError,
   type AccountHistory,
-  type SignatureStatus,
+  type BunkerConnection,
   type TokenBalance,
   type TokenMeta,
 } from '@/lib/connection';
 import { addressToHex, type SignedTransaction } from '@/lib/keys';
-import {
-  addEntry,
-  loadPending,
-  loadReservations,
-  migrateLegacyPending,
-  mutatePending,
-  mutateReservations,
-  patchEntry,
-  releaseReservations,
-  removeEntry,
-  transitionEntry,
-  type PendingTx,
-  type Reservation,
-} from '@/lib/pending';
+import { loadPending, removeEntry, type PendingTx } from '@/lib/pending';
 import {
   collectOutstanding,
   nextNonce,
   resendUncertain,
   submitTransaction,
   withAccountLock,
-  type Account,
   type NoncePlan,
   type Submission,
 } from '@/lib/submit';
+import { cadenceHint, fetchSnapshot, nativeSpendable, revalidate, spendableTokens, type Spendable } from '@/lib/inflight';
 import { connectionStatus, initialFreshness, type Freshness, type FreshnessMap, type Resource } from '@/lib/freshness';
-import { promoteMetadata } from '@/lib/metadata';
+import type { Inflight } from '@/hooks/useInflight';
 import type { Signer } from '@/lib/signer';
 import type { AutoLockMinutes } from '@/lib/session';
 import { useHashView, viewHref, type View } from '@/hooks/useHashView';
@@ -54,8 +37,6 @@ import TxDetails from '@/components/TxDetails';
 import Settings from '@/components/Settings';
 
 const BALANCE_POLL_MS = 20_000;
-// After the confirmation window an answer can still come; keep asking, just less often.
-const SLOW_POLL_MS = 60_000;
 const HISTORY_STEP = 10;
 const FAUCET_UNITS = 1_000_000n;
 export const EXPLORER_URL = process.env.NEXT_PUBLIC_EXPLORER_URL || 'https://explorer.bunkercoin.com';
@@ -68,8 +49,15 @@ export interface SubmitResult {
   tracked: boolean;
 }
 
-/** Signs with the next reconciled nonce and broadcasts, one per account at a time; refuses while one is unacknowledged. */
-export type SubmitSigned = (build: (nonce: bigint) => SignedTransaction, info: Submission) => Promise<SubmitResult>;
+/**
+ * Signs with the next reconciled nonce and broadcasts, one per account at a time; refuses while one is unacknowledged,
+ * or when funds or a duplicate changed since review. `duplicateOk`: the in-flight tx the user approved sending again.
+ */
+export type SubmitSigned = (
+  build: (nonce: bigint) => SignedTransaction,
+  info: Submission,
+  duplicateOk?: string | null,
+) => Promise<SubmitResult>;
 
 /** What every view reads from the account. */
 export interface WalletState {
@@ -78,6 +66,12 @@ export interface WalletState {
   addressHex: string;
   balance: bigint | null;
   tokens: TokenBalance[];
+  /** Balance net of in-flight sends and fees; what may be signed now. */
+  spendable: Spendable;
+  /** `tokens` with in-flight token sends subtracted. */
+  spendableTokens: TokenBalance[];
+  /** `usually 5-30 min`, from observed block intervals; null until enough were seen. */
+  cadence: string | null;
   /** Chain-wide token list (tickers, creators, metadata hashes); null until first loaded. */
   registry: TokenMeta[] | null;
   fee: bigint | null;
@@ -113,6 +107,7 @@ export interface WalletActions {
 
 interface DashboardProps {
   signer: Signer;
+  inflight: Inflight;
   onLock: () => void;
   onWalletRemoved: () => void | Promise<void>;
   autoLockMinutes: AutoLockMinutes;
@@ -124,8 +119,9 @@ const noteUncertain = (txId: string, error: string) => (list: PendingTx[]) =>
 
 const TAB_VIEWS = new Set(['home', 'activity', 'settings']);
 
-export default function Dashboard({ signer, onLock, onWalletRemoved, autoLockMinutes, onAutoLockChange }: DashboardProps) {
-  const conn = useRef(new BunkerConnection()).current;
+export default function Dashboard({ signer, inflight, onLock, onWalletRemoved, autoLockMinutes, onAutoLockChange }: DashboardProps) {
+  const { conn, pending, finalized, checkedAt, trackingLost, account: maybeAccount, apply, startTracking, stopTracking, record } = inflight;
+  const account = maybeAccount!;
   const chain = conn.url;
   const address = signer.address;
   const meHex = useMemo(() => addressToHex(address), [address]);
@@ -140,54 +136,33 @@ export default function Dashboard({ signer, onLock, onWalletRemoved, autoLockMin
   const [registry, setRegistry] = useState<TokenMeta[] | null>(null);
   const [fee, setFee] = useState<bigint | null>(null);
   const [feeError, setFeeError] = useState('');
-  const [pending, setPending] = useState<PendingTx[]>(() => loadPending(chain, address));
-  const [trackingLost, setTrackingLost] = useState(false);
   const [history, setHistory] = useState<AccountHistory | null>(null);
   const [olderState, setOlderState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [slot, setSlot] = useState<bigint | null>(null);
   const [fresh, setFresh] = useState<FreshnessMap>(initialFreshness);
-  const [finalized, setFinalized] = useState<Map<string, number>>(() => new Map());
-  const [checkedAt, setCheckedAt] = useState<Map<string, number>>(() => new Map());
   const latest = useRef<Partial<Record<Resource | 'registry', number>>>({});
-  // Aborted on unmount: in-flight refreshes and every tracker stop with it.
+  // Aborted on unmount: in-flight refreshes stop with it; trackers live above the lock.
   const life = useRef<AbortController | null>(null);
-  const trackers = useRef(new Map<string, AbortController>());
-  const promotions = useRef(new Map<string, string>());
   const historyWant = useRef(HISTORY_STEP);
-  // Reservations that could not be persisted still hold their nonce for this tab's lifetime.
-  const unsavedReservations = useRef<Reservation[]>([]);
   const [, tick] = useState(0);
-
-  const apply = useCallback(
-    (op: (list: PendingTx[]) => PendingTx[]) => {
-      setPending(op);
-      return mutatePending(chain, address, op).then((ok) => {
-        if (!ok) setTrackingLost(true);
-        return ok;
-      });
-    },
-    [chain, address],
-  );
-
-  const reserve = useCallback(
-    async (op: (list: Reservation[]) => Reservation[]) => {
-      const ok = await mutateReservations(chain, address, op);
-      const unsaved = unsavedReservations.current;
-      unsavedReservations.current = ok ? unsaved.filter((r) => op([r]).some((x) => x.txId === r.txId)) : op(unsaved);
-      return ok;
-    },
-    [chain, address],
-  );
+  const committed = useRef({ balance, tokens });
+  committed.current = { balance, tokens };
 
   // Only the newest request per resource may write state; slower, older answers are dropped. Resolves false on failure.
   const load = useCallback(
-    <T,>(name: Resource, fetch: (signal: AbortSignal) => Promise<T>, onValue: (v: T) => void): Promise<boolean> => {
+    <T,>(names: Resource | Resource[], fetch: (signal: AbortSignal) => Promise<T>, onValue: (v: T) => void): Promise<boolean> => {
       const signal = life.current?.signal;
       if (!signal || signal.aborted) return Promise.resolve(false);
+      const all = typeof names === 'string' ? [names] : names;
+      const name = all[0];
       const id = (latest.current[name] ?? 0) + 1;
       latest.current[name] = id;
       const mark = (f: Freshness | ((prev: Freshness) => Freshness)) =>
-        setFresh((m) => ({ ...m, [name]: typeof f === 'function' ? f(m[name]) : f }));
+        setFresh((m) => {
+          const next = { ...m };
+          for (const n of all) next[n] = typeof f === 'function' ? f(m[n]) : f;
+          return next;
+        });
       return fetch(signal).then(
         (v) => {
           if (latest.current[name] !== id || signal.aborted) return true;
@@ -249,140 +224,66 @@ export default function Dashboard({ signer, onLock, onWalletRemoved, autoLockMin
     );
   }, [conn]);
 
+  // Balances and settled transfers commit together, so a finalized send stops holding funds in the same update that
+  // first shows a balance fetched after it.
+  const { entries, markFinal, reconcile, durable } = inflight;
+  const loadBalances = useCallback(
+    () =>
+      load(
+        ['balance', 'tokens'],
+        async (signal) => {
+          const snap = await fetchSnapshot({
+            fetch: () => Promise.all([conn.getBalance(address, { signal }), conn.getTokenBalances(address, { signal })]),
+            entries,
+            statuses: (ids) => conn.getSignatureStatuses(ids, { signal }),
+            finalize: markFinal,
+          });
+          if (snap === null) throw new Error('Balances kept changing while transfers finalized; retrying shortly.');
+          return snap;
+        },
+        ({ value: [b, t], at }) => {
+          setBalance(b);
+          setTokens(t);
+          reconcile(at);
+        },
+      ),
+    [conn, address, load, entries, markFinal, reconcile],
+  );
+
   const refresh = useCallback(async () => {
     loadRegistry();
-    await Promise.all([
-      load('balance', (signal) => conn.getBalance(address, { signal }), setBalance),
-      load('tokens', (signal) => conn.getTokenBalances(address, { signal }), setTokens),
-      load('slot', (signal) => conn.getSlot({ signal }), setSlot),
-      loadFee(),
-      loadHistory(),
-    ]);
-  }, [conn, address, load, loadFee, loadHistory, loadRegistry]);
+    await Promise.all([loadBalances(), load('slot', (signal) => conn.getSlot({ signal }), setSlot), loadFee(), loadHistory()]);
+  }, [conn, load, loadBalances, loadFee, loadHistory, loadRegistry]);
 
-  const track = useCallback(
-    async (entry: PendingTx, signal: AbortSignal) => {
-      let slow = entry.state === 'unconfirmed';
-      let seen = false;
-      const release = () => void reserve(releaseReservations([entry.txId]));
-      // Seen by the node: no longer "no answer". Its reservation stays uncertain until it settles.
-      const onStatus = (status: SignatureStatus | null) => {
-        setCheckedAt((m) => new Map(m).set(entry.txId, Date.now()));
-        if (seen || status === null || status.err !== null) return;
-        seen = true;
-        void apply(transitionEntry(entry.txId, 'uncertain', 'pending'));
-      };
-      for (;;) {
-        try {
-          await conn.confirm(
-            entry.txId,
-            slow ? { signal, onStatus, pollMs: SLOW_POLL_MS, timeoutMs: Infinity } : { signal, onStatus },
-          );
-          setFinalized((m) => new Map(m).set(entry.txId, Date.now()));
-          const hash = promotions.current.get(entry.txId);
-          if (hash) {
-            promotions.current.delete(entry.txId);
-            void promoteMetadata(hash);
-          }
-          void apply(removeEntry(entry.txId));
-          release();
-          void refresh();
-          return;
-        } catch (e) {
-          if (e instanceof ConfirmCancelledError) return;
-          if (e instanceof ConfirmTimeoutError) {
-            void apply(transitionEntry(entry.txId, 'pending', 'unconfirmed'));
-            slow = true;
-            continue;
-          }
-          void apply(
-            patchEntry(entry.txId, { state: 'failed', error: (e as Error).message, ...(e instanceof TxFailedError ? { executed: true as const } : {}) }),
-          );
-          if (e instanceof TxFailedError) {
-            release();
-            void refresh();
-          }
-          return;
-        }
-      }
-    },
-    [conn, apply, reserve, refresh],
-  );
-
-  const stopTracking = useCallback((txId: string) => {
-    trackers.current.get(txId)?.abort();
-    trackers.current.delete(txId);
-  }, []);
-
-  const startTracking = useCallback(
-    (entry: PendingTx) => {
-      const root = life.current;
-      if (!root || root.signal.aborted || trackers.current.has(entry.txId)) return;
-      const ctrl = new AbortController();
-      root.signal.addEventListener('abort', () => ctrl.abort(), { once: true });
-      trackers.current.set(entry.txId, ctrl);
-      void track(entry, ctrl.signal).finally(() => {
-        if (trackers.current.get(entry.txId) === ctrl) trackers.current.delete(entry.txId);
-      });
-    },
-    [track],
-  );
-
-  // Polling while visible, the legacy migration and confirmation tracking for every open tx (incl. after reload).
+  // Polling while visible; a transfer settling (tracked above the lock) refreshes balances too.
   useEffect(() => {
     const ctrl = new AbortController();
     life.current = ctrl;
-    const map = trackers.current;
+    inflight.onSettled.current = () => void refresh();
     void refresh();
     const visible = () => document.visibilityState === 'visible';
     const poll = setInterval(() => visible() && void refresh(), BALANCE_POLL_MS);
     const clock = setInterval(() => tick((n) => n + 1), 1000);
     const onVisible = () => visible() && void refresh();
     document.addEventListener('visibilitychange', onVisible);
-    void migrateLegacyPending(chain, address).then(() => {
-      if (ctrl.signal.aborted) return;
-      const list = loadPending(chain, address);
-      setPending((prev) => [...prev.filter((p) => !list.some((l) => l.txId === p.txId)), ...list]);
-      list.filter((p) => p.state !== 'failed').forEach(startTracking);
-    });
+    const settledRef = inflight.onSettled;
     return () => {
       ctrl.abort();
-      map.clear();
+      settledRef.current = null;
       life.current = null;
       clearInterval(poll);
       clearInterval(clock);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [chain, address, refresh, startTracking]);
-
-  const recordSubmitted = useCallback(
-    async (txId: string, info: Submission): Promise<SubmitResult> => {
-      const entry: PendingTx = { ...info, txId, nonce: null, at: Date.now(), state: 'pending' };
-      const tracked = await apply(addEntry(entry));
-      startTracking(entry);
-      return { txId, tracked };
-    },
-    [apply, startTracking],
-  );
-
-  const account: Account = useMemo(
-    () => ({
-      conn,
-      address,
-      reservations: () => [...loadReservations(chain, address), ...unsavedReservations.current],
-      entries: () => loadPending(chain, address),
-      reserve,
-      apply,
-      track: startTracking,
-      untrack: stopTracking,
-    }),
-    [conn, address, chain, reserve, apply, startTracking, stopTracking],
-  );
+  }, [refresh, inflight.onSettled]);
 
   const submit: SubmitSigned = useCallback(
-    (build, info) =>
+    (build, info, duplicateOk = null) =>
       withAccountLock(address, () => {
         signer.assertActive();
+        const { balance: b, tokens: t } = committed.current;
+        const problem = revalidate(info, b, t, durable(), duplicateOk);
+        if (problem) throw new Error(problem);
         return submitTransaction(
           account,
           (nonce) => {
@@ -392,7 +293,7 @@ export default function Dashboard({ signer, onLock, onWalletRemoved, autoLockMin
           info,
         );
       }),
-    [address, signer, account],
+    [address, signer, account, durable],
   );
 
   const previewNonce = useCallback(
@@ -436,12 +337,8 @@ export default function Dashboard({ signer, onLock, onWalletRemoved, autoLockMin
 
   const faucet = useCallback(async () => {
     const txId = await conn.requestAirdrop(address, FAUCET_UNITS);
-    await recordSubmitted(txId, { kind: 'faucet', amount: FAUCET_UNITS });
-  }, [conn, address, recordSubmitted]);
-
-  const promoteOnFinal = useCallback((txId: string, hash: string) => {
-    promotions.current.set(txId, hash);
-  }, []);
+    await record(txId, { kind: 'faucet', amount: FAUCET_UNITS });
+  }, [conn, address, record]);
 
   const { status, failing } = connectionStatus(fresh);
   const offline = status === 'offline' || status === 'stale';
@@ -454,6 +351,9 @@ export default function Dashboard({ signer, onLock, onWalletRemoved, autoLockMin
     addressHex: meHex,
     balance,
     tokens,
+    spendable: nativeSpendable(balance, pending),
+    spendableTokens: spendableTokens(tokens, pending),
+    cadence: cadenceHint(inflight.intervals),
     registry,
     fee,
     feeError,
@@ -479,7 +379,7 @@ export default function Dashboard({ signer, onLock, onWalletRemoved, autoLockMin
     dismiss,
     loadOlder,
     faucet,
-    promoteOnFinal,
+    promoteOnFinal: inflight.promoteOnFinal,
   };
 
   const tab = TAB_VIEWS.has(view.name) && view.param === null && !(view.name === 'settings' && settingsFlow) ? view.name : null;

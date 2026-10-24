@@ -1,7 +1,7 @@
 import type { BrowserContext, Route } from '@playwright/test';
 import { test, expect, PASSWORD } from '../harness/fixtures';
 import { FEE_UNITS, FINALITY_MS, UNITS_PER_BUNKER, type Rpc } from '../harness/rpc';
-import type { WalletPage } from '../pages/wallet';
+import { IN_FLIGHT, type WalletPage } from '../pages/wallet';
 
 type Fault = 'drop-reply' | 'drop-request';
 
@@ -64,10 +64,10 @@ test('lost acknowledgement: retrying the send signs nothing new and the sender i
 
   // Once the node's status answers, the wallet sees it holds the transaction.
   fault.release();
-  await expect(sender.outcomeTitle).toHaveText('Sending 0.250000 BUNKER.', { timeout: 30_000 });
+  await sender.expectSent('0.250000 BUNKER', 30_000);
   await sender.done();
   const row = sender.activityRow('send', '−0.250000');
-  await expect(row).toContainText('confirming');
+  await expect(row).toContainText(IN_FLIGHT);
 
   // The user sends the same again: review refuses to sign while the first may still execute.
   await sender.prepareSend(to, '0.25');
@@ -91,7 +91,7 @@ test('lost acknowledgement: retrying the send signs nothing new and the sender i
   await sender.prepareSend(to, '0.1');
   expect((await sender.receiptFacts()).nonce).toBe('1');
   await sender.sign();
-  await expect(sender.outcomeTitle).toHaveText('Sending 0.100000 BUNKER.');
+  await sender.expectSent('0.100000 BUNKER');
   expect(fault.wires).toHaveLength(2);
   expect(fault.wires[1]).not.toBe(fault.wires[0]);
 });
@@ -117,7 +117,7 @@ test('lost request: check status broadcasts the identical bytes and the sender i
 
   await sender.openTx(row);
   await sender.button('check status', sender.main).click();
-  await expect(sender.main).toContainText('confirming');
+  await expect(sender.main).toContainText(IN_FLIGHT);
   expect(fault.wires).toHaveLength(2);
   expect(fault.wires[1]).toBe(fault.wires[0]);
   await sender.goHome();
