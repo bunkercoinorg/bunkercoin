@@ -1,7 +1,8 @@
 'use client';
 
-import { Button, ButtonLink, CopyValue, formatDuration, Notice, StatusTag, StepList } from '@bunkercoin/ui';
-import { base58ToBytes, bytesToHex, formatUnits, relativeAge } from '@bunkercoin/chain-format';
+import { Button, ButtonLink, CopyValue, formatDuration, Notice, StatusTag, Tag } from '@bunkercoin/ui';
+import { base58ToBytes, bytesToHex, formatUnits } from '@bunkercoin/chain-format';
+import { phaseLabel } from '@/lib/inflight';
 import { hexToBase58 } from '@/lib/keys';
 import { EXPLORER_URL, type WalletActions, type WalletState } from '@/components/Dashboard';
 
@@ -16,6 +17,8 @@ export interface Broadcast {
 export interface OutcomeCopy {
   /** `Sending 12.500000 BUNKER.` */
   sending: string;
+  /** Headline once the node acknowledged it, before finality; `sending` when absent. */
+  sent?: string;
   /** `Sent.` */
   done: string;
   /** `12.500000 BUNKER to 2ndb…ZMTa` */
@@ -42,7 +45,7 @@ export function Rejected({ reason, onRetry, title = 'Not sent.' }: { reason: str
   );
 }
 
-/** W14-W16: what happened to one broadcast, read live from the tracker; never offers a second send while unknown. */
+/** W14-W16: ends the flow as soon as the node acknowledged it; the tracker carries on from Activity. Never offers a second send while unknown. */
 export default function Outcome({
   sent,
   copy,
@@ -58,7 +61,6 @@ export default function Outcome({
   onRetry: () => void;
   kind?: string;
 }) {
-  const now = Date.now();
   const { txId } = sent;
   const entry = state.pending.find((p) => p.txId === txId);
   const finalAt = state.finalized.get(txId);
@@ -88,31 +90,6 @@ export default function Outcome({
     );
   }
 
-  if (finalAt !== undefined || onChain?.outcome.kind === 'success') {
-    return (
-      <div className="wl-stack wl-gap32">
-        <div className="bc-ctr pt-4">
-          <StatusTag status="finalized" />
-          <h1 className="bc-t1">{copy.done}</h1>
-          <p className="bc-lead">{copy.lead}</p>
-          <p className="bc-hint mono">
-            {onChain && `slot ${formatUnits(onChain.slot, 0)} · `}
-            {finalAt !== undefined && `${formatDuration(finalAt - sent.acceptedAt)} · `}
-            <CopyValue value={txId} label="transaction" />
-          </p>
-        </div>
-        <div className="grid justify-items-center gap-3">
-          <Button block onClick={home}>
-            done
-          </Button>
-          <ButtonLink variant="quiet" href={explorerTx(txId)} external>
-            view in explorer ↗
-          </ButtonLink>
-        </div>
-      </div>
-    );
-  }
-
   if (entry?.state === 'failed') return <Rejected reason={entry.error ?? 'unknown reason'} onRetry={onRetry} />;
 
   if (entry?.state === 'uncertain') {
@@ -134,50 +111,47 @@ export default function Outcome({
     );
   }
 
-  if (entry?.state === 'unconfirmed') {
-    return (
-      <section className="bc-ctr pt-4">
-        <StatusTag status="unconfirmed" />
-        <h1 className="bc-t2">{copy.sending}</h1>
-        <p className="bc-small">Unconfirmed after 15 minutes. It may still finalize. Checking every minute.</p>
-        <Button variant="ghost" onClick={home}>
-          done
-        </Button>
-      </section>
-    );
-  }
-
-  const waited = Math.max(0, now - sent.acceptedAt);
+  const final = finalAt !== undefined || onChain?.outcome.kind === 'success';
   return (
-    <div className="wl-stack wl-gap24">
+    <div className="wl-stack wl-gap32">
       <div className="bc-ctr pt-4">
-        <StatusTag status="confirming" detail={relativeAge(sent.acceptedAt, now)} />
-        <h1 className="bc-t1">{copy.sending}</h1>
-        <p className="bc-hint mono">{copy.line} · you can close this page</p>
+        {final ? (
+          <StatusTag status="finalized" />
+        ) : (
+          <Tag state="pending">{entry ? phaseLabel(entry) : 'sent · waiting for a block'}</Tag>
+        )}
+        <h1 className="bc-t1">{final ? copy.done : (copy.sent ?? copy.sending)}</h1>
+        <p className="bc-lead">{copy.lead}</p>
+        {final ? (
+          <p className="bc-hint mono">
+            {onChain && `slot ${formatUnits(onChain.slot, 0)} · `}
+            {finalAt !== undefined && `${formatDuration(finalAt - sent.acceptedAt)} · `}
+            <CopyValue value={txId} label="transaction" />
+          </p>
+        ) : (
+          <>
+            <p className="bc-small">
+              It lands in the next blocks; you can close this.{state.cadence && ` Finality ${state.cadence}.`}
+            </p>
+            <p className="bc-hint mono">
+              <CopyValue value={txId} label="transaction" />
+            </p>
+          </>
+        )}
       </div>
       {!sent.tracked && (
         <Notice tone="warn" title="Accepted.">
           Tracking could not be saved. Keep this id: <CopyValue value={txId} mode="full" label="transaction" />
         </Notice>
       )}
-      <StepList
-        steps={[
-          { label: 'signed', state: 'done', ms: sent.signedMs },
-          {
-            label: (
-              <>
-                accepted <span className="text-dim">·</span> <CopyValue value={txId} label="transaction" />
-              </>
-            ),
-            state: 'done',
-            ms: sent.acceptedMs,
-          },
-          { label: 'waiting for finality', state: 'active', ms: waited },
-        ]}
-      />
-      <Button variant="ghost" block onClick={home}>
-        done
-      </Button>
+      <div className="grid justify-items-center gap-3">
+        <Button block onClick={home}>
+          done
+        </Button>
+        <ButtonLink variant="quiet" href={explorerTx(txId)} external>
+          view in explorer ↗
+        </ButtonLink>
+      </div>
     </div>
   );
 }
