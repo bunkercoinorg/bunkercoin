@@ -1,5 +1,6 @@
 import { test, expect, PASSWORD } from '../harness/fixtures';
 import { FEE_UNITS, FINALITY_MS, UNITS_PER_BUNKER } from '../harness/rpc';
+import { IN_FLIGHT } from '../pages/wallet';
 
 test('send BUNKER: sender pays amount + fee, receiver gets amount', async ({ openWallet, rpc }) => {
   const sender = await openWallet();
@@ -21,9 +22,9 @@ test('send BUNKER: sender pays amount + fee, receiver gets amount', async ({ ope
     nonce: '0',
   });
   await sender.sign();
-  await expect(sender.outcomeTitle).toHaveText('Sending 0.250000 BUNKER.');
+  await sender.expectSent('0.250000 BUNKER');
   await sender.done();
-  await expect(sender.activityRow('send', '−0.250000')).toContainText('confirming');
+  await expect(sender.activityRow('send', '−0.250000')).toContainText(IN_FLIGHT);
 
   const senderAfter = UNITS_PER_BUNKER - amount - FEE_UNITS;
   await expect.poll(() => rpc.getBalance(from), { timeout: FINALITY_MS }).toBe(senderAfter);
