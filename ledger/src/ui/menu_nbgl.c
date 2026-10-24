@@ -37,8 +37,8 @@ void app_quit(void) {
 //  --------------------- SETTINGS MENU -----------------------
 //  -----------------------------------------------------------
 #define SETTING_INFO_NB 2
-static const char* const INFO_TYPES[SETTING_INFO_NB] = {"Version", "Developer"};
-static const char* const INFO_CONTENTS[SETTING_INFO_NB] = {APPVERSION, "Ledger"};
+static const char *const INFO_TYPES[SETTING_INFO_NB] = {"Version", "Developer"};
+static const char *const INFO_CONTENTS[SETTING_INFO_NB] = {APPVERSION, "Ledger"};
 
 // settings switches definitions
 enum { DUMMY_SWITCH_1_TOKEN = FIRST_USER_TOKEN, DUMMY_SWITCH_2_TOKEN };
@@ -76,7 +76,7 @@ static void review_warning_choice(bool confirm) {
         switch_value = !N_storage.dummy2_allowed;
         switches[DUMMY_SWITCH_2_ID].initState = (nbgl_state_t) switch_value;
         // store the new setting value in NVM
-        nvm_write((void*) &N_storage.dummy2_allowed, &switch_value, 1);
+        nvm_write((void *) &N_storage.dummy2_allowed, &switch_value, 1);
     }
 
     // Reset setting menu to the right page
@@ -102,7 +102,7 @@ static void controls_callback(int token, uint8_t index, int page) {
         switch_value = !N_storage.dummy1_allowed;
         switches[DUMMY_SWITCH_1_ID].initState = (nbgl_state_t) switch_value;
         // store the new setting value in NVM
-        nvm_write((void*) &N_storage.dummy1_allowed, &switch_value, 1);
+        nvm_write((void *) &N_storage.dummy1_allowed, &switch_value, 1);
     } else if (token == DUMMY_SWITCH_2_TOKEN) {
         // Dummy 2 switch touched
 
@@ -121,7 +121,7 @@ static void controls_callback(int token, uint8_t index, int page) {
             switch_value = !N_storage.dummy2_allowed;
             switches[DUMMY_SWITCH_2_ID].initState = (nbgl_state_t) switch_value;
             // store the new setting value in NVM
-            nvm_write((void*) &N_storage.dummy2_allowed, &switch_value, 1);
+            nvm_write((void *) &N_storage.dummy2_allowed, &switch_value, 1);
         }
     }
 }
