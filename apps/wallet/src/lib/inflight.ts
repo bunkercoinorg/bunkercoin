@@ -180,6 +180,10 @@ export function revalidate(info: Submission, balance: bigint | null, tokens: Tok
   return '';
 }
 
+/** Approval to send a duplicate again is bound to the exact intent reviewed and the in-flight tx it matched. */
+export const approvalKey = (intent: SendIntent, dupTxId: string) =>
+  [intent.kind, intent.tokenId ?? '', intent.amount.toString(), intent.to, dupTxId].join('|');
+
 /** `<1 min`, `3 min`, `2 h`. */
 export function coarseAgo(ms: number): string {
   const m = Math.floor(Math.max(0, ms) / 60_000);

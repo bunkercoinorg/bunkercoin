@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Actions, Button, CopyValue, Field, FlowBar, Icon, List, ListRow, Notice, TextInput } from '@bunkercoin/ui';
 import { shortId } from '@bunkercoin/chain-format';
 import { isValidAddress, sameAddress, signTokenTransfer, signTransfer, tokenIdBytes } from '@/lib/keys';
 import { amountProblem, heldOf, NATIVE_SEND, pickAsset, sendProblem, TOKEN_GONE, tokenIdentity, type SendAsset } from '@/lib/send';
 import type { Signer } from '@/lib/signer';
-import { duplicatePrompt, findDuplicate } from '@/lib/inflight';
+import { approvalKey, duplicatePrompt, findDuplicate, type SendIntent } from '@/lib/inflight';
 import { useReview } from '@/hooks/useReview';
 import { focusField, useFlowFocus } from '@/hooks/useFlowFocus';
 import { activityItems, tickerMap } from '@/components/activity-model';
@@ -49,7 +49,8 @@ export default function Send({
   const [sent, setSent] = useState<Broadcast | null>(null);
   const [rejected, setRejected] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
-  const [againOk, setAgainOk] = useState(false);
+  // Bound to the exact intent and the in-flight tx it matched; any edit or step change drops it.
+  const [approved, setApproved] = useState<string | null>(null);
   const review = useReview(state, actions, fee);
   const root = useFlowFocus<HTMLDivElement>(step);
   const wrap = (node: ReactNode) => (
@@ -61,6 +62,10 @@ export default function Send({
   // Until the first step is left a preset can still resolve as tokens load; from then on the asset is frozen.
   const asset = picked ?? (preset === null ? null : pickAsset(tokens, preset));
   const recipient = to.trim();
+  useEffect(() => {
+    setApproved(null);
+    setAsking(false);
+  }, [step, recipient, units, amount, picked]);
   const known = activityItems(state.pending, state.history, state.addressHex, tickerMap(tokens, state.registry)).some(
     (i) => i.counterparty?.label === 'to' && sameAddress(i.counterparty.address, recipient),
   );
@@ -109,11 +114,11 @@ export default function Send({
   if (step === 'review' && review.reviewed) {
     const f = review.reviewed.fee;
     const blocked = sendProblem(asset, units, f, balance, tokens);
-    const dup = findDuplicate(
-      state.pending,
-      asset.kind === 'token' ? { kind: 'token-send', to: recipient, amount: units, tokenId: asset.tokenId } : { kind: 'send', to: recipient, amount: units },
-    );
-    const sign = async (again = againOk) => {
+    const intent: SendIntent =
+      asset.kind === 'token' ? { kind: 'token-send', to: recipient, amount: units, tokenId: asset.tokenId } : { kind: 'send', to: recipient, amount: units };
+    const dup = findDuplicate(state.pending, intent);
+    const key = dup ? approvalKey(intent, dup.txId) : null;
+    const sign = async (again = key !== null && approved === key) => {
       if (blocked) return;
       if (dup && !again) return setAsking(true);
       setAsking(false);
@@ -129,6 +134,7 @@ export default function Send({
         asset.kind === 'token'
           ? { kind: 'token-send', to: recipient, amount: units, ticker: asset.unit, tokenId: asset.tokenId }
           : { kind: 'send', to: recipient, amount: units },
+        dup && again ? dup.txId : null,
       );
       setBusy(false);
       if (result.kind === 'broadcast') {
@@ -152,7 +158,7 @@ export default function Send({
                 <Button
                   size="sm"
                   onClick={() => {
-                    setAgainOk(true);
+                    setApproved(key);
                     void sign(true);
                   }}
                 >

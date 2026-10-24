@@ -2,8 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { SignatureStatus, TokenBalance } from '../src/lib/connection.ts';
 import {
+  approvalKey,
   dropReflected,
   fetchSnapshot,
+  findDuplicate,
   isInflight,
   mergeStored,
   nativeSpendable,
@@ -158,4 +160,19 @@ test('revalidation under the lock catches funds and duplicates another tab used 
   assert.match(revalidate(tokenInfo, 100n, [token('01', 10n)], [tokenOut], null), /spent these funds/);
   assert.match(revalidate({ kind: 'mint', amount: 1n, fee: 10n }, 5n, [], [], null), /spent these funds/);
   assert.equal(revalidate(info, null, [], [], null), '');
+});
+
+test('duplicate approval is bound to asset, amount, recipient and the matched tx', () => {
+  const intent = { kind: 'send' as const, to: TO, amount: 500n };
+  const dup = findDuplicate([entry({ txId: 'd', amount: 500n })], intent)!;
+  const key = approvalKey(intent, dup.txId);
+  assert.equal(approvalKey({ ...intent }, 'd'), key);
+  for (const other of [
+    approvalKey({ ...intent, amount: 501n }, 'd'),
+    approvalKey({ ...intent, to: OTHER }, 'd'),
+    approvalKey({ ...intent, kind: 'token-send', tokenId: '01' }, 'd'),
+    approvalKey(intent, 'e'),
+  ]) {
+    assert.notEqual(other, key);
+  }
 });
