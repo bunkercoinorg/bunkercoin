@@ -131,7 +131,7 @@ export default function Outcome({
         ) : (
           <>
             <p className="bc-small">
-              It lands in the next blocks; you can close this.{state.cadence && ` Finality ${state.cadence}.`}
+              It lands in the next blocks; you can close this.{state.cadence && <span className="whitespace-nowrap"> Finality {state.cadence}.</span>}
             </p>
             <p className="bc-hint mono">
               <CopyValue value={txId} label="transaction" />

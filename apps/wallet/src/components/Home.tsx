@@ -48,6 +48,7 @@ export default function Home({ state, actions }: { state: WalletState; actions: 
   const now = Date.now();
   const tokenOut = tokenPendingOut(state.pending);
   const inflight = items.filter((i) => isOpen(i.status));
+  const settled = items.filter((i) => !isOpen(i.status));
   const okAt = fresh.balance.okAt;
   const stale = okAt !== null && (fresh.balance.error !== null || now - okAt > STALE_MS);
   const zero = spendable.available === 0n;
@@ -151,11 +152,11 @@ export default function Home({ state, actions }: { state: WalletState; actions: 
             )
           }
         />
-        {items.length === 0 ? (
-          <EmptyState>{state.history === null ? 'loading activity…' : 'No activity yet.'}</EmptyState>
+        {settled.length === 0 ? (
+          <EmptyState>{state.history === null ? 'loading activity…' : inflight.length > 0 ? 'Nothing settled yet.' : 'No activity yet.'}</EmptyState>
         ) : (
           <List>
-            {items.filter((i) => !isOpen(i.status)).slice(0, 3).map((i) => (
+            {settled.slice(0, 3).map((i) => (
               <ActivityRow key={i.id} item={i} now={now} />
             ))}
           </List>

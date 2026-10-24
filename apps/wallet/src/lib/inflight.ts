@@ -21,7 +21,7 @@ export function phaseLabel(p: PendingTx): string {
   if (p.state === 'uncertain') return 'no answer from the node';
   if (p.phase === 'block') return 'in block · finalizing';
   if (p.phase === 'mempool') return 'in mempool · waiting for a block';
-  return 'sent · waiting for a block';
+  return `${p.kind === 'faucet' ? 'requested' : 'sent'} · waiting for a block`;
 }
 
 export interface Spendable {

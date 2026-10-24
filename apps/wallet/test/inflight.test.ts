@@ -97,6 +97,7 @@ test('processed is never progress: only a transaction lookup places it in a bloc
   assert.equal(phaseOf(processed, 'confirmed'), 'block');
   assert.equal(phaseOf({ confirmationStatus: 'processed', err: 'x' }, 'confirmed'), null);
   assert.equal(phaseLabel(entry({})), 'sent · waiting for a block');
+  assert.equal(phaseLabel(entry({ kind: 'faucet' })), 'requested · waiting for a block');
   assert.equal(phaseLabel(entry({ phase: 'mempool' })), 'in mempool · waiting for a block');
   assert.equal(phaseLabel(entry({ phase: 'block' })), 'in block · finalizing');
   assert.equal(phaseLabel(entry({ state: 'uncertain', phase: 'block' })), 'no answer from the node');
