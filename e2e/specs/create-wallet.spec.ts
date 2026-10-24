@@ -1,6 +1,6 @@
-import { test, expect, PASSWORD } from '../harness/fixtures';
+import { test, expect, live, PASSWORD } from '../harness/fixtures';
 
-test('create wallet: phrase, backup confirmation, password, dashboard', async ({ openWallet, rpc }) => {
+test('create wallet: phrase, backup confirmation, password, dashboard', live, async ({ openWallet, rpc }) => {
   const wallet = await openWallet();
   await expect(wallet.onboarding).toBeVisible();
 
@@ -14,7 +14,7 @@ test('create wallet: phrase, backup confirmation, password, dashboard', async ({
   expect(await wallet.storedKeystore()).not.toContain(phrase);
 });
 
-test('create wallet: wrong backup words are rejected', async ({ openWallet }) => {
+test('create wallet: wrong backup words are rejected', live, async ({ openWallet }) => {
   const wallet = await openWallet();
   await wallet.button(/^create a wallet/).click();
   const words = (await wallet.revealPhrase()).split(' ');

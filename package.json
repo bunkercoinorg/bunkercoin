@@ -15,6 +15,7 @@
     "build": "bun run --filter '*' build",
     "typecheck": "bun run --filter '*' typecheck",
     "test": "bun run --filter '*' test",
-    "e2e": "bun run --cwd e2e e2e"
+    "e2e": "bun run --cwd e2e e2e",
+    "e2e:live": "bun run --cwd e2e e2e:live"
   }
 }

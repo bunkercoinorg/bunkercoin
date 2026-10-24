@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { FINALITY_MS, formatBunker } from '../harness/rpc';
 
 /**
@@ -8,17 +8,18 @@ import { FINALITY_MS, formatBunker } from '../harness/rpc';
  */
 
 const KDF_MS = 90_000;
+const CHECK_MS = 60_000;
 
-const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** CopyValue buttons carry the full value in their title: `copy <value>`. */
-async function copyTarget(scope: Locator): Promise<string> {
+export async function copyTarget(scope: Locator): Promise<string> {
   const title = await scope.locator('button[title^="copy "]').first().getAttribute('title');
   return title!.slice('copy '.length);
 }
 
 /** `<dl>` facts (receipts, tx details) as label -> value; CopyValue cells give their full value. */
-async function facts(scope: Locator): Promise<Record<string, string>> {
+export async function facts(scope: Locator): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   for (const row of await scope.locator('dl > div').all()) {
     const label = (await row.locator('dt').textContent())!.trim();
@@ -35,6 +36,9 @@ async function facts(scope: Locator): Promise<Record<string, string>> {
 /** An open transfer's activity tag: `sent · waiting for a block`, `in mempool · …`, `in block · finalizing`. */
 export const IN_FLIGHT = /waiting for a block|finalizing/;
 export class WalletPage {
+  /** The password this wallet was last opened with, to get past the idle lock during long waits. */
+  private password?: string;
+
   constructor(readonly page: Page) {}
 
   async goto(): Promise<void> {
@@ -91,6 +95,7 @@ export class WalletPage {
     await this.button('i wrote them down').click();
     await this.confirmWords(phrase);
     await this.setPassword(password);
+    this.password = password;
     await expect(this.heading('Wallet ready.')).toBeVisible({ timeout: KDF_MS });
     const ready = await copyTarget(this.main);
     await this.button('open wallet').click();
@@ -138,6 +143,7 @@ export class WalletPage {
     await expect(this.main.getByText('24 / 24 words · checksum ok', { exact: true })).toBeVisible();
     await this.button('continue').click();
     await this.setPassword(password);
+    this.password = password;
     await expect(this.lockButton).toBeVisible({ timeout: KDF_MS });
     return this.address();
   }
@@ -167,6 +173,7 @@ export class WalletPage {
   }
 
   async unlock(password: string): Promise<void> {
+    this.password = password;
     await this.submitUnlock(password);
     await expect(this.lockButton).toBeVisible({ timeout: KDF_MS });
   }
@@ -186,8 +193,21 @@ export class WalletPage {
     await expect(this.homeView).toBeAttached();
   }
 
+  /** Live finality outlasts the 15 min idle lock, so a wait may find the wallet locked. */
   async ensureHome(): Promise<void> {
+    if (this.password && (await this.unlockScreen.isVisible())) {
+      test.info().annotations.push({ type: 'idle lock', description: `unlocked again at ${new Date().toISOString()}` });
+      await this.unlock(this.password);
+    }
     if ((await this.homeView.count()) === 0) await this.goHome();
+  }
+
+  /** Retries `check` from home until `timeout`, unlocking whenever the idle lock kicked in. */
+  async eventually(check: (timeout: number) => Promise<void>, timeout: number): Promise<void> {
+    await expect(async () => {
+      await this.ensureHome();
+      await check(Math.min(timeout, CHECK_MS));
+    }).toPass({ timeout, intervals: [1_000] });
   }
 
   /** The header chip: `copy address 8Ep5…suHx`, full value in its title. */
@@ -238,8 +258,8 @@ export class WalletPage {
   }
 
   async expectBalance(units: number, timeout = FINALITY_MS): Promise<void> {
-    await this.ensureHome();
-    await expect(this.balance).toHaveText(new RegExp(`^${escape(formatBunker(units))}\\s*BUNKER$`), { timeout });
+    const text = new RegExp(`^${escape(formatBunker(units))}\\s*BUNKER$`);
+    await this.eventually((t) => expect(this.balance).toHaveText(text, { timeout: t }), timeout);
   }
 
   get tokensList(): Locator {
@@ -255,8 +275,7 @@ export class WalletPage {
   }
 
   async expectTokenBalance(ticker: string, value: string, timeout = FINALITY_MS): Promise<void> {
-    await this.ensureHome();
-    await expect(this.tokenBalance(ticker)).toHaveText(value, { timeout });
+    await this.eventually((t) => expect(this.tokenBalance(ticker)).toHaveText(value, { timeout: t }), timeout);
   }
 
   async requestFaucet(): Promise<void> {
@@ -383,8 +402,7 @@ export class WalletPage {
 
   /** Waits for the chain record (the row shows its slot), then reads `execution` on its detail view. */
   async expectFinalized(row: Locator, timeout = FINALITY_MS): Promise<void> {
-    await this.ensureHome();
-    await expect(row).toContainText(/slot [\d,]+$/, { timeout });
+    await this.eventually((t) => expect(row).toContainText(/slot [\d,]+$/, { timeout: t }), timeout);
     await this.openTx(row);
     await expect(this.fact('execution')).toHaveText('succeeded', { timeout: 60_000 });
     await this.goHome();

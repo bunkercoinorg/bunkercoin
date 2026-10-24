@@ -1,8 +1,9 @@
-import { test, expect, PASSWORD } from '../harness/fixtures';
+import { test, expect, live, PASSWORD } from '../harness/fixtures';
 import { FEE_UNITS, FINALITY_MS, UNITS_PER_BUNKER } from '../harness/rpc';
 import { IN_FLIGHT } from '../pages/wallet';
+import { LIVE } from '../harness/target';
 
-test('send BUNKER: sender pays amount + fee, receiver gets amount', async ({ openWallet, rpc }) => {
+test('send BUNKER: sender pays amount + fee, receiver gets amount', live, async ({ openWallet, openExplorer, rpc }) => {
   const sender = await openWallet();
   const receiver = await openWallet();
   const { address: from } = await sender.createWallet(PASSWORD);
@@ -44,11 +45,29 @@ test('send BUNKER: sender pays amount + fee, receiver gets amount', async ({ ope
   });
   expect(details.transaction).toMatch(/^[1-9A-HJ-NP-Za-km-z]{43,88}$/);
 
+  if (LIVE) {
+    await test.step('explorer shows the finalized send and the sender balance', async () => {
+      const explorer = await openExplorer();
+      await explorer.openTx(details.transaction);
+      await expect(explorer.statusTag).toHaveText('finalized', { timeout: FINALITY_MS });
+      expect(await explorer.txFacts()).toMatchObject({
+        type: 'transfer',
+        amount: '0.250000 BUNKER',
+        from,
+        to,
+        execution: 'succeeded',
+        fee: '0.000100 BUNKER',
+        nonce: '0',
+      });
+      await explorer.expectAccountBalance(from, senderAfter, FINALITY_MS);
+    });
+  }
+
   await receiver.expectFinalized(receiver.activityRow('receive', '+0.250000'), 60_000);
   expect((await receiver.txDetails(receiver.activityRow('receive', '+0.250000'))).from).toBe(from);
 });
 
-test('send BUNKER: amount above balance is refused before signing', async ({ openWallet }) => {
+test('send BUNKER: amount above balance is refused before signing', live, async ({ openWallet }) => {
   const sender = await openWallet();
   const receiver = await openWallet();
   await sender.createWallet(PASSWORD);

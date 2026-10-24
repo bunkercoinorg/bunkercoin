@@ -1,7 +1,7 @@
-import { test, expect, PASSWORD } from '../harness/fixtures';
+import { test, expect, live, PASSWORD } from '../harness/fixtures';
 import { WalletPage } from '../pages/wallet';
 
-test('lock and unlock: wrong password rejected, right one unlocks', async ({ openWallet }) => {
+test('lock and unlock: wrong password rejected, right one unlocks', live, async ({ openWallet }) => {
   const wallet = await openWallet();
   const { address } = await wallet.createWallet(PASSWORD);
 
@@ -16,7 +16,7 @@ test('lock and unlock: wrong password rejected, right one unlocks', async ({ ope
   expect(await wallet.address()).toBe(address);
 });
 
-test('session: reload resumes an unlocked tab, a locked or new tab needs the password', async ({ openWallet }) => {
+test('session: reload resumes an unlocked tab, a locked or new tab needs the password', live, async ({ openWallet }) => {
   const wallet = await openWallet();
   const { address } = await wallet.createWallet(PASSWORD);
 

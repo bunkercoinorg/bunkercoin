@@ -1,7 +1,7 @@
-import { test, expect, PASSWORD } from '../harness/fixtures';
+import { test, expect, live, PASSWORD } from '../harness/fixtures';
 import { UNITS_PER_BUNKER } from '../harness/rpc';
 
-test('import from phrase in a fresh context restores address and balance', async ({ openWallet, rpc }) => {
+test('import from phrase in a fresh context restores address and balance', live, async ({ openWallet, rpc }) => {
   const original = await openWallet();
   const { phrase, address } = await original.createWallet(PASSWORD);
   await rpc.fund(address, UNITS_PER_BUNKER);
@@ -13,7 +13,7 @@ test('import from phrase in a fresh context restores address and balance', async
   expect(await rpc.getBalance(address)).toBe(UNITS_PER_BUNKER);
 });
 
-test('import rejects a phrase with a bad checksum', async ({ openWallet }) => {
+test('import rejects a phrase with a bad checksum', live, async ({ openWallet }) => {
   const wallet = await openWallet();
   await wallet.button(/^import a wallet/).click();
   await wallet.page.getByLabel('recovery phrase', { exact: true }).fill(Array(24).fill('abandon').join(' '));

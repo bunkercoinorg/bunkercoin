@@ -1,6 +1,13 @@
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { test } from '@playwright/test';
+import { LIVE } from './target';
+
 export const FEE_UNITS = 100;
 export const UNITS_PER_BUNKER = 1_000_000;
-export const FINALITY_MS = 5 * 60_000;
+// Live blocks land every ~10-20 min over radio and a tx can sit out two or three of them before inclusion.
+export const FINALITY_MS = (LIVE ? 60 : 5) * 60_000;
+const STATUS_POLL_MS = LIVE ? 5_000 : 1_000;
 
 /** Mirrors the wallet's display format so UI text can be asserted from base units. */
 export function formatBunker(units: number): string {
@@ -14,6 +21,21 @@ export interface TokenHolding {
   amount?: number;
   balance?: number;
 }
+
+/**
+ * Airdrops reuse the faucet's finalized nonce, so one still pending when the next is requested collides.
+ * Every airdrop is recorded on disk (a failed test restarts the worker); `settleAirdrops` waits them out.
+ */
+const PENDING_FILE = path.resolve(import.meta.dirname, '../logs/pending-airdrops.json');
+const readPending = (): string[] => (existsSync(PENDING_FILE) ? JSON.parse(readFileSync(PENDING_FILE, 'utf8')) : []);
+const writePending = (ids: string[]) => writeFileSync(PENDING_FILE, JSON.stringify(ids));
+export const pendingAirdrops = {
+  add: (txId: string) => {
+    if (LIVE) writePending([...new Set([...readPending(), txId])]);
+  },
+  delete: (txId: string) => writePending(readPending().filter((id) => id !== txId)),
+  list: readPending,
+};
 
 /** Direct JSON-RPC client: the oracle the UI is checked against. */
 export class Rpc {
@@ -68,13 +90,29 @@ export class Rpc {
       const status = value[0];
       if (status?.err) throw new Error(`${txId} failed: ${JSON.stringify(status.err)}`);
       if (status?.confirmationStatus === 'finalized') return;
-      await new Promise((r) => setTimeout(r, 1_000));
+      await new Promise((r) => setTimeout(r, STATUS_POLL_MS));
     }
     throw new Error(`${txId} not finalized within ${timeoutMs}ms`);
   }
 
   /** Genesis-signed airdrop; the node reuses the finalized nonce, so callers must not overlap these. */
   async fund(address: string, units: number): Promise<void> {
-    await this.waitFinalized(await this.call<string>('requestAirdrop', [address, units]));
+    await this.settleAirdrops();
+    const txId = await this.call<string>('requestAirdrop', [address, units]);
+    pendingAirdrops.add(txId);
+    test.info().annotations.push({ type: 'airdrop', description: `${txId} -> ${address}` });
+    await this.waitFinalized(txId);
+    pendingAirdrops.delete(txId);
+  }
+
+  /** Waits out every airdrop still pending from this or an earlier run (live only; the sim chain is fresh). */
+  async settleAirdrops(): Promise<void> {
+    if (!LIVE) return;
+    for (const txId of pendingAirdrops.list()) {
+      await this.waitFinalized(txId).catch((e: Error) =>
+        test.info().annotations.push({ type: 'unsettled airdrop', description: e.message }),
+      );
+      pendingAirdrops.delete(txId);
+    }
   }
 }
