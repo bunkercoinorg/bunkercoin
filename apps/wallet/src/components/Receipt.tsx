@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { Actions, Button, CopyValue, Facts, Notice, Panel, type Fact } from '@bunkercoin/ui';
 import { utcClock } from '@bunkercoin/chain-format';
-import type { NoncePlan } from '@/lib/submit';
+import { pauseReason, type NoncePlan } from '@/lib/submit';
 import type { ReviewedFee } from '@/hooks/useReview';
 import { bunker } from '@/components/assets';
 
@@ -43,6 +43,7 @@ export default function Receipt({
   onRetryPlan: () => void;
 }) {
   const blocked = plan?.blocked[0] ?? null;
+  const paused = blocked && pauseReason(blocked);
   const feeRow: Fact = {
     label: 'network fee',
     value: (
@@ -71,7 +72,7 @@ export default function Receipt({
             </Button>
           }
         >
-          Nonce {blocked.entry.nonce.toString()} is still unconfirmed. Another send could be rejected.
+          Nonce {blocked.entry.nonce.toString()} is still unconfirmed. Another send could be rejected. {paused}
         </Notice>
       )}
       {planError && (
@@ -98,7 +99,7 @@ export default function Receipt({
       >
         <Facts variant="rows" items={items} />
       </Panel>
-      {error && (
+      {error && error !== paused && (
         <p className="bc-err" role="alert">
           {error}
         </p>
