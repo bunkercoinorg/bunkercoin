@@ -1169,6 +1169,8 @@ async fn run_hardware(
     let overall_deadline = deadline_for(duration);
     let mut highest = 0u64;
     let mut session = 0u32;
+    // Last session's executed state; the new session's is still catching up.
+    let mut last_exec = base_tx.execution_state.clone();
 
     while tokio::time::Instant::now() < overall_deadline && !shutdown_requested() {
         session += 1;
@@ -1217,6 +1219,17 @@ async fn run_hardware(
 
         // Publish the live mempool for the long-lived RPC bridge.
         *mempool_slot.write().await = Some(mempool.clone());
+        let replayed = rpc::replay_in_flight(
+            &base_tx.mempool,
+            &base_tx.tx_results,
+            &last_exec,
+            &base_tx.tx_sender,
+        )
+        .await;
+        if replayed > 0 {
+            println!("[{label}] replayed {replayed} in-flight tx(s) into the new mempool");
+        }
+        last_exec = exec.clone();
 
         // Rebuild execution by replaying persisted finalized blocks into fresh genesis.
         let session_tx = base_tx.with_execution_state(exec);

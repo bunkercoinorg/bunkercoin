@@ -212,6 +212,9 @@ pub struct MempoolEntry {
     pub body_type: String,
     pub body: TransactionBodyResponse,
     pub received_at: u64,
+    /// Signed form, kept so a replaced node mempool can be refilled.
+    #[serde(skip)]
+    pub tx: CoreTransaction,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -364,7 +367,7 @@ pub struct SharedState {
     pub updates: broadcast::Sender<WebSocketUpdate>,
     pub blockstore: Option<Arc<RwLock<Box<dyn Blockstore + Send + Sync>>>>,
     pub pool: Option<Arc<RwLock<Box<dyn Pool + Send + Sync>>>>,
-    /// Lock order wherever held together: blockstore, mempool, tx_results.
+    /// Lock order wherever held together: blockstore, mempool, tx_results, execution_state.
     pub mempool: Arc<RwLock<Vec<MempoolEntry>>>,
     pub tx_sender: Option<mpsc::UnboundedSender<CoreTransaction>>,
     pub execution_state: Arc<RwLock<ExecutionState>>,
@@ -752,6 +755,7 @@ async fn submit_transaction(
         body_type: body_type.to_string(),
         body: core_tx_to_body_response(&tx.body),
         received_at: now,
+        tx: tx.clone(),
     };
 
     mempool.push(entry);
@@ -797,6 +801,43 @@ fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_millis() as u64)
+}
+
+/// Drop entries that finalized or whose nonce the sender already consumed, and
+/// return the survivors' signed txs in nonce order.
+fn prune_for_replay(
+    pool: &mut Vec<MempoolEntry>,
+    finalized: &HashMap<String, TxResult>,
+    account_nonce: impl Fn(&[u8; 32]) -> u64,
+) -> Vec<CoreTransaction> {
+    pool.retain(|e| !finalized.contains_key(&e.hash) && e.nonce >= account_nonce(&e.tx.sender));
+    let mut survivors: Vec<&MempoolEntry> = pool.iter().collect();
+    survivors.sort_by_key(|e| (e.nonce, e.received_at));
+    survivors.into_iter().map(|e| e.tx.clone()).collect()
+}
+
+/// Resubmit in-flight txs into a replaced node mempool (a reconnect drops the old one),
+/// so a lost tx cannot leave later nonces of its sender unexecutable. `execution_state`
+/// is the last state that executed the chain. Holds the mempool lock throughout so no
+/// faucet tx is signed mid-replay. Returns the number of txs resubmitted.
+pub async fn replay_in_flight(
+    mempool: &RwLock<Vec<MempoolEntry>>,
+    tx_results: &RwLock<HashMap<String, TxResult>>,
+    execution_state: &RwLock<ExecutionState>,
+    tx_sender: &mpsc::UnboundedSender<CoreTransaction>,
+) -> usize {
+    let mut pool = mempool.write().await;
+    let txs = {
+        let results = tx_results.read().await;
+        let exec = execution_state.read().await;
+        prune_for_replay(&mut pool, &results, |pk| {
+            exec.get_account(pk).map_or(0, |a| a.nonce)
+        })
+    };
+    for tx in &txs {
+        let _ = tx_sender.send(tx.clone());
+    }
+    txs.len()
 }
 
 /// FIFO cap: old `/tx/{hash}` results age out before the RocksDB chain.
@@ -3062,8 +3103,17 @@ mod tests {
     }
 
     fn mempool_entry(sender: String, nonce: u64) -> MempoolEntry {
+        let tx = CoreTransaction {
+            sender: decode_pubkey(&sender).unwrap_or([0u8; 32]),
+            nonce,
+            ..make_core_tx(TransactionBody::Transfer {
+                to: [0x01; 32],
+                amount: 1,
+            })
+        };
         MempoolEntry {
             hash: format!("{sender}-{nonce}"),
+            tx,
             sender,
             nonce,
             fee: 0,
@@ -3228,6 +3278,124 @@ mod tests {
         let req: SubmitTransactionRequest = serde_json::from_value(tx).unwrap();
         let _ = submit_transaction(axum::extract::State(state.clone()), Json(req)).await;
         assert_eq!(tx_recv.try_recv().unwrap().nonce, 4);
+    }
+
+    fn finalized_result(hash: &str) -> TxResult {
+        TxResult {
+            hash: hash.to_string(),
+            slot: 1,
+            block_hash: String::new(),
+            status: TxFinalStatus::Finalized,
+            error: None,
+            executed_at: 0,
+        }
+    }
+
+    #[test]
+    fn replay_orders_survivors_by_nonce() {
+        let (a, b) = ([3u8; 32], [4u8; 32]);
+        let mut pool = vec![
+            mempool_entry(hex::encode(a), 4),
+            mempool_entry(hex::encode(b), 1),
+            mempool_entry(hex::encode(a), 2),
+            mempool_entry(hex::encode(a), 3),
+        ];
+        pool[3].received_at = 9;
+        let txs = prune_for_replay(&mut pool, &HashMap::new(), |_| 0);
+        let order: Vec<_> = txs.iter().map(|t| (t.sender, t.nonce)).collect();
+        assert_eq!(order, vec![(b, 1), (a, 2), (a, 3), (a, 4)]);
+        assert_eq!(pool.len(), 4);
+    }
+
+    #[test]
+    fn replay_drops_finalized_and_consumed_nonces() {
+        let (a, b) = ([3u8; 32], [4u8; 32]);
+        let mut pool = vec![
+            mempool_entry(hex::encode(a), 0),
+            mempool_entry(hex::encode(a), 1),
+            mempool_entry(hex::encode(a), 2),
+            mempool_entry(hex::encode(b), 0),
+        ];
+        let finalized = HashMap::from([(pool[0].hash.clone(), finalized_result(&pool[0].hash))]);
+        let txs = prune_for_replay(&mut pool, &finalized, |pk| if pk == &a { 2 } else { 0 });
+        let order: Vec<_> = txs.iter().map(|t| (t.sender, t.nonce)).collect();
+        assert_eq!(order, vec![(b, 0), (a, 2)]);
+        let kept: Vec<_> = pool.iter().map(|e| (e.tx.sender, e.nonce)).collect();
+        assert_eq!(kept, vec![(a, 2), (b, 0)]);
+    }
+
+    #[tokio::test]
+    async fn faucet_resumes_after_reconnect_replay() {
+        let sk = SigningKey::from_bytes(&[7u8; 32]);
+        let genesis_pk = sk.verifying_key().to_bytes();
+        let (tx_send, mut old_node) = mpsc::unbounded_channel();
+        let mut state = test_state(Vec::new());
+        state.genesis_signing_key = Some(Arc::new(sk));
+        state.tx_sender = Some(tx_send.clone());
+        state
+            .execution_state
+            .write()
+            .await
+            .get_or_create_account(&genesis_pk)
+            .native_balance = 1_000_000;
+
+        for r in 1..=3u8 {
+            let tx = build_airdrop_tx(&state, [r; 32], 1_000).await.unwrap();
+            let req: SubmitTransactionRequest = serde_json::from_value(tx).unwrap();
+            let _ = submit_transaction(axum::extract::State(state.clone()), Json(req)).await;
+        }
+        let mut sent = Vec::new();
+        while let Ok(t) = old_node.try_recv() {
+            sent.push(t);
+        }
+        sent.sort_by_key(|t| t.nonce);
+
+        // Nonce 0 finalizes, then the link drops and the node mempool loses 1 and 2.
+        let order = Arc::new(tokio::sync::RwLock::new(VecDeque::new()));
+        let first = state
+            .execution_state
+            .write()
+            .await
+            .execute_block(&sent[..1]);
+        record_tx_results(
+            &state.mempool,
+            &state.tx_results,
+            &order,
+            1,
+            "",
+            &sent[..1],
+            &first,
+        )
+        .await;
+
+        let (new_send, mut new_node) = mpsc::unbounded_channel();
+        state.tx_sender = Some(new_send.clone());
+        let replayed = replay_in_flight(
+            &state.mempool,
+            &state.tx_results,
+            &state.execution_state,
+            &new_send,
+        )
+        .await;
+        assert_eq!(replayed, 2);
+        let tx = build_airdrop_tx(&state, [9u8; 32], 1_000).await.unwrap();
+        let req: SubmitTransactionRequest = serde_json::from_value(tx).unwrap();
+        let _ = submit_transaction(axum::extract::State(state.clone()), Json(req)).await;
+
+        let mut delivered = Vec::new();
+        while let Ok(t) = new_node.try_recv() {
+            delivered.push(t);
+        }
+        assert_eq!(
+            delivered.iter().map(|t| t.nonce).collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+        let results = state
+            .execution_state
+            .write()
+            .await
+            .execute_block(&delivered);
+        assert!(results.iter().all(|r| r.is_ok()), "{results:?}");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
