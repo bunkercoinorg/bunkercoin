@@ -8,7 +8,7 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use bunker_coin_core::execution::State as ExecutionState;
+use bunker_coin_core::execution::{ExecutionError, State as ExecutionState};
 use bunker_coin_core::transaction::{Transaction as CoreTransaction, TransactionBody};
 use bunker_coin_core::types::MAX_TICKER_LEN;
 use bunkerglow::consensus::{Blockstore, Pool};
@@ -19,7 +19,7 @@ use bunkerglow::Slot;
 use ed25519_dalek::SigningKey;
 use futures::{sink::SinkExt, stream::StreamExt};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::{broadcast, mpsc, RwLock};
@@ -364,6 +364,7 @@ pub struct SharedState {
     pub updates: broadcast::Sender<WebSocketUpdate>,
     pub blockstore: Option<Arc<RwLock<Box<dyn Blockstore + Send + Sync>>>>,
     pub pool: Option<Arc<RwLock<Box<dyn Pool + Send + Sync>>>>,
+    /// Lock order wherever held together: blockstore, mempool, tx_results.
     pub mempool: Arc<RwLock<Vec<MempoolEntry>>>,
     pub tx_sender: Option<mpsc::UnboundedSender<CoreTransaction>>,
     pub execution_state: Arc<RwLock<ExecutionState>>,
@@ -798,6 +799,54 @@ fn now_ms() -> u64 {
         .map_or(0, |d| d.as_millis() as u64)
 }
 
+/// FIFO cap: old `/tx/{hash}` results age out before the RocksDB chain.
+const MAX_TX_RESULTS: usize = 10_000;
+
+/// Record one finalized slot's execution results and drop those txs from the mempool.
+pub async fn record_tx_results(
+    mempool: &RwLock<Vec<MempoolEntry>>,
+    tx_results: &RwLock<HashMap<String, TxResult>>,
+    results_order: &RwLock<VecDeque<String>>,
+    slot: u64,
+    block_hash_hex: &str,
+    core_txs: &[CoreTransaction],
+    results: &[Result<(), ExecutionError>],
+) {
+    let now = now_ms();
+    let mut mempool = mempool.write().await;
+    let mut results_map = tx_results.write().await;
+    let mut results_order = results_order.write().await;
+    for (core_tx, exec_result) in core_txs.iter().zip(results.iter()) {
+        let hash = hex::encode(core_tx.hash());
+        let (status, error) = match exec_result {
+            Ok(()) => (TxFinalStatus::Finalized, None),
+            Err(e) => (TxFinalStatus::Failed, Some(e.to_string())),
+        };
+        // First execution wins: duplicate inclusions fail on nonce and must not
+        // clobber an earlier successful result.
+        if !results_map.contains_key(&hash) {
+            results_map.insert(
+                hash.clone(),
+                TxResult {
+                    hash: hash.clone(),
+                    slot,
+                    block_hash: block_hash_hex.to_string(),
+                    status,
+                    error,
+                    executed_at: now,
+                },
+            );
+            results_order.push_back(hash.clone());
+            while results_order.len() > MAX_TX_RESULTS {
+                if let Some(oldest) = results_order.pop_front() {
+                    results_map.remove(&oldest);
+                }
+            }
+        }
+        mempool.retain(|e| e.hash != hash);
+    }
+}
+
 async fn mempool(
     Query(p): Query<Pagination>,
     state: axum::extract::State<SharedState>,
@@ -1157,48 +1206,51 @@ async fn get_transaction(
     Path(hash): Path<String>,
     state: axum::extract::State<SharedState>,
 ) -> impl IntoResponse {
-    {
+    let (finalized, pending) = {
+        let pool = state.mempool.read().await;
         let results = state.tx_results.read().await;
-        if let Some(result) = results.get(&hash) {
-            let (sender, nonce, fee, body) = find_tx_details_in_blockstore(&state, &hash)
-                .await
-                .unwrap_or_else(|| ("unknown".to_string(), 0, 0, None));
-
-            let success = matches!(result.status, TxFinalStatus::Finalized);
-            let mut resp = serde_json::json!({
-                "hash": hash,
-                "sender": sender,
-                "nonce": nonce,
-                "fee": fee,
-                "status": {
-                    "location": "finalized",
-                    "slot": result.slot,
-                    "block_hash": result.block_hash,
-                    "executed": true,
-                    "success": success,
-                    "error": result.error,
-                },
-            });
-            if let Some(body_resp) = body {
-                resp["body"] = serde_json::to_value(body_resp).unwrap_or_default();
-            }
-            return Json(resp).into_response();
+        match results.get(&hash) {
+            Some(r) => (Some(r.clone()), None),
+            None => (None, pool.iter().find(|e| e.hash == hash).cloned()),
         }
+    };
+
+    if let Some(result) = finalized {
+        let (sender, nonce, fee, body) = find_tx_details_in_blockstore(&state, &hash)
+            .await
+            .unwrap_or_else(|| ("unknown".to_string(), 0, 0, None));
+
+        let success = matches!(result.status, TxFinalStatus::Finalized);
+        let mut resp = serde_json::json!({
+            "hash": hash,
+            "sender": sender,
+            "nonce": nonce,
+            "fee": fee,
+            "status": {
+                "location": "finalized",
+                "slot": result.slot,
+                "block_hash": result.block_hash,
+                "executed": true,
+                "success": success,
+                "error": result.error,
+            },
+        });
+        if let Some(body_resp) = body {
+            resp["body"] = serde_json::to_value(body_resp).unwrap_or_default();
+        }
+        return Json(resp).into_response();
     }
 
-    {
-        let pool = state.mempool.read().await;
-        if let Some(entry) = pool.iter().find(|e| e.hash == hash) {
-            return Json(serde_json::json!({
-                "hash": entry.hash,
-                "sender": entry.sender,
-                "nonce": entry.nonce,
-                "fee": entry.fee,
-                "body": entry.body,
-                "status": { "location": "mempool" },
-            }))
-            .into_response();
-        }
+    if let Some(entry) = pending {
+        return Json(serde_json::json!({
+            "hash": entry.hash,
+            "sender": entry.sender,
+            "nonce": entry.nonce,
+            "fee": entry.fee,
+            "body": entry.body,
+            "status": { "location": "mempool" },
+        }))
+        .into_response();
     }
 
     if let Some((sender, nonce, fee, body, slot_u64, blk_hash)) =
@@ -1235,10 +1287,9 @@ async fn list_transactions(
     let mut txs: Vec<serde_json::Value> = Vec::new();
 
     if let Some(bs_arc) = &state.blockstore {
+        let highest_finalized_slot = current_slot(&state).await;
         let bs = bs_arc.read().await;
         let results = state.tx_results.read().await;
-
-        let highest_finalized_slot = current_slot(&state).await;
 
         // Scan newest-first, bounded by page need and a fixed recent window.
         let need = offset + limit;
@@ -3178,6 +3229,74 @@ mod tests {
         let _ = submit_transaction(axum::extract::State(state.clone()), Json(req)).await;
         assert_eq!(tx_recv.try_recv().unwrap().nonce, 4);
     }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn status_polling_and_finalization_do_not_deadlock() {
+        let state = test_state(Vec::new());
+        let order = Arc::new(tokio::sync::RwLock::new(VecDeque::new()));
+        let run = async {
+            for round in 0..200u64 {
+                let txs: Vec<CoreTransaction> = (0..8)
+                    .map(|i| CoreTransaction {
+                        nonce: round * 8 + i,
+                        ..make_core_tx(TransactionBody::Transfer {
+                            to: [0x01; 32],
+                            amount: 1,
+                        })
+                    })
+                    .collect();
+                for tx in &txs {
+                    let mut entry = mempool_entry(hex::encode(tx.sender), tx.nonce);
+                    entry.hash = hex::encode(tx.hash());
+                    state.mempool.write().await.push(entry);
+                }
+                let ids: Vec<String> = txs.iter().map(|t| hex::encode(t.hash())).collect();
+                let pollers: Vec<_> = (0..4)
+                    .map(|_| {
+                        let state = state.clone();
+                        let ids = ids.clone();
+                        tokio::spawn(async move {
+                            for _ in 0..8 {
+                                let call = JsonRpcRequest {
+                                    jsonrpc: Some("2.0".into()),
+                                    id: Some(serde_json::json!(1)),
+                                    method: Some("getSignatureStatuses".into()),
+                                    params: vec![serde_json::json!(ids)],
+                                };
+                                let _ = handle_rpc_call(&Router::new(), &state, call).await;
+                                let _ = get_transaction(
+                                    Path(ids[0].clone()),
+                                    axum::extract::State(state.clone()),
+                                )
+                                .await;
+                            }
+                        })
+                    })
+                    .collect();
+                for tx in &txs {
+                    record_tx_results(
+                        &state.mempool,
+                        &state.tx_results,
+                        &order,
+                        round,
+                        "",
+                        std::slice::from_ref(tx),
+                        &[Ok(())],
+                    )
+                    .await;
+                    tokio::task::yield_now().await;
+                }
+                for p in pollers {
+                    p.await.unwrap();
+                }
+            }
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(30), run)
+            .await
+            .expect("status polling deadlocked against record_tx_results");
+        assert!(state.mempool.read().await.is_empty());
+        assert_eq!(state.tx_results.read().await.len(), 1600);
+    }
 }
 
 // Solana-style JSON-RPC adapter; methods dispatch through REST handlers.
@@ -3635,8 +3754,8 @@ async fn handle_rpc_call(
                 let mut statuses = vec![serde_json::Value::Null; ids.len()];
                 let mut in_flight: HashMap<String, Vec<usize>> = HashMap::new();
                 {
-                    let results = state.tx_results.read().await;
                     let mempool = state.mempool.read().await;
+                    let results = state.tx_results.read().await;
                     for (i, idv) in ids.iter().enumerate() {
                         let Some(hex_id) = idv.as_str().and_then(|s| tx_id_to_hex(s).ok()) else {
                             continue;
