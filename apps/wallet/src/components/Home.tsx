@@ -28,13 +28,16 @@ import type { WalletActions, WalletState } from '@/components/Dashboard';
 
 function TokenRow({ token, out }: { token: TokenBalance; out: bigint }) {
   const doc = useVerifiedMetadata(token.metadataHash);
+  const title = token.ticker ?? `token ${token.tokenId}`;
+  const held = count(token.balance > out ? token.balance - out : 0n);
   return (
     <ListRow
       href={viewHref('tokens', token.tokenId)}
       mark={<TokenMark ticker={token.ticker} tokenId={token.tokenId} metadataHash={token.metadataHash} />}
-      title={token.ticker ?? `token ${token.tokenId}`}
+      title={title}
       sub={doc ? `${doc.name} · ${token.tokenId}` : token.ticker ? token.tokenId : 'no ticker'}
-      value={count(token.balance > out ? token.balance - out : 0n)}
+      value={held}
+      valueLabel={`${title} balance ${held} available`}
       valueSub={out > 0n ? `${count(out)} pending out` : undefined}
     />
   );
@@ -52,6 +55,7 @@ export default function Home({ state, actions }: { state: WalletState; actions: 
   const okAt = fresh.balance.okAt;
   const stale = okAt !== null && (fresh.balance.error !== null || now - okAt > STALE_MS);
   const zero = spendable.available === 0n;
+  const available = spendable.available === null ? null : bunker(spendable.available);
 
   const requestFaucet = async () => {
     setFaucetBusy(true);
@@ -72,11 +76,17 @@ export default function Home({ state, actions }: { state: WalletState; actions: 
         {balance === null && okAt === null && fresh.balance.error === null ? (
           <StateLine>checking balance…</StateLine>
         ) : (
-          <Amount units={spendable.available} scale={6} symbol={NATIVE} size="balance" />
+          <Amount
+            units={spendable.available}
+            scale={6}
+            symbol={NATIVE}
+            size="balance"
+            label={available === null ? 'Balance unknown' : `Balance ${available} ${NATIVE} available`}
+          />
         )}
         {(spendable.pendingOut > 0n || spendable.pendingIn > 0n) && (
           <p className="wl-split bc-hint mono" data-testid="pending-split">
-            <span>{spendable.available === null ? '–' : bunker(spendable.available)} BUNKER available</span>
+            <span>{available ?? '–'} BUNKER available</span>
             {spendable.pendingOut > 0n && <span>· {bunker(spendable.pendingOut)} pending out</span>}
             {spendable.pendingIn > 0n && <span className="wl-in">· +{bunker(spendable.pendingIn)} pending in, not spendable yet</span>}
           </p>
@@ -127,7 +137,8 @@ export default function Home({ state, actions }: { state: WalletState; actions: 
             mark={<NativeMark />}
             title={NATIVE}
             sub="native"
-            value={spendable.available === null ? '–' : bunker(spendable.available)}
+            value={available ?? '–'}
+            valueLabel={`${NATIVE} balance ${available ?? 'unknown'}${available === null ? '' : ' available'}`}
             valueSub={spendable.pendingOut > 0n ? `${bunker(spendable.pendingOut)} pending out` : undefined}
           />
           {tokens.map((t) => (

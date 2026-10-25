@@ -222,16 +222,13 @@ export class WalletPage {
     return address;
   }
 
-  /**
-   * Header network tag. It reads `testnet` both while connecting and when live; only its tone
-   * tells them apart (the live state has no accessible text), hence the data-tone hop.
-   */
+  /** Header network tag: `connecting`, `testnet · live`, `testnet · partial` or `offline`. */
   get networkTag(): Locator {
-    return this.page.getByRole('banner').locator('.bc-net');
+    return this.page.getByRole('banner').getByText(/^(connecting|offline|testnet · (live|partial))/);
   }
 
   get liveStatus(): Locator {
-    return this.page.getByRole('banner').locator('.bc-net[data-tone="live"]').filter({ hasText: /^testnet$/ });
+    return this.page.getByRole('banner').getByText('testnet · live', { exact: true });
   }
 
   /** W25 bar under the header: `Offline. Can't reach <host>; values are from 21:02:11 UTC.` + [retry]. */
@@ -252,9 +249,9 @@ export class WalletPage {
       .or(this.actionTiles.getByRole('button', { name, exact: true }));
   }
 
-  /** The hero amount has no accessible name; it is the balance-sized Amount inside the hero. */
+  /** The hero amount, named `Balance 0.749800 BUNKER available`. */
   get balance(): Locator {
-    return this.main.locator('.bc-hero .bc-bal');
+    return this.main.getByRole('group', { name: /^Balance / });
   }
 
   async expectBalance(units: number, timeout = FINALITY_MS): Promise<void> {
@@ -266,12 +263,9 @@ export class WalletPage {
     return this.page.getByRole('region', { name: 'tokens' });
   }
 
-  /** Token rows: ticker over id; the held amount is the row's right-hand value cell. */
+  /** A token row's held amount, named `RADIO balance 1,000 available`. */
   tokenBalance(ticker: string): Locator {
-    return this.tokensList
-      .getByRole('listitem')
-      .filter({ has: this.page.getByText(ticker, { exact: true }) })
-      .locator('.bc-r');
+    return this.tokensList.getByRole('group', { name: new RegExp(`^${escape(ticker)} balance `) });
   }
 
   async expectTokenBalance(ticker: string, value: string, timeout = FINALITY_MS): Promise<void> {
