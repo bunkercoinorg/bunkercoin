@@ -35,8 +35,8 @@
   .bc-nav { order: 9; width: calc(100% + 2 * var(--g)); margin: 0 calc(-1 * var(--g)); padding: 0 var(--g); gap: 20px; overflow-x: auto; border-top: 1px solid var(--line-soft); scrollbar-width: none; }
   .bc-nav a { padding: 15px 0 14px; }
   .bc-tools .bc-mini { display: none; }
-  .bc-app[data-app="wallet"] .bc-nav, .bc-app[data-app="wallet"] .bc-hd .bc-brand span, .bc-app[data-app="wallet"] .bc-hd .bc-brand small,
-  .bc-app[data-app="wallet"] .bc-tools .bc-net { display: none; }
+  .bc-app[data-app="wallet"] .bc-nav, .bc-app[data-app="wallet"] .bc-hd .bc-brand span, .bc-app[data-app="wallet"] .bc-hd .bc-brand small { display: none; }
+  .bc-app[data-app="wallet"] .bc-tools .bc-net { position: absolute; width: 1px; height: 1px; padding: 0; border: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .bc-app[data-app="wallet"] .bc-hd-in { flex-wrap: nowrap; min-height: 56px; padding-top: 0; }
   .bc-app[data-app="wallet"] .bc-hd[data-flow] { display: none; }
   .bc-app[data-app="wallet"] .bc-ft { display: none; }

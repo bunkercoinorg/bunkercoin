@@ -24,3 +24,19 @@ export function connectionStatus(f: FreshnessMap): { status: ConnectionStatus; f
   if (balance.okAt === null) return { status: 'connecting', failing };
   return { status: failing.length > 0 ? 'partial' : 'live', failing };
 }
+
+export type NetworkTone = 'live' | 'neutral' | 'unknown';
+
+/** Header tag words: the state is spelled out, the tone only repeats it. */
+export function networkLabel(status: ConnectionStatus): { tone: NetworkTone; text: string } {
+  switch (status) {
+    case 'live':
+      return { tone: 'live', text: 'testnet · live' };
+    case 'partial':
+      return { tone: 'unknown', text: 'testnet · partial' };
+    case 'connecting':
+      return { tone: 'neutral', text: 'connecting' };
+    default:
+      return { tone: 'unknown', text: 'offline' };
+  }
+}
