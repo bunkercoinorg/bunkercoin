@@ -3909,6 +3909,10 @@ pub async fn run_api(state: SharedState) {
             return;
         }
     };
+    let bound = listener
+        .local_addr()
+        .map_or(bind_addr, |addr| addr.to_string());
+    println!("RPC API serving on http://{bound} (try /blocks, POST /transactions)");
     if let Err(err) = axum::serve(listener, app).await {
         eprintln!("API server stopped with error: {err}");
     }

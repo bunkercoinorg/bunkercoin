@@ -107,7 +107,7 @@ struct Args {
     #[arg(long)]
     duration: Option<u64>,
 
-    /// Serve the HTTP RPC API on 127.0.0.1:3001.
+    /// Serve the HTTP RPC API on `BUNKER_RPC_ADDR` (default 127.0.0.1:3001).
     #[arg(long)]
     rpc: bool,
 
@@ -468,7 +468,6 @@ fn rpc_state_for(
 
 /// Spawn RPC for the simulated, non-reconnect path.
 fn spawn_rpc(blockstore: SharedBlockstore, pool: Option<SharedPool>, tx: &TxContext) {
-    println!("RPC API serving on http://127.0.0.1:3001 (try /blocks, POST /transactions)");
     tokio::spawn(rpc::run_api(rpc_state_for(blockstore, pool, tx)));
 }
 
@@ -967,10 +966,7 @@ async fn run_inspect(
         bunkerglow::consensus::BlockstoreImpl::new(epoch_info, votor_tx),
     )));
 
-    println!(
-        "=== inspect: serving node {own_id}'s on-disk chain (data/blockstore/{own_id}) ===\n\
-         RPC API on http://127.0.0.1:3001 — try /blocks or /block/slot/1"
-    );
+    println!("=== inspect: serving node {own_id}'s on-disk chain (data/blockstore/{own_id}) ===");
     // Offline inspect has no tx bridge; `/submit` is a no-op.
     let exec = Arc::new(tokio::sync::RwLock::new(cluster.genesis_state()));
     let (tx_ctx, _tx_rx) = TxContext::new(&cluster, exec);
@@ -1284,11 +1280,6 @@ async fn run_hardware(
         } else {
             None
         };
-        if rpc_task.is_some() {
-            println!(
-                "[{label}] RPC API on http://127.0.0.1:3001 (try /blocks, POST /transactions)"
-            );
-        }
 
         let (slot, stop) = run_node(
             &label,
