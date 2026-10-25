@@ -66,6 +66,9 @@ export function coarseAge(ms: number, now: number): string {
   return `${Math.floor(h / 24)} d`;
 }
 
+/** `checked 4 min ago`; empty until both instants are known. */
+export const checkedAgo = (at: number | null, now: number | null) => (at === null || now === null ? '' : `checked ${coarseAge(at, now)} ago`);
+
 export interface CadenceSeries {
   /** Interval per point, oldest first, each scaled to 0..1 against `cap`; 1 means at or above the cap. */
   points: number[];

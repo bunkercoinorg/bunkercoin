@@ -10,6 +10,7 @@ import {
   inflightSummary,
   nativeSpendable,
   phaseLabel,
+  phaseParts,
   phaseOf,
   spendableTokens,
   titleWithCount,
@@ -101,6 +102,9 @@ test('processed is never progress: only a transaction lookup places it in a bloc
   assert.equal(phaseLabel(entry({ phase: 'mempool' })), 'in mempool · waiting for a block');
   assert.equal(phaseLabel(entry({ phase: 'block' })), 'in block · finalizing');
   assert.equal(phaseLabel(entry({ state: 'uncertain', phase: 'block' })), 'no answer from the node');
+  assert.deepEqual(phaseParts(entry({ phase: 'mempool' })), ['in mempool', 'waiting for a block']);
+  assert.deepEqual(phaseParts(entry({ phase: 'block' })), ['in block', 'finalizing']);
+  assert.deepEqual(phaseParts(entry({ state: 'uncertain' })), ['no answer from the node', null]);
 });
 
 test('a mempool status carrying the current slot decodes as processed, not finalized', async () => {

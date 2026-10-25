@@ -236,6 +236,16 @@ test('amounts are exact and unknown is a dash', () => {
   assert.match(renderToStaticMarkup(h(ui.Amount, { units: 18_446_744_073_709_551_615n, scale: 6, size: 'balance' })), /data-long=""/);
 });
 
+test('labelled amounts and row values carry an accessible name', () => {
+  const hero = renderToStaticMarkup(h(ui.Amount, { units: 749_800n, scale: 6, symbol: 'BUNKER', size: 'balance', label: 'Balance 0.749800 BUNKER available' }));
+  assert.match(hero, /^<div class="bc-bal" role="group" aria-label="Balance 0.749800 BUNKER available">0<span class="bc-fr">.749800<\/span>/);
+  assert.match(renderToStaticMarkup(h(ui.Amount, { units: null, scale: 6, size: 'balance', label: 'Balance unknown' })), /role="group" aria-label="Balance unknown"/);
+  const row = renderToStaticMarkup(h(ui.ListRow, { mark: 'RA', title: 'RADIO', value: '1,000', valueLabel: 'RADIO balance 1,000 available', valueSub: '5 pending out' }));
+  assert.match(row, /<span class="bc-r"><span role="group" aria-label="RADIO balance 1,000 available">1,000<\/span><span class="bc-sub">5 pending out<\/span><\/span>/);
+  assert.doesNotMatch(render('Amount'), /role=/);
+  assert.doesNotMatch(render('List'), /role="group"/);
+});
+
 test('words, qr, tables and strip carry their semantics', () => {
   assert.equal(renderToStaticMarkup(h(ui.WordGrid, { words: null })), '');
   assert.match(render('WordGrid'), /<ol class="bc-wg" aria-label="recovery phrase"[^>]*><li><b aria-hidden="true">01<\/b>orbit<\/li>/);

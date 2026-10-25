@@ -16,7 +16,7 @@ import {
   StatusTag,
   Tag,
 } from '@bunkercoin/ui';
-import { phaseLabel } from '@/lib/inflight';
+import { phaseLabel, phaseParts } from '@/lib/inflight';
 import { formatUnits, relativeAge } from '@bunkercoin/chain-format';
 import { viewHref } from '@/hooks/useHashView';
 import { activityItems, isOpen, tickerMap, type ActivityItem } from '@/components/activity-model';
@@ -35,10 +35,22 @@ export function itemTag(item: ActivityItem, now: number, withAge = true) {
   return null;
 }
 
+/** Row variant: the phase in the tag, what it waits for on the line below. */
+function rowTag(item: ActivityItem, now: number) {
+  if (item.status !== 'pending' && item.status !== 'unconfirmed') return itemTag(item, now, false);
+  const [where, wait] = item.pending ? phaseParts(item.pending) : ['waiting for a block', null];
+  return (
+    <>
+      <Tag state="pending">{where}</Tag>
+      {wait && <span className="bc-sub">{wait}</span>}
+    </>
+  );
+}
+
 export function ActivityRow({ item, now }: { item: ActivityItem; now: number }) {
   const amount = item.amount && <Amount units={item.amount.units} scale={item.amount.scale} sign={item.amount.sign} />;
   const failed = item.status === 'failed';
-  const tag = itemTag(item, now, false);
+  const tag = rowTag(item, now);
   return (
     <ListRow
       href={viewHref('tx', item.id)}

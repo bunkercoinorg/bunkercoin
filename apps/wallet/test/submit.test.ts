@@ -5,7 +5,10 @@ import bs58 from 'bs58';
 import {
   broadcast,
   BroadcastUncertainError,
+  collectOutstanding,
   isDefiniteRejection,
+  nextNonce,
+  pauseReason,
   planNonce,
   reconcileNonce,
   resendUncertain,
@@ -302,6 +305,29 @@ test('a retry after a lost acknowledgement resends the same bytes and never sign
   await assert.rejects(a.submit(), BroadcastUncertainError);
   assert.deepEqual(a.signed, [5n, 6n], 'finalization unblocks the next nonce');
   assert.ok(!a.state().reservations.some((r) => r.txId === txId), 'the settled reservation is released');
+});
+
+test('the pause explanation follows the reservation, not the Activity label', async () => {
+  const a = chainAccount(async () => Promise.reject(timeout()));
+  await assert.rejects(a.submit(), BroadcastUncertainError);
+  const txId = a.state().reservations[0].txId;
+  const preview = () => nextNonce(a.account.conn, a.address, collectOutstanding(a.account.reservations(), a.account.entries()));
+
+  const unseen = (await preview()).blocked;
+  assert.equal(unseen.length, 1);
+  assert.match(pauseReason(unseen[0]), /no answer from the node\. Sending is paused until it settles.*resends it unchanged/);
+
+  a.chain.statuses.set(txId, { confirmationStatus: 'processed', err: null });
+  a.setEntries(a.state().entries.map((p) => ({ ...p, state: 'pending' as const })));
+  const seen = (await preview()).blocked;
+  assert.equal(seen.length, 1, 'still blocked once Activity shows it in flight');
+  assert.match(pauseReason(seen[0]), /reached the network without an acknowledgement\. Sending is paused until it finalizes or fails/);
+
+  const { wire: _wire, ...noWire } = unseen[0].entry;
+  assert.match(pauseReason({ entry: noWire, status: null }), /cannot be resent from this device\. Sending is paused/);
+
+  a.chain.statuses.set(txId, { confirmationStatus: 'finalized', err: null });
+  assert.deepEqual((await preview()).blocked, [], 'finality lifts the pause');
 });
 
 test('the chain nonce passing an uncertain broadcast unblocks sending', async () => {

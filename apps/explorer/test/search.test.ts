@@ -133,7 +133,8 @@ test('matches carry the probed record and a context line', async () => {
   const [b, t] = await resolveSearch('00000001', probes({ blockBySlot: block, token }));
   assert.equal(b.block, block);
   assert.equal(t.token, token);
-  assert.equal(matchContext(b, 7_000), 'finalized · 6s ago');
+  assert.equal(matchContext(b, 7_000), 'finalized · <1 min ago');
+  assert.equal(matchContext(b, 1_000 + 4 * 60_000), 'finalized · 4 min ago');
   assert.equal(matchContext(b, null), 'finalized');
   assert.equal(matchContext(t, null), 'RADIO · supply 1,000,000');
   const skip = { ...b, block: { ...block, type: 'skip' as const, finalized_timestamp: undefined } };

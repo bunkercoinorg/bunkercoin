@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AddressChip, AppShell, Banner, Button, Footer, Icon, StatusTag, Tag, TabBar, type NavItem } from '@bunkercoin/ui';
+import { AddressChip, AppShell, Banner, Button, Footer, Icon, Tag, TabBar, type NavItem } from '@bunkercoin/ui';
 import { utcClock } from '@bunkercoin/chain-format';
 import {
   RpcError,
@@ -22,7 +22,7 @@ import {
   type Submission,
 } from '@/lib/submit';
 import { cadenceHint, fetchSnapshot, nativeSpendable, revalidate, spendableTokens, type Spendable } from '@/lib/inflight';
-import { connectionStatus, initialFreshness, type Freshness, type FreshnessMap, type Resource } from '@/lib/freshness';
+import { connectionStatus, initialFreshness, networkLabel, type Freshness, type FreshnessMap, type Resource } from '@/lib/freshness';
 import type { Inflight } from '@/hooks/useInflight';
 import type { Signer } from '@/lib/signer';
 import type { AutoLockMinutes } from '@/lib/session';
@@ -385,6 +385,7 @@ export default function Dashboard({ signer, inflight, onLock, onWalletRemoved, a
   const tab = TAB_VIEWS.has(view.name) && view.param === null && !(view.name === 'settings' && settingsFlow) ? view.name : null;
   const nav: NavItem[] = ['home', 'activity', 'settings'].map((n) => ({ label: n, href: `#${n}`, current: view.name === n }));
   const lastOk = fresh.balance.okAt;
+  const net = networkLabel(status);
 
   return (
     <AppShell
@@ -394,17 +395,10 @@ export default function Dashboard({ signer, inflight, onLock, onWalletRemoved, a
       flow={!tab}
       tools={
         <>
-          {offline ? (
-            <StatusTag status="offline" className="bc-net" />
-          ) : status === 'partial' ? (
-            <Tag state="unknown" className="bc-net">
-              testnet · partial<span className="bc-sr">: {failing.join(', ')} unavailable</span>
-            </Tag>
-          ) : (
-            <Tag state={status === 'live' ? 'live' : 'neutral'} className="bc-net">
-              testnet
-            </Tag>
-          )}
+          <Tag state={net.tone} className="bc-net">
+            {net.text}
+            {status === 'partial' && <span className="bc-sr">: {failing.join(', ')} unavailable</span>}
+          </Tag>
           <AddressChip address={address} />
           <Button variant="ghost" size="sm" onClick={onLock} aria-label="lock">
             <Icon name="lock" />

@@ -16,7 +16,7 @@ import {
   loadMoreErrorAtom,
   showSkippedSlotsAtom,
 } from '@/lib/atoms';
-import { CLOCK_MS, coarseAge } from '@/lib/cadence';
+import { checkedAgo, CLOCK_MS } from '@/lib/cadence';
 import { liveScroll, MAX_RENDERED_ROWS } from '@/lib/chain';
 import { olderAnchor } from '@/lib/history';
 import { useHistory } from '@/lib/use-history';
@@ -86,7 +86,7 @@ export default function BlocksPage() {
 
   const shown = rows.length ? rows : page;
   const range = shown.length ? `${slotLabel(shown[0].slot)} to ${slotLabel(shown[shown.length - 1].slot)}` : '';
-  const checked = feed.lastSuccess !== null && now !== null ? `checked ${coarseAge(feed.lastSuccess, now)} ago` : '';
+  const checked = checkedAgo(feed.lastSuccess, now);
 
   return (
     <div className="flex flex-col gap-6">

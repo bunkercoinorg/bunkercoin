@@ -212,16 +212,27 @@ async function plan(account: Account): Promise<NoncePlan> {
   return p;
 }
 
-/** Seen by the node: wait for it to settle. Unseen: resend exactly the bytes that were signed. */
-async function settleBlocked(account: Account, { entry: o, status }: Blocker): Promise<string> {
+/** Why signing is paused, from the reservation and the node's view; holds for as long as the block does, whatever Activity shows. */
+export function pauseReason({ entry: o, status }: Blocker): string {
   const id = shortAddress(o.txId, 6);
   if (status !== null) {
-    await account.apply(transitionEntry(o.txId, 'uncertain', 'pending'));
     return `The earlier transaction ${id} reached the network without an acknowledgement. Sending is paused until it finalizes or fails, so it cannot execute twice.`;
   }
   if (!o.wire) {
     return `The earlier transaction ${id} has no answer from the node and cannot be resent from this device. Sending is paused until it settles.`;
   }
+  return `The earlier transaction ${id} has no answer from the node. Sending is paused until it settles, so it cannot execute twice; check status resends it unchanged.`;
+}
+
+/** Seen by the node: wait for it to settle. Unseen: resend exactly the bytes that were signed. */
+async function settleBlocked(account: Account, blocker: Blocker): Promise<string> {
+  const { entry: o, status } = blocker;
+  const id = shortAddress(o.txId, 6);
+  if (status !== null) {
+    await account.apply(transitionEntry(o.txId, 'uncertain', 'pending'));
+    return pauseReason(blocker);
+  }
+  if (!o.wire) return pauseReason(blocker);
   const out = await send(account.conn, o.wire, o.txId);
   const s = settle(account, o.txId, o.nonce, account.entries().find((p) => p.txId === o.txId));
   if (out.kind === 'acknowledged') {

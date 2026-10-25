@@ -90,12 +90,15 @@ export function phaseOf(status: SignatureStatus | null, location: string | null)
   return null;
 }
 
-export function phaseLabel(p: PendingTx): string {
-  if (p.state === 'uncertain') return 'no answer from the node';
-  if (p.phase === 'block') return 'in block · finalizing';
-  if (p.phase === 'mempool') return 'in mempool · waiting for a block';
-  return `${p.kind === 'faucet' ? 'requested' : 'sent'} · waiting for a block`;
+/** Where it is, then what it waits for; rows put the second part on its own line so the tag fits a phone. */
+export function phaseParts(p: PendingTx): [string, string | null] {
+  if (p.state === 'uncertain') return ['no answer from the node', null];
+  if (p.phase === 'block') return ['in block', 'finalizing'];
+  if (p.phase === 'mempool') return ['in mempool', 'waiting for a block'];
+  return [p.kind === 'faucet' ? 'requested' : 'sent', 'waiting for a block'];
 }
+
+export const phaseLabel = (p: PendingTx): string => phaseParts(p).filter(Boolean).join(' · ');
 
 export interface Spendable {
   /** Balance net of in-flight outgoing amounts and fees; null until the balance loaded. */

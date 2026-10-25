@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cadenceLabel, cadenceSeries, coarseAge, estimateCadence, formatSpan, intervals, staleAfter } from '../lib/cadence.ts';
+import { cadenceLabel, cadenceSeries, checkedAgo, coarseAge, estimateCadence, formatSpan, intervals, staleAfter } from '../lib/cadence.ts';
 import type { Block } from '../lib/types.ts';
 
 const T = Date.UTC(2026, 9, 22, 12, 0, 0);
@@ -58,6 +58,13 @@ test('spans and ages are coarse', () => {
   assert.equal(coarseAge(T - 5 * 3600_000, T), '5 h');
   assert.equal(coarseAge(T - 72 * 3600_000, T), '3 d');
   assert.equal(coarseAge(T + 5000, T), '<1 min');
+});
+
+test('detail pages say when they last checked, coarsely', () => {
+  assert.equal(checkedAgo(T - 12_000, T), 'checked <1 min ago');
+  assert.equal(checkedAgo(T - 7 * 60_000, T), 'checked 7 min ago');
+  assert.equal(checkedAgo(null, T), '');
+  assert.equal(checkedAgo(T, null), '');
 });
 
 test('the cadence series clips outages at three medians', () => {

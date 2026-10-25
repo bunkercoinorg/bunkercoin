@@ -96,18 +96,22 @@ export function Amount({
   symbol,
   sign,
   size = 'row',
+  label,
 }: {
   units: bigint | null;
   scale: 0 | 6;
   symbol?: string;
   sign?: '+' | '-';
   size?: 'balance' | 'row';
+  /** Accessible name, e.g. `Balance 0.749800 BUNKER available`. */
+  label?: string;
 }) {
   const Tag = size === 'balance' ? 'div' : 'span';
   const cls = size === 'balance' ? 'bc-bal' : 'bc-amt';
+  const named = label ? { role: 'group', 'aria-label': label } : {};
   if (units === null) {
     return (
-      <Tag className={cls}>
+      <Tag className={cls} {...named}>
         <span aria-hidden="true">–</span>
         <span className="bc-sr">unknown</span>
       </Tag>
@@ -119,7 +123,7 @@ export function Amount({
   const prefix = shownSign === '+' ? '+' : shownSign === '-' ? '−' : '';
   if (size === 'balance') {
     return (
-      <div className={cls} data-long={text.length > 13 ? '' : undefined}>
+      <div className={cls} data-long={text.length > 13 ? '' : undefined} {...named}>
         {prefix}
         {whole}
         {frac && <span className="bc-fr">.{frac}</span>}
@@ -128,7 +132,7 @@ export function Amount({
     );
   }
   return (
-    <span className={cls} data-sign={shownSign}>
+    <span className={cls} data-sign={shownSign} {...named}>
       {prefix}
       {whole}
       {frac && <span className="bc-fr">.{frac}</span>}
@@ -307,6 +311,7 @@ export function ListRow({
   title,
   sub,
   value,
+  valueLabel,
   valueSub,
   tag,
   href,
@@ -316,6 +321,8 @@ export function ListRow({
   title: ReactNode;
   sub?: ReactNode;
   value: ReactNode;
+  /** Accessible name for the value alone, e.g. `RADIO balance 1,000 available`. */
+  valueLabel?: string;
   valueSub?: ReactNode;
   tag?: ReactNode;
   href?: string;
@@ -331,7 +338,13 @@ export function ListRow({
         {sub && <span className="bc-sub">{sub}</span>}
       </span>
       <span className="bc-r">
-        {value}
+        {valueLabel ? (
+          <span role="group" aria-label={valueLabel}>
+            {value}
+          </span>
+        ) : (
+          value
+        )}
         {tag ?? (valueSub && <span className="bc-sub">{valueSub}</span>)}
       </span>
     </>
