@@ -2959,6 +2959,57 @@ mod tests {
         }
     }
 
+    #[test]
+    fn cors_accepts_only_exact_bunkercoin_and_loopback_origins() {
+        let extra = cors_extra_origins(" https://staging.example.org/ ,,http://10.0.0.5:8080");
+        assert_eq!(
+            extra,
+            vec!["https://staging.example.org", "http://10.0.0.5:8080"]
+        );
+        for ok in [
+            "https://bunkercoin.com",
+            "https://www.bunkercoin.com",
+            "https://wallet.bunkercoin.com",
+            "https://explorer.bunkercoin.com",
+            "https://app.bunkercoin.com",
+            "https://bunkercoin.io",
+            "https://explorer.bunkercoin.io",
+            "https://a.b.bunkercoin.io",
+            "http://localhost",
+            "http://localhost:3000",
+            "http://127.0.0.1:5173",
+            "https://staging.example.org",
+            "http://10.0.0.5:8080",
+        ] {
+            assert!(cors_origin_allowed(ok, &extra), "{ok} should be allowed");
+        }
+        for bad in [
+            "http://localhost.evil.example",
+            "http://localhost.evil.example:3000",
+            "http://localhost:",
+            "http://localhost:99999",
+            "http://user@localhost",
+            "https://localhost",
+            "http://127.0.0.1.evil.example",
+            "http://bunkercoin.com",
+            "https://evil.bunkercoin.com",
+            "https://bunkercoin.com.evil.example",
+            "https://evilbunkercoin.io",
+            "http://explorer.bunkercoin.io",
+            "https://explorer.bunkercoin.io:8443",
+            "https://a..bunkercoin.io",
+            "https://evil.example/.bunkercoin.io",
+            "https://staging.example.org.evil",
+            "null",
+            "",
+        ] {
+            assert!(
+                !cors_origin_allowed(bad, &extra),
+                "{bad} should be rejected"
+            );
+        }
+    }
+
     fn mempool_entry(sender: String, nonce: u64) -> MempoolEntry {
         MempoolEntry {
             hash: format!("{sender}-{nonce}"),
@@ -3753,16 +3804,66 @@ async fn jsonrpc_handler(
     Json(handle_rpc_call(&rest, &state, parsed).await)
 }
 
+const CORS_ORIGINS: &[&str] = &[
+    "https://bunkercoin.com",
+    "https://www.bunkercoin.com",
+    "https://wallet.bunkercoin.com",
+    "https://explorer.bunkercoin.com",
+    "https://app.bunkercoin.com",
+];
+
+/// Extra exact origins from `BUNKER_CORS_ORIGINS` (comma-separated).
+fn cors_extra_origins(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(|o| o.trim().trim_end_matches('/'))
+        .filter(|o| !o.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Exact allowlist, `https` on bunkercoin.io hosts, and `http` on loopback with any port.
+fn cors_origin_allowed(origin: &str, extra: &[String]) -> bool {
+    if CORS_ORIGINS.contains(&origin) || extra.iter().any(|o| o == origin) {
+        return true;
+    }
+    let Some((scheme, authority)) = origin.split_once("://") else {
+        return false;
+    };
+    let (host, port) = match authority.rsplit_once(':') {
+        Some((host, port)) => (host, Some(port)),
+        None => (authority, None),
+    };
+    if port.is_some_and(|p| p.parse::<u16>().is_err()) {
+        return false;
+    }
+    let is_label = |l: &str| {
+        !l.is_empty()
+            && l.bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    };
+    match scheme {
+        "http" => host == "localhost" || host == "127.0.0.1",
+        "https" => {
+            port.is_none()
+                && (host == "bunkercoin.io"
+                    || host
+                        .strip_suffix(".bunkercoin.io")
+                        .is_some_and(|sub| sub.split('.').all(is_label)))
+        }
+        _ => false,
+    }
+}
+
 pub async fn run_api(state: SharedState) {
+    let extra_origins =
+        cors_extra_origins(&std::env::var("BUNKER_CORS_ORIGINS").unwrap_or_default());
     let cors = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST])
         .allow_headers(Any)
-        .allow_origin(AllowOrigin::predicate(|origin: &HeaderValue, _| {
-            if let Ok(o) = origin.to_str() {
-                o.starts_with("http://localhost") || o.ends_with(".bunkercoin.io")
-            } else {
-                false
-            }
+        .allow_origin(AllowOrigin::predicate(move |origin: &HeaderValue, _| {
+            origin
+                .to_str()
+                .is_ok_and(|o| cors_origin_allowed(o, &extra_origins))
         }));
     let app = Router::new()
         .route("/blocks", get(blocks))
