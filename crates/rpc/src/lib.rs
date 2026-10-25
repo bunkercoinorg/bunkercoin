@@ -772,7 +772,7 @@ async fn submit_transaction(
 
 /// Entries older than this no longer hold their nonce: reconnects drop the node
 /// mempool without clearing RPC entries, and a lost tx must not wedge the sender.
-const IN_FLIGHT_NONCE_TTL_MS: u64 = 10 * 60 * 1000;
+const IN_FLIGHT_NONCE_TTL_MS: u64 = 60 * 60 * 1000;
 
 /// Lowest nonce at or past `finalized_nonce` that no recent in-flight tx of `sender` holds.
 fn pending_nonce(
