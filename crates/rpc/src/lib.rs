@@ -2974,6 +2974,83 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn signature_statuses_report_in_flight_txs_without_a_fake_slot() {
+        let queued = make_core_tx(TransactionBody::Transfer {
+            to: [0x01; 32],
+            amount: 1,
+        });
+        let included = CoreTransaction {
+            nonce: 2,
+            ..queued.clone()
+        };
+        let zeros = vec![0u8; 32];
+        let blk: bunkerglow::Block = serde_json::from_value(serde_json::json!({
+            "slot": 42,
+            "hash": zeros,
+            "parent": 41,
+            "parent_hash": zeros,
+            "epoch_transition": null,
+            "transactions": [encode_core_tx(&included)],
+        }))
+        .unwrap();
+        let mut bs = bunkerglow::consensus::MockBlockstore::new();
+        bs.expect_canonical_block_hash()
+            .returning(|s| (s.inner() == 42).then(|| Hash::from([0u8; 32])));
+        bs.expect_get_block().returning(move |_| Some(blk.clone()));
+
+        let mut state = test_state(Vec::new());
+        state.blockstore = Some(Arc::new(tokio::sync::RwLock::new(Box::new(bs))));
+        for tx in [&queued, &included] {
+            let mut entry = mempool_entry(hex::encode(tx.sender), tx.nonce);
+            entry.hash = hex::encode(tx.hash());
+            state.mempool.write().await.push(entry);
+        }
+        let done = hex::encode([0xCD; 32]);
+        state.tx_results.write().await.insert(
+            done.clone(),
+            TxResult {
+                hash: done.clone(),
+                slot: 7,
+                block_hash: String::new(),
+                status: TxFinalStatus::Finalized,
+                error: None,
+                executed_at: 0,
+            },
+        );
+
+        let call = JsonRpcRequest {
+            jsonrpc: Some("2.0".into()),
+            id: Some(serde_json::json!(1)),
+            method: Some("getSignatureStatuses".into()),
+            params: vec![serde_json::json!([
+                bs58::encode(queued.hash()).into_string(),
+                hex::encode(included.hash()),
+                done,
+                bs58::encode([9u8; 32]).into_string(),
+            ])],
+        };
+        let resp = handle_rpc_call(&Router::new(), &state, call).await;
+        let v = &resp["result"]["value"];
+        assert_eq!(
+            v[0],
+            serde_json::json!({
+                "slot": null,
+                "confirmations": null,
+                "confirmationStatus": "processed",
+                "err": null,
+                "status": null,
+            })
+        );
+        assert_eq!(v[1]["slot"], 42);
+        assert_eq!(v[1]["confirmations"], 0);
+        assert_eq!(v[1]["confirmationStatus"], "processed");
+        assert_eq!(v[2]["slot"], 7);
+        assert_eq!(v[2]["confirmationStatus"], "finalized");
+        assert_eq!(v[2]["status"], serde_json::json!({ "Ok": null }));
+        assert!(v[3].is_null());
+    }
+
     #[test]
     fn pending_nonce_skips_nonces_held_by_recent_txs_of_the_sender() {
         let me = [3u8; 32];
@@ -3219,6 +3296,82 @@ async fn build_airdrop_tx(
     }))
 }
 
+fn finalized_signature_status(res: &TxResult) -> serde_json::Value {
+    let err = match res.status {
+        TxFinalStatus::Finalized => serde_json::Value::Null,
+        TxFinalStatus::Failed => serde_json::json!({
+            "message": res.error.clone().unwrap_or_default()
+        }),
+    };
+    serde_json::json!({
+        "slot": res.slot,
+        "confirmations": serde_json::Value::Null,
+        "confirmationStatus": "finalized",
+        "err": err,
+        "status": if err.is_null() {
+            serde_json::json!({ "Ok": null })
+        } else {
+            serde_json::json!({ "Err": err })
+        },
+    })
+}
+
+/// Not executed yet, so `status` stays null; `slot` is the including block's slot, if any.
+fn processed_signature_status(included_slot: Option<u64>) -> serde_json::Value {
+    serde_json::json!({
+        "slot": included_slot,
+        "confirmations": included_slot.map(|_| 0),
+        "confirmationStatus": "processed",
+        "err": serde_json::Value::Null,
+        "status": serde_json::Value::Null,
+    })
+}
+
+/// Slots of not-yet-executed canonical blocks that include any of `hashes`.
+async fn find_inclusion_slots<V>(
+    state: &SharedState,
+    hashes: &HashMap<String, V>,
+) -> HashMap<String, u64> {
+    let mut found = HashMap::new();
+    let Some(bs_arc) = state.blockstore.as_ref() else {
+        return found;
+    };
+    let highest_mem_slot = state
+        .blocks
+        .read()
+        .await
+        .iter()
+        .map(|b| b.slot())
+        .max()
+        .unwrap_or(0);
+    let finalized = current_slot(state).await;
+    let top = highest_mem_slot.max(finalized) + 200;
+    // Execution trails finalization, so recently finalized blocks may still hold them.
+    let floor = finalized.saturating_sub(500);
+    let bs = bs_arc.read().await;
+    for slot_u64 in (floor..=top).rev() {
+        let slot = Slot::new(slot_u64);
+        let Some(blk_hash) = bs.canonical_block_hash(slot) else {
+            continue;
+        };
+        let Some(blk) = bs.get_block(&(slot, blk_hash.into())) else {
+            continue;
+        };
+        for raw_tx in blk.transactions() {
+            if let Some(core_tx) = decode_raw_transaction(raw_tx) {
+                let tx_hash = hex::encode(core_tx.hash());
+                if hashes.contains_key(&tx_hash) {
+                    found.entry(tx_hash).or_insert(slot_u64);
+                }
+            }
+        }
+        if found.len() == hashes.len() {
+            break;
+        }
+    }
+    found
+}
+
 fn param_str(params: &[serde_json::Value], i: usize) -> Result<&str, ()> {
     params
         .get(i)
@@ -3423,49 +3576,36 @@ async fn handle_rpc_call(
             let slot = current_slot(state).await;
             Ok(Ok(ctx_value(slot, serde_json::json!(RECOMMENDED_TX_FEE))))
         }
-        // Mempool maps to processed; executed finalized blocks map to finalized.
+        // Executed finalized blocks map to finalized; anything still in flight is processed,
+        // with a slot only once a block includes it.
         "getSignatureStatuses" => match p.first().and_then(|v| v.as_array()) {
             Some(ids) => {
                 let slot = current_slot(state).await;
-                let results = state.tx_results.read().await;
-                let mempool = state.mempool.read().await;
-                let statuses: Vec<serde_json::Value> = ids
-                    .iter()
-                    .map(|idv| {
+                let mut statuses = vec![serde_json::Value::Null; ids.len()];
+                let mut in_flight: HashMap<String, Vec<usize>> = HashMap::new();
+                {
+                    let results = state.tx_results.read().await;
+                    let mempool = state.mempool.read().await;
+                    for (i, idv) in ids.iter().enumerate() {
                         let Some(hex_id) = idv.as_str().and_then(|s| tx_id_to_hex(s).ok()) else {
-                            return serde_json::Value::Null;
+                            continue;
                         };
                         if let Some(res) = results.get(&hex_id) {
-                            let err = match res.status {
-                                TxFinalStatus::Finalized => serde_json::Value::Null,
-                                TxFinalStatus::Failed => serde_json::json!({
-                                    "message": res.error.clone().unwrap_or_default()
-                                }),
-                            };
-                            return serde_json::json!({
-                                "slot": res.slot,
-                                "confirmations": serde_json::Value::Null,
-                                "confirmationStatus": "finalized",
-                                "err": err,
-                                "status": if err.is_null() {
-                                    serde_json::json!({ "Ok": null })
-                                } else {
-                                    serde_json::json!({ "Err": err })
-                                },
-                            });
+                            statuses[i] = finalized_signature_status(res);
+                        } else if mempool.iter().any(|e| e.hash == hex_id) {
+                            in_flight.entry(hex_id).or_default().push(i);
                         }
-                        if mempool.iter().any(|e| e.hash == hex_id) {
-                            return serde_json::json!({
-                                "slot": slot,
-                                "confirmations": 0,
-                                "confirmationStatus": "processed",
-                                "err": serde_json::Value::Null,
-                                "status": { "Ok": null },
-                            });
+                    }
+                }
+                if !in_flight.is_empty() {
+                    let included = find_inclusion_slots(state, &in_flight).await;
+                    for (hash, positions) in &in_flight {
+                        let status = processed_signature_status(included.get(hash).copied());
+                        for &i in positions {
+                            statuses[i] = status.clone();
                         }
-                        serde_json::Value::Null
-                    })
-                    .collect();
+                    }
+                }
                 Ok(Ok(ctx_value(slot, serde_json::json!(statuses))))
             }
             None => Err(()),
