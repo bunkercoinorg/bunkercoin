@@ -1,4 +1,5 @@
-import { formatInteger, formatUnits, normalizeHash, normalizeSlot, normalizeTokenId, relativeAge, toBase58 } from '@bunkercoin/chain-format';
+import { formatInteger, formatUnits, normalizeHash, normalizeSlot, normalizeTokenId, toBase58 } from '@bunkercoin/chain-format';
+import { coarseAge } from './cadence.ts';
 import type { AccountDetails, Block, SearchKind, SearchMatch, TokenSummary, TransactionDetails } from './types.ts';
 
 export interface SearchCandidate {
@@ -99,7 +100,7 @@ export function matchContext(m: SearchMatch, now: number | null): string {
     const b = m.block;
     const at = b.finalized_timestamp ?? b.proposed_timestamp;
     const state = b.type === 'skip' ? 'skipped' : b.status;
-    return at === undefined || now === null ? state : `${state} · ${relativeAge(at, now)} ago`;
+    return at === undefined || now === null ? state : `${state} · ${coarseAge(at, now)} ago`;
   }
   if (m.token) return `${m.token.ticker} · supply ${formatInteger(m.token.current_supply)}`;
   if (m.transaction) {

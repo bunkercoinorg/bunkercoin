@@ -10,6 +10,7 @@ import { hrefFor, lastSearchAtom, SEARCH_FRESH_MS } from '@/components/site-sear
 import { useQueryParam } from '@/lib/use-query-param';
 import { api } from '@/lib/api';
 import { classifyQuery, matchContext } from '@/lib/search';
+import { CLOCK_MS } from '@/lib/cadence';
 import type { SearchMatch } from '@/lib/types';
 
 type Result = { q: string; state: 'loading' } | { q: string; state: 'error' } | { q: string; state: 'ready'; matches: SearchMatch[] };
@@ -24,7 +25,7 @@ function title(m: SearchMatch) {
 
 export default function SearchPage() {
   const q = (useQueryParam('q') ?? '').trim();
-  const now = useNow();
+  const now = useNow(CLOCK_MS);
   const last = useAtomValue(lastSearchAtom);
   const [result, setResult] = useState<Result | null>(null);
   const [attempt, setAttempt] = useState(0);

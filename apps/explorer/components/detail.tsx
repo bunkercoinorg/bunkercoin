@@ -2,9 +2,10 @@
 
 import type { ReactNode } from 'react';
 import { useAtomValue } from 'jotai';
-import { relativeAge, utcClock } from '@bunkercoin/chain-format';
+import { utcClock } from '@bunkercoin/chain-format';
 import { Button, ButtonLink, Skeleton, StatePanel, StatusTag, useNow } from '@bunkercoin/ui';
 import { blocksAtom } from '@/lib/atoms';
+import { checkedAgo, CLOCK_MS } from '@/lib/cadence';
 import type { EntityState } from '@/lib/use-entity';
 import { slotLabel } from './blocks-table';
 import { searchPath } from './site-search';
@@ -100,11 +101,9 @@ export const latestSeen = (head: number | null) => (head === null ? '' : `Latest
 
 /** A failed refresh keeps the record: `stale · last checked 21:04:30 UTC` + retry. */
 export function RefreshState({ entity }: { entity: EntityState<unknown> }) {
-  const now = useNow();
+  const now = useNow(CLOCK_MS);
   if (entity.lastSuccess === null) return null;
-  if (!entity.refreshError) {
-    return <span className="bc-hint mono">checked {now === null ? '' : `${relativeAge(entity.lastSuccess, now)} ago`}</span>;
-  }
+  if (!entity.refreshError) return <span className="bc-hint mono">{checkedAgo(entity.lastSuccess, now) || 'checked'}</span>;
   return (
     <span className="bc-row">
       <StatusTag status="stale" detail={`last checked ${utcClock(entity.lastSuccess)}`} />

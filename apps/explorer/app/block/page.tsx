@@ -8,13 +8,14 @@ import { useQueryParam } from '@/lib/use-query-param';
 import { useEntity } from '@/lib/use-entity';
 import { api } from '@/lib/api';
 import { routes } from '@/lib/routes';
+import { CLOCK_MS, coarseAge } from '@/lib/cadence';
 import type { Block } from '@/lib/types';
 
 const PENDING_POLL_MS = 5000;
 const pollUntilFinal = (b: Block | null) => (b && b.status !== 'finalized' ? PENDING_POLL_MS : null);
 
 function BlockView({ block, entity }: { block: Block; entity: Parameters<typeof RefreshState>[0]['entity'] }) {
-  const now = useNow();
+  const now = useNow(CLOCK_MS);
   const skipped = block.type === 'skip';
   const nav = (
     <div className="flex gap-2">
@@ -50,7 +51,17 @@ function BlockView({ block, entity }: { block: Block; entity: Parameters<typeof 
   const finalized = block.status === 'finalized' ? block.finalized_timestamp : undefined;
   const key: Fact[] = [
     { label: 'producer', value: block.producer === undefined ? '–' : `node ${block.producer}` },
-    { label: 'proposed', value: proposed ? <TimeValue ms={proposed} relative /> : '–' },
+    {
+      label: 'proposed',
+      value: proposed ? (
+        <>
+          <TimeValue ms={proposed} />
+          {now !== null && ` · ${coarseAge(proposed, now)} ago`}
+        </>
+      ) : (
+        '–'
+      ),
+    },
     {
       label: 'finalized',
       value: finalized ? (
@@ -59,7 +70,7 @@ function BlockView({ block, entity }: { block: Block; entity: Parameters<typeof 
           {proposed && <span className="bc-s"> · +{formatDuration(finalized - proposed)}</span>}
         </>
       ) : proposed && now !== null ? (
-        `${block.status} for ${formatDuration(now - proposed)}`
+        `${block.status} for ${coarseAge(proposed, now)}`
       ) : (
         '–'
       ),
