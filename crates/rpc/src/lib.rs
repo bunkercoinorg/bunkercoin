@@ -695,15 +695,22 @@ async fn submit_transaction(
         signature,
     };
 
-    // Zero-signature genesis txs are signed server-side after filling the current nonce.
+    // Held until the entry is pushed so concurrent server-signed txs get distinct nonces.
+    let mut mempool = state.mempool.write().await;
+
+    // Zero-signature genesis txs are signed server-side with the next pending nonce.
     if tx.signature == [0u8; 64] {
         if let Some(sk) = &state.genesis_signing_key {
             let genesis_pk = sk.verifying_key().to_bytes();
             if tx.sender == genesis_pk {
-                let exec = state.execution_state.read().await;
-                let current_nonce = exec.get_account(&genesis_pk).map(|a| a.nonce).unwrap_or(0);
-                drop(exec);
-                tx.nonce = current_nonce;
+                let finalized_nonce = state
+                    .execution_state
+                    .read()
+                    .await
+                    .get_account(&genesis_pk)
+                    .map(|a| a.nonce)
+                    .unwrap_or(0);
+                tx.nonce = pending_nonce(finalized_nonce, &genesis_pk, &mempool, now_ms());
 
                 use ed25519_dalek::Signer;
                 let msg = tx.signing_hash();
@@ -716,7 +723,6 @@ async fn submit_transaction(
     let body_type = body_type_name(&tx.body);
 
     {
-        let mempool = state.mempool.read().await;
         if mempool.iter().any(|e| e.hash == hash) {
             return (
                 axum::http::StatusCode::CONFLICT,
@@ -735,10 +741,7 @@ async fn submit_transaction(
         }
     }
 
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64;
+    let now = now_ms();
 
     let entry = MempoolEntry {
         hash: hash.clone(),
@@ -750,11 +753,12 @@ async fn submit_transaction(
         received_at: now,
     };
 
-    state.mempool.write().await.push(entry);
+    mempool.push(entry);
 
     if let Some(tx_sender) = &state.tx_sender {
         let _ = tx_sender.send(tx);
     }
+    drop(mempool);
 
     let _ = state.updates.send(WebSocketUpdate::TransactionReceived {
         hash: hash.clone(),
@@ -764,6 +768,34 @@ async fn submit_transaction(
     });
 
     Json(serde_json::json!({ "hash": hash })).into_response()
+}
+
+/// Entries older than this no longer hold their nonce: reconnects drop the node
+/// mempool without clearing RPC entries, and a lost tx must not wedge the sender.
+const IN_FLIGHT_NONCE_TTL_MS: u64 = 10 * 60 * 1000;
+
+/// Lowest nonce at or past `finalized_nonce` that no recent in-flight tx of `sender` holds.
+fn pending_nonce(
+    finalized_nonce: u64,
+    sender: &[u8; 32],
+    mempool: &[MempoolEntry],
+    now_ms: u64,
+) -> u64 {
+    let held: HashSet<u64> = mempool
+        .iter()
+        .filter(|e| now_ms.saturating_sub(e.received_at) < IN_FLIGHT_NONCE_TTL_MS)
+        .filter(|e| decode_pubkey(&e.sender).is_ok_and(|pk| &pk == sender))
+        .map(|e| e.nonce)
+        .collect();
+    (finalized_nonce..)
+        .find(|n| !held.contains(n))
+        .unwrap_or(finalized_nonce)
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
 }
 
 async fn mempool(
@@ -2925,6 +2957,98 @@ mod tests {
             }
             _ => panic!("expected a block entry"),
         }
+    }
+
+    fn mempool_entry(sender: String, nonce: u64) -> MempoolEntry {
+        MempoolEntry {
+            hash: format!("{sender}-{nonce}"),
+            sender,
+            nonce,
+            fee: 0,
+            body_type: "Transfer".into(),
+            body: TransactionBodyResponse::Transfer {
+                to: String::new(),
+                amount: 0,
+            },
+            received_at: 0,
+        }
+    }
+
+    #[test]
+    fn pending_nonce_skips_nonces_held_by_recent_txs_of_the_sender() {
+        let me = [3u8; 32];
+        let now = IN_FLIGHT_NONCE_TTL_MS + 1_000;
+        assert_eq!(pending_nonce(5, &me, &[], now), 5);
+        let mut pool = vec![
+            mempool_entry(hex::encode(me), 3),
+            mempool_entry(bs58::encode(me).into_string(), 5),
+            mempool_entry(hex::encode(me), 6),
+            mempool_entry(hex::encode([4u8; 32]), 7),
+        ];
+        for e in &mut pool {
+            e.received_at = now;
+        }
+        assert_eq!(pending_nonce(5, &me, &pool, now), 7);
+        assert_eq!(pending_nonce(8, &me, &pool, now), 8);
+
+        // A lost tx stops holding its nonce once stale, so the gap refills.
+        pool[1].received_at = 0;
+        assert_eq!(pending_nonce(5, &me, &pool, now), 5);
+    }
+
+    #[tokio::test]
+    async fn concurrent_airdrops_take_distinct_nonces_and_all_execute() {
+        let sk = SigningKey::from_bytes(&[7u8; 32]);
+        let genesis_pk = sk.verifying_key().to_bytes();
+        let (tx_send, mut tx_recv) = mpsc::unbounded_channel();
+        let mut state = test_state(Vec::new());
+        state.genesis_signing_key = Some(Arc::new(sk));
+        state.tx_sender = Some(tx_send);
+        state
+            .execution_state
+            .write()
+            .await
+            .get_or_create_account(&genesis_pk)
+            .native_balance = 1_000_000;
+
+        let recipients: Vec<[u8; 32]> = (1..=4u8).map(|i| [i; 32]).collect();
+        let statuses = futures::future::join_all(recipients.iter().map(|r| {
+            let state = state.clone();
+            let r = *r;
+            async move {
+                let tx = build_airdrop_tx(&state, r, 1_000).await.unwrap();
+                let req: SubmitTransactionRequest = serde_json::from_value(tx).unwrap();
+                submit_transaction(axum::extract::State(state), Json(req))
+                    .await
+                    .into_response()
+                    .status()
+            }
+        }))
+        .await;
+        assert!(statuses.iter().all(|s| s.is_success()), "{statuses:?}");
+
+        let mut nonces: Vec<u64> = state.mempool.read().await.iter().map(|e| e.nonce).collect();
+        nonces.sort_unstable();
+        assert_eq!(nonces, vec![0, 1, 2, 3]);
+
+        let mut txs = Vec::new();
+        while let Ok(t) = tx_recv.try_recv() {
+            txs.push(t);
+        }
+        txs.sort_by_key(|t| t.nonce);
+        let mut exec = state.execution_state.write().await;
+        let results = exec.execute_block(&txs);
+        assert!(results.iter().all(|r| r.is_ok()), "{results:?}");
+        for r in &recipients {
+            assert_eq!(exec.get_account(r).unwrap().native_balance, 1_000);
+        }
+
+        // A later airdrop continues from the finalized nonce plus what is still in flight.
+        drop(exec);
+        let tx = build_airdrop_tx(&state, [9u8; 32], 1).await.unwrap();
+        let req: SubmitTransactionRequest = serde_json::from_value(tx).unwrap();
+        let _ = submit_transaction(axum::extract::State(state.clone()), Json(req)).await;
+        assert_eq!(tx_recv.try_recv().unwrap().nonce, 4);
     }
 }
 
